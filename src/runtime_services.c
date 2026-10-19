@@ -6,6 +6,7 @@
  * Every entry here is an explicit contract; unknown functions still stop. */
 #define _GNU_SOURCE
 #include "runtime.h"
+#include "guest_cpu.h"
 #include "gpu/bbgpu.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -684,7 +685,14 @@ static int online_symbol(const char *symbol) {
 }
 uintptr_t runtime_services_resolve(const char *name) {
     static int online=-1;
-    if (online<0) { const char *v=getenv("BB_ONLINE"); online=v && v[0]=='1'; }
+    if (online<0) {
+        const char *v=getenv("BB_ONLINE"); online=v && v[0]=='1';
+#ifndef GUEST_CPU_NATIVE
+        /* The online libraries call the game's callbacks directly from host threads, which needs
+         * the game's code on the host CPU: offline only under FEXCore for now. */
+        if (online) { puts("Co-op: BB_ONLINE is not supported on this CPU yet (FEXCore); playing offline"); online=0; }
+#endif
+    }
     if (online) {
         const char *symbol=runtime_symbol(name);
         if (symbol && online_symbol(symbol)) {
