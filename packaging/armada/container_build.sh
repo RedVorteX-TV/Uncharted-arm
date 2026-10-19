@@ -8,21 +8,44 @@ cd -- "$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/../.."
 
 sudo=""
 if [[ $(id -u) != 0 ]]; then sudo=sudo; fi
-# By capability (pkgconfig()/cmake()), not package names, which differ between releases.
+# Each dependency as alternatives ("a|b|c": capability names first, package names after), since
+# names differ between Fedora releases; the first one dnf can install is used.
 deps=(
     clang gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config binutils git python3 patchelf lld
-    'pkgconfig(vulkan)' vulkan-headers 'pkgconfig(sdl3)' 'pkgconfig(x11)' 'pkgconfig(xcb)'
-    'pkgconfig(wayland-client)' 'pkgconfig(libxxhash)'
-    'pkgconfig(libavformat)' 'pkgconfig(libavcodec)' 'pkgconfig(libavutil)'
-    'pkgconfig(libswscale)' 'pkgconfig(libswresample)'
-    boost-devel 'cmake(fmt)' 'cmake(magic_enum)' 'cmake(tsl-robin-map)' 'cmake(zydis)'
-    'cmake(nlohmann_json)' 'cmake(protobuf)' protobuf-compiler openssl-devel zlib-ng-compat-devel
-    miniupnpc-devel miniz-devel glslang spirv-headers-devel spirv-tools
+    'pkgconfig(vulkan)|vulkan-loader-devel' vulkan-headers 'pkgconfig(sdl3)|SDL3-devel'
+    'pkgconfig(x11)|libX11-devel' 'pkgconfig(xcb)|libxcb-devel' 'pkgconfig(wayland-client)|wayland-devel'
+    'pkgconfig(libxxhash)|xxhash-devel'
+    'pkgconfig(libavformat)|ffmpeg-free-devel|libavformat-free-devel'
+    'pkgconfig(libavcodec)|ffmpeg-free-devel|libavcodec-free-devel'
+    'pkgconfig(libavutil)|ffmpeg-free-devel|libavutil-free-devel'
+    'pkgconfig(libswscale)|ffmpeg-free-devel|libswscale-free-devel'
+    'pkgconfig(libswresample)|ffmpeg-free-devel|libswresample-free-devel'
+    boost-devel 'cmake(fmt)|fmt-devel' 'cmake(magic_enum)|magic_enum-devel'
+    'cmake(tsl-robin-map)|robin-map-devel' 'cmake(Zydis)|cmake(zydis)|zydis-devel'
+    'cmake(nlohmann_json)|json-devel' 'cmake(protobuf)|protobuf-devel' protobuf-compiler
+    openssl-devel 'zlib-ng-compat-devel|zlib-devel' miniupnpc-devel
+    'glslang|glslang-devel' 'spirv-headers-devel|pkgconfig(SPIRV-Headers)' spirv-tools
 )
-optional=('cmake(VulkanMemoryAllocator)' spirv-cross)
+optional=('miniz-devel|pkgconfig(miniz)' 'cmake(VulkanMemoryAllocator)|vulkan-memory-allocator-devel|VulkanMemoryAllocator-devel' 'spirv-cross|spirv-cross-devel')
+dnf_install() { $sudo dnf install -y -q --setopt=install_weak_deps=False "$@" >/dev/null 2>&1; }
+install_alternatives() { # $1: "a|b|c"; $2: required (1) or optional (0)
+    local alternative
+    IFS='|' read -r -a alternatives <<< "$1"
+    for alternative in "${alternatives[@]}"; do
+        if dnf_install "$alternative"; then echo "  ok   $alternative"; return 0; fi
+    done
+    if [[ $2 == 1 ]]; then echo "  FALTA $1"; missing+=("$1"); else echo "  (opcional, no disponible) $1"; fi
+}
 echo "== dependencies"
-$sudo dnf install -y --setopt=install_weak_deps=False "${deps[@]}"
-$sudo dnf install -y --skip-unavailable "${optional[@]}" || true
+$sudo dnf makecache -q >/dev/null 2>&1 || true
+missing=()
+for dep in "${deps[@]}"; do install_alternatives "$dep" 1; done
+for dep in "${optional[@]}"; do install_alternatives "$dep" 0; done
+if (( ${#missing[@]} )); then
+    echo "No se pudieron instalar: ${missing[*]}" >&2
+    echo "Pásale este mensaje a Claude." >&2
+    exit 1
+fi
 
 echo "== submodules (gpu/third_party, third_party/FEX and its own)"
 git config --global --add safe.directory '*'
