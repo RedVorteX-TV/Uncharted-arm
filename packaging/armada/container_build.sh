@@ -11,7 +11,7 @@ if [[ $(id -u) != 0 ]]; then sudo=sudo; fi
 # Each dependency as alternatives ("a|b|c": capability names first, package names after), since
 # names differ between Fedora releases; the first one dnf can install is used.
 deps=(
-    clang gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config binutils git python3 patchelf lld
+    clang llvm gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config binutils git python3 patchelf lld
     'pkgconfig(vulkan)|vulkan-loader-devel' vulkan-headers 'pkgconfig(sdl3)|SDL3-devel'
     'pkgconfig(x11)|libX11-devel' 'pkgconfig(xcb)|libxcb-devel' 'pkgconfig(wayland-client)|wayland-devel'
     'pkgconfig(libxxhash)|xxhash-devel'
@@ -52,6 +52,11 @@ git config --global --add safe.directory '*'
 git submodule update --init --recursive
 
 echo "== build (FEXCore, GPU library, runtime)"
+# A FEX configuration made before llvm (llvm-ar/llvm-ranlib) was installed is redone.
+if [[ -f out/fex/CMakeCache.txt ]] && grep -q -- '-NOTFOUND' out/fex/CMakeCache.txt; then
+    echo "  (reconfiguring FEX: its previous configuration lacked tools)"
+    rm -rf out/fex
+fi
 BB_LTO=${BB_LTO:-OFF} BB_PGO=${BB_PGO:-off} bash build.sh
 
 echo "== runtime libraries -> out/lib"
