@@ -58,7 +58,12 @@ if (NOT magic_enum_FOUND)
     target_include_directories(magic_enum INTERFACE third_party/magic_enum/include
                                                     third_party/magic_enum/include/magic_enum)
 endif()
-find_package(tsl-robin-map REQUIRED)
+find_package(tsl-robin-map QUIET)
+if (NOT TARGET tsl::robin_map)  # header-only; some distributions ship no CMake package
+    find_path(TSL_ROBIN_MAP_INCLUDE_DIR tsl/robin_map.h REQUIRED)
+    add_library(tsl::robin_map INTERFACE IMPORTED)
+    set_target_properties(tsl::robin_map PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${TSL_ROBIN_MAP_INCLUDE_DIR}")
+endif()
 find_package(VulkanMemoryAllocator CONFIG QUIET)
 if (NOT VulkanMemoryAllocator_FOUND)
     # MSYS2 ships the header (include/vma/vk_mem_alloc.h) without a CMake package.
@@ -84,7 +89,21 @@ if (NOT miniz_FOUND)
     unset(CMAKE_POLICY_VERSION_MINIMUM)
     add_library(miniz::miniz ALIAS miniz)
 endif()
-find_package(Zydis REQUIRED)
+# Zydis's own CMake package first; distributions that ship only the library and headers (Fedora)
+# get an equivalent imported target (Zydis needs Zycore beside it).
+find_package(Zydis QUIET)
+if (NOT TARGET Zydis::Zydis)
+    find_path(ZYDIS_INCLUDE_DIR Zydis/Zydis.h REQUIRED)
+    find_library(ZYDIS_LIBRARY NAMES Zydis zydis REQUIRED)
+    find_library(ZYCORE_LIBRARY NAMES Zycore zycore)
+    add_library(Zydis::Zydis UNKNOWN IMPORTED)
+    set_target_properties(Zydis::Zydis PROPERTIES IMPORTED_LOCATION "${ZYDIS_LIBRARY}"
+                          INTERFACE_INCLUDE_DIRECTORIES "${ZYDIS_INCLUDE_DIR}")
+    if (ZYCORE_LIBRARY)
+        set_property(TARGET Zydis::Zydis APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${ZYCORE_LIBRARY}")
+    endif()
+    message(STATUS "Zydis without a CMake package: ${ZYDIS_LIBRARY}")
+endif()
 find_program(GLSLANG_COMPILER NAMES glslang glslangValidator REQUIRED)
 
 set(SIRIT_USE_SYSTEM_SPIRV_HEADERS OFF CACHE BOOL "" FORCE)
@@ -185,7 +204,13 @@ file(GLOB_RECURSE BBNET_SOURCES CONFIGURE_DEPENDS shadps4/core/libraries/network
 # emulator's UI layers.
 list(FILTER BBNET_SOURCES EXCLUDE REGEX
     "np_trophy|trophy_ui|np_sns_facebook_dialog|np_profile_dialog/|np_commerce/")
-find_package(nlohmann_json CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG QUIET)
+if (NOT TARGET nlohmann_json::nlohmann_json)  # header-only fallback
+    find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp REQUIRED)
+    add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
+    set_target_properties(nlohmann_json::nlohmann_json PROPERTIES
+                          INTERFACE_INCLUDE_DIRECTORIES "${NLOHMANN_JSON_INCLUDE_DIR}")
+endif()
 add_library(bbnet STATIC ${BBNET_SOURCES} "${SHADNET_PROTO_OUT}/shadnet.pb.cc" bbnet/bbnet_glue.cpp)
 target_include_directories(bbnet PRIVATE shim shadps4 shadps4/shadnet "${SHADNET_PROTO_OUT}"
     third_party/imgui third_party/httplib)
