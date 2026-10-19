@@ -50,9 +50,12 @@ endif()
 find_package(Vulkan REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED)
-# bbport (Windows): MSYS2 has no magic_enum/miniz packages; the submodules are used instead.
-find_package(magic_enum QUIET)
-if (NOT magic_enum_FOUND)
+# magic_enum: the submodule (third_party/magic_enum), the version the code is written for; system
+# packages differ in header layout (magic_enum.hpp vs magic_enum/magic_enum.hpp, Fedora).
+if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/magic_enum/include/magic_enum/magic_enum.hpp)
+    find_package(magic_enum QUIET)
+endif()
+if (NOT TARGET magic_enum::magic_enum)
     add_library(magic_enum INTERFACE)
     add_library(magic_enum::magic_enum ALIAS magic_enum)
     target_include_directories(magic_enum INTERFACE third_party/magic_enum/include
