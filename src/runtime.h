@@ -15,7 +15,13 @@ typedef bb_jmp_buf sigjmp_buf;
 extern __thread sigjmp_buf *runtime_fault_recover;
 /* Restarts the game (in-game settings menu, render resolution change). */
 void runtime_restart(void);
+/* The guest's calling convention for host functions it calls. Elsewhere than x86-64 the guest CPU
+ * (guest_cpu.h) converts guest calls to the host's convention. */
+#if defined(__x86_64__)
 #define ABI __attribute__((sysv_abi))
+#else
+#define ABI
+#endif
 typedef void (ABI *GuestCallback)(void);
 void runtime_start(uint64_t capabilities);
 uintptr_t runtime_resolve(const char *name, int is_data);
@@ -90,6 +96,9 @@ int runtime_savedata_pick(int32_t user, const char *title, const char (*names)[3
                           int which, const char *focus, char out[32], void *param_out);
 void runtime_thread_attach_host(const char *name);
 uintptr_t runtime_fiber_resolve(const char *name);
+/* 1 when `address` is guest code made by the runtime (fiber stubs on FEXCore hosts): imports
+ * resolved to it are not host functions. */
+int runtime_fiber_guest_code(uintptr_t address);
 void runtime_fiber_report(void);
 /* Host functions the loader runs at the start of matching guest functions (probe.c): the code
  * at `offset` must equal `signature`; `moved` bytes of whole position-independent instructions

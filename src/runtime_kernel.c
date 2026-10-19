@@ -3,6 +3,7 @@
  * use FreeBSD numbering; host errno values never reach the guest directly. */
 #define _GNU_SOURCE
 #include "runtime.h"
+#include "guest_cpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +13,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/time.h>
+#ifdef GUEST_CPU_NATIVE
 #include <x86intrin.h>
+#endif
 #ifndef _WIN32
 #include <sys/random.h>
 #include <sys/resource.h>
@@ -85,6 +88,7 @@ static ABI uint64_t process_time_counter(void) {
     return (uint64_t)(t.tv_sec-process_start.tv_sec)*1000000000+(uint64_t)(t.tv_nsec-process_start.tv_nsec);
 }
 static ABI uint64_t process_time_frequency(void) { return 1000000000; }
+#ifdef GUEST_CPU_NATIVE
 static ABI uint64_t read_tsc(void) { return __rdtsc(); }
 static uint64_t tsc_hz;
 static ABI uint64_t tsc_frequency(void) {
@@ -102,6 +106,11 @@ static ABI uint64_t tsc_frequency(void) {
     }
     return tsc_hz;
 }
+#else
+/* The guest reads the same counter with RDTSC (FEXCore). */
+static ABI uint64_t read_tsc(void) { return guest_cpu_tsc(); }
+static ABI uint64_t tsc_frequency(void) { return guest_cpu_tsc_frequency(); }
+#endif
 /* Shared with the GPU library so flip/label timestamps use the guest's clock. */
 uint64_t runtime_process_time_us(void) { return process_time(); }
 uint64_t runtime_process_time_counter(void) { return process_time_counter(); }

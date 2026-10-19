@@ -7,6 +7,7 @@
  * the same 9-byte instruction with another displacement. */
 #define _GNU_SOURCE
 #include "runtime.h"
+#include "guest_cpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,9 @@
 #else
 #include <sys/syscall.h>
 #include <sys/mman.h>
+#ifdef GUEST_CPU_NATIVE
 #include <asm/prctl.h>
+#endif
 #endif
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 #define ATTR_MAGIC UINT32_C(0x41545452)
@@ -45,6 +48,8 @@ typedef struct GuestThread {
     void *argument, *result;
     ThreadAttr attr;
     char name[32];
+    unsigned char *guest_stack; /* separate from the host stack when the guest CPU is not the host's */
+    size_t guest_stack_size;
     int detached, finished, joined, host_owned;
 #ifdef _WIN32
     bb_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
@@ -83,10 +88,14 @@ static void set_gs(void *base) {
     if (!TlsSetValue(tls_slot,base)) { fprintf(stderr,"STOP: TlsSetValue failed (%lu)\n",GetLastError()); exit(21); }
 }
 #define tls_block_alloc(size) _aligned_malloc(size,64)
-#else
+#elif defined(GUEST_CPU_NATIVE)
 static void set_gs(void *base) {
     if (syscall(SYS_arch_prctl,ARCH_SET_GS,(unsigned long)base)) { perror("STOP: arch_prctl(ARCH_SET_GS)"); exit(21); }
 }
+#define tls_block_alloc(size) aligned_alloc(64,size)
+#else
+/* aarch64: the guest's GS base lives in FEXCore's per-thread state. */
+static void set_gs(void *base) { guest_cpu_set_gs(base); }
 #define tls_block_alloc(size) aligned_alloc(64,size)
 #endif
 /* Build TCB/static TLS for the calling host thread and point GS at it. */
@@ -103,7 +112,7 @@ static void attach(GuestThread *t) {
     tcb[1]=(uint64_t)(uintptr_t)dtv;         /* tcb_dtv (static module only) */
     tcb[2]=(uint64_t)(uintptr_t)t;           /* tcb_thread */
     t->tls_block=block; t->tcb=tcb;
-    guest_cpu_set_gs(tcb);
+    set_gs(tcb);
     current=t;
 }
 static GuestThread *new_thread(void) {
@@ -274,10 +283,16 @@ void runtime_set_guest_fpu(void) {
         once=1;
     }
     if (!value) return;
+#ifdef GUEST_CPU_NATIVE
     uint32_t mxcsr=value;
     uint16_t fpucw=0x037f;
     __asm__ volatile("ldmxcsr %0" : : "m"(mxcsr));
     __asm__ volatile("fldcw %0" : : "m"(fpucw));
+#else
+    /* aarch64: the guest's MXCSR is FEXCore state, not the host's; not supported yet. */
+    static int told;
+    if (!told++) fputs("Runtime: BB_GUEST_MXCSR is ignored on this CPU (FEXCore)\n",stderr);
+#endif
 }
 static void *host_start(void *p) {
     GuestThread *t=p;
@@ -285,8 +300,18 @@ static void *host_start(void *p) {
     set_host_name(t->name);
     runtime_set_guest_fpu();
     if (t->attr.affinity!=0x7f) apply_affinity(t,1);
+#ifdef GUEST_CPU_NATIVE
     if (!exit_setjmp(t)) t->result=t->entry(t->argument);
     runtime_thread_keys_cleanup();
+#else
+    /* FEXCore: the guest runs on its own stack below 1 TiB; the host stack stays the pthread's. */
+    if (t->guest_stack) guest_cpu_thread_stack(t->guest_stack+t->guest_stack_size,t->guest_stack_size);
+    const uint64_t argument=(uint64_t)(uintptr_t)t->argument;
+    if (!exit_setjmp(t)) t->result=(void *)(uintptr_t)guest_cpu_call((uintptr_t)t->entry,1,&argument);
+    else guest_cpu_abandon();
+    runtime_thread_keys_cleanup();
+    guest_cpu_thread_end();
+#endif
     pthread_mutex_lock(&lock); t->finished=1; ++exited; pthread_mutex_unlock(&lock);
     return t->result;
 }
@@ -312,6 +337,11 @@ static int32_t create(GuestThread **out,ThreadAttr **attr_slot,GuestEntry entry,
     void *stack_memory=runtime_low_map(stack_bytes,PROT_READ|PROT_WRITE);
     if (stack_memory) pthread_attr_setstack(&host,stack_memory,stack_bytes);
     else pthread_attr_setstacksize(&host,stack_bytes);
+#ifndef GUEST_CPU_NATIVE
+    t->guest_stack=runtime_low_map((size_t)stack,PROT_READ|PROT_WRITE);
+    if (!t->guest_stack) { fputs("STOP: cannot allocate a guest thread stack\n",stderr); exit(21); }
+    t->guest_stack_size=(size_t)stack;
+#endif
 #endif
     publish(t);
     /* Publish the handle before the thread can run and inspect itself. */

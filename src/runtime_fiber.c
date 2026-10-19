@@ -10,14 +10,24 @@
  * whose stack pointer is still being written.
  *
  * Fibers without their own context run on the calling thread's stack, below the frame of
- * sceFiberRun; they cannot be suspended and start again from their entry next time. */
+ * sceFiberRun; they cannot be suspended and start again from their entry next time.
+ *
+ * Hosts other than x86-64 run the game's code in FEXCore (guest_cpu.h), where the host cannot
+ * switch guest stacks from inside a host function: the switches are then x86-64 stubs run by the
+ * guest itself (tools/fiber_stubs.S, runtime_fiber_stubs.inc), with the same saved-context layout,
+ * and the host only keeps the books between them (the fiber_prepare_* and fiber_after_* below). */
 #include "runtime.h"
+#include "guest_cpu.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #ifdef _WIN32
 #include <windows.h>
+#endif
+#ifndef GUEST_CPU_NATIVE
+#include <pthread.h>
+#include <sys/mman.h>
 #endif
 
 #define FIBER_ERROR_NULL ((int32_t)0x80590001)
@@ -85,6 +95,7 @@ static __attribute__((noinline)) FiberThread *this_thread(void) {
     return t;
 }
 
+#ifdef GUEST_CPU_NATIVE
 /* fiber_swap(save, load): suspend here (*save = stack pointer) and resume the context whose
  * stack pointer is load. fiber_start begins a fresh context: rbx = GuestFiber. */
 ABI void fiber_swap(uint64_t *save,uint64_t load);
@@ -101,6 +112,12 @@ __asm__(".text\n"
         ".globl fiber_start\nfiber_start:\n"
         " mov %rbx,%rdi\n and $-16,%rsp\n call fiber_main\n ud2\n");
 
+#else
+/* Guest-side switches (x86-64 bytes run by FEXCore): runtime_fiber_stubs.inc. */
+#include "runtime_fiber_stubs.inc"
+static unsigned char *stub_page;
+#endif
+
 static void fatal(const char *what,const GuestFiber *fiber) {
     fprintf(stderr,"STOP: fiber '%s': %s\n",fiber ? fiber->name : "?",what);
     runtime_report();
@@ -108,6 +125,7 @@ static void fatal(const char *what,const GuestFiber *fiber) {
     _exit(24);
 }
 
+#ifdef GUEST_CPU_NATIVE
 static void use_stack(const GuestFiber *fiber,FiberThread *t) {
 #ifdef _WIN32
     NT_TIB *tib=(NT_TIB *)NtCurrentTeb();
@@ -122,11 +140,12 @@ static void use_stack(const GuestFiber *fiber,FiberThread *t) {
     (void)fiber; (void)t;
 #endif
 }
+#endif
 
 /* The context the target fiber resumes in: its saved one, or a fresh frame at the top of its
  * stack. A fiber without a context of its own starts on the thread stack below `below`, a
  * stack pointer under which nothing live remains. */
-static uint64_t context_of(GuestFiber *fiber,uint64_t below) {
+static uint64_t context_of(GuestFiber *fiber,uint64_t below,const uint64_t *fpu_from) {
     uint64_t rsp=fiber->saved_rsp;
     if (rsp) { fiber->saved_rsp=0; return rsp; }
     uint64_t top=fiber->addr_context ? (uint64_t)(fiber->addr_context+fiber->size_context) : below-512;
@@ -134,14 +153,24 @@ static uint64_t context_of(GuestFiber *fiber,uint64_t below) {
     uint64_t *frame=(uint64_t *)(top-64);
     uint32_t mxcsr=0x9fc0; uint16_t fpucw=0x037f;
     if (!(fiber->flags&FLAG_SET_FPU)) {
+#ifdef GUEST_CPU_NATIVE
+        (void)fpu_from;
         __asm__ volatile("stmxcsr %0" : "=m"(mxcsr));
         __asm__ volatile("fnstcw %0" : "=m"(fpucw));
+#else
+        /* The guest's current state: the first word of the context just saved by a stub. */
+        mxcsr=(uint32_t)fpu_from[0]; fpucw=(uint16_t)(fpu_from[0]>>32);
+#endif
     }
     frame[0]=(uint64_t)mxcsr | (uint64_t)fpucw<<32;
     frame[1]=frame[2]=frame[3]=frame[4]=0;          /* r15 r14 r13 r12 */
     frame[5]=(uint64_t)(uintptr_t)fiber;             /* rbx */
     frame[6]=0;                                      /* rbp: ends frame-pointer walks */
+#ifdef GUEST_CPU_NATIVE
     frame[7]=(uint64_t)(uintptr_t)fiber_start;
+#else
+    frame[7]=(uint64_t)(uintptr_t)(stub_page+FIBER_STUB_START);
+#endif
     ++fibers_started;
     return (uint64_t)(uintptr_t)frame;
 }
@@ -158,6 +187,7 @@ static void arrived(FiberThread *t) {
     if (previous) __atomic_store_n(&previous->state,STATE_IDLE,__ATOMIC_RELEASE);
 }
 
+#ifdef GUEST_CPU_NATIVE
 ABI __attribute__((used,noreturn)) void fiber_main(GuestFiber *fiber) {
     FiberThread *t=this_thread();
     arrived(t);
@@ -165,6 +195,7 @@ ABI __attribute__((used,noreturn)) void fiber_main(GuestFiber *fiber) {
     fatal("entry function returned",fiber);
     __builtin_unreachable();
 }
+#endif
 
 static int valid(const GuestFiber *fiber) {
     return fiber->magic_start==SIGNATURE_START && fiber->magic_end==SIGNATURE_END;
@@ -231,6 +262,7 @@ static int claim(GuestFiber *fiber) {
     return __atomic_compare_exchange_n(&fiber->state,&expected,STATE_RUN,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE);
 }
 
+#ifdef GUEST_CPU_NATIVE
 static ABI int32_t fiber_run_with(GuestFiber *fiber,void *addr,uint64_t size,uint64_t arg,uint64_t *ret) {
     int32_t e=check_fiber(fiber);
     if (e) return e;
@@ -246,7 +278,7 @@ static ABI int32_t fiber_run_with(GuestFiber *fiber,void *addr,uint64_t size,uin
     t->current=fiber; t->previous=NULL; t->arg_on_run_to=arg; t->arg_on_return=0;
     uint64_t here;
     __asm__ volatile("mov %%rsp,%0" : "=r"(here));
-    uint64_t target=context_of(fiber,here);
+    uint64_t target=context_of(fiber,here,NULL);
     use_stack(fiber,t);
     ++switches;
     fiber_swap(&t->thread_rsp,target);
@@ -272,7 +304,7 @@ static ABI int32_t fiber_switch_with(GuestFiber *fiber,void *addr,uint64_t size,
     if (!claim(fiber)) return FIBER_ERROR_STATE;
     check_stack(current);
     t->previous=current; t->current=fiber; t->arg_on_run_to=arg;
-    uint64_t target=context_of(fiber,t->thread_rsp);
+    uint64_t target=context_of(fiber,t->thread_rsp,NULL);
     use_stack(fiber,t);
     ++switches;
     if (!current->addr_context) {
@@ -307,6 +339,106 @@ static ABI int32_t fiber_return_to_thread(uint64_t arg_on_return,uint64_t *arg_o
     if (arg_on_run) *arg_on_run=t->arg_on_run_to;
     return 0;
 }
+
+#else
+/* FEXCore hosts: the bookkeeping of the guest-side stubs. A prepare_* function answers the saved
+ * context (a guest stack pointer below 1 TiB) the stub loads, or a negative error code it returns
+ * to the game; `saved` is the caller's context the stub has just pushed. An after_* function runs
+ * in a context that gains control again (its stub's resume address) and reports the result. */
+static uint64_t fail_with(int32_t error) { return (uint64_t)(int64_t)error; }
+static uint64_t fiber_prepare_run(GuestFiber *fiber,void *addr,uint64_t size,uint64_t arg,uint64_t saved) {
+    int32_t e=check_fiber(fiber);
+    if (e) return fail_with(e);
+    if ((uintptr_t)addr&15) return fail_with(FIBER_ERROR_ALIGNMENT);
+    FiberThread *t=this_thread();
+    if (t->current) return fail_with(FIBER_ERROR_PERMISSION);
+    if ((e=attach_context(fiber,addr,size))) return fail_with(e);
+    if (!claim(fiber)) return fail_with(FIBER_ERROR_STATE);
+    t->current=fiber; t->previous=NULL; t->arg_on_run_to=arg; t->arg_on_return=0;
+    t->thread_rsp=saved;
+    ++switches;
+    return context_of(fiber,saved,(const uint64_t *)(uintptr_t)saved);
+}
+static uint64_t fiber_after_run(uint64_t *ret) {
+    /* Back on the thread that called sceFiberRun: a fiber returned to it. */
+    FiberThread *t=this_thread();
+    GuestFiber *last=t->current;
+    t->current=NULL;
+    if (last) __atomic_store_n(&last->state,STATE_IDLE,__ATOMIC_RELEASE);
+    if (ret) *ret=t->arg_on_return;
+    return 0;
+}
+static uint64_t fiber_prepare_switch(GuestFiber *fiber,void *addr,uint64_t size,uint64_t arg,uint64_t saved) {
+    int32_t e=check_fiber(fiber);
+    if (e) return fail_with(e);
+    if ((uintptr_t)addr&15) return fail_with(FIBER_ERROR_ALIGNMENT);
+    FiberThread *t=this_thread();
+    GuestFiber *current=t->current;
+    if (!current) return fail_with(FIBER_ERROR_PERMISSION);
+    if ((e=attach_context(fiber,addr,size))) return fail_with(e);
+    if (!claim(fiber)) return fail_with(FIBER_ERROR_STATE);
+    check_stack(current);
+    t->previous=current; t->current=fiber; t->arg_on_run_to=arg;
+    const uint64_t target=context_of(fiber,t->thread_rsp,(const uint64_t *)(uintptr_t)saved);
+    ++switches;
+    /* No context of its own: nothing to come back to (it starts from its entry next time). */
+    if (current->addr_context) current->saved_rsp=saved;
+    return target;
+}
+static uint64_t fiber_after_switch(uint64_t *arg_on_run) {
+    /* Resumed by sceFiberRun or sceFiberSwitch, possibly on another thread. */
+    FiberThread *t=this_thread();
+    arrived(t);
+    if (arg_on_run) *arg_on_run=t->arg_on_run_to;
+    return 0;
+}
+static uint64_t fiber_prepare_return(uint64_t arg_on_return,uint64_t saved) {
+    FiberThread *t=this_thread();
+    GuestFiber *current=t->current;
+    if (!current) return fail_with(FIBER_ERROR_PERMISSION);
+    check_stack(current);
+    t->arg_on_return=arg_on_return;
+    ++switches;
+    if (current->addr_context) current->saved_rsp=saved;
+    return t->thread_rsp;
+}
+static uint64_t fiber_begin(GuestFiber *fiber) {
+    (void)fiber;
+    FiberThread *t=this_thread();
+    arrived(t);
+    return t->arg_on_run_to;
+}
+static void fiber_entry_returned(GuestFiber *fiber) { fatal("entry function returned",fiber); }
+
+/* The stubs in guest-executable memory below 1 TiB, their host calls bound once. */
+static void init_stubs(void) {
+    unsigned char *page=runtime_low_map(4096,PROT_READ|PROT_WRITE);
+    if (!page) { fputs("STOP: cannot allocate fiber stubs\n",stderr); exit(21); }
+    _Static_assert(sizeof(fiber_stub_code)<=4096,"fiber stubs fit one page");
+    memcpy(page,fiber_stub_code,sizeof(fiber_stub_code));
+    void *const host[HOST_COUNT]={
+        [HOST_PREPARE_RUN]=(void *)fiber_prepare_run, [HOST_PREPARE_SWITCH]=(void *)fiber_prepare_switch,
+        [HOST_PREPARE_RETURN]=(void *)fiber_prepare_return, [HOST_AFTER_RUN]=(void *)fiber_after_run,
+        [HOST_AFTER_SWITCH]=(void *)fiber_after_switch, [HOST_BEGIN]=(void *)fiber_begin,
+        [HOST_ENTRY_RETURNED]=(void *)fiber_entry_returned,
+    };
+    for (size_t i=0;i<sizeof(fiber_stub_patches)/sizeof(*fiber_stub_patches);++i) {
+        const uint64_t address=guest_cpu_host_function(host[fiber_stub_patches[i].host]);
+        memcpy(page+fiber_stub_patches[i].offset,&address,8);
+    }
+    if (mprotect(page,4096,PROT_READ|PROT_EXEC)) { perror("STOP: mprotect(fiber stubs)"); exit(21); }
+    guest_cpu_code((uintptr_t)page,4096);
+    stub_page=page;
+}
+static unsigned char *stubs(void) {
+    static pthread_once_t once=PTHREAD_ONCE_INIT;
+    pthread_once(&once,init_stubs);
+    return stub_page;
+}
+int runtime_fiber_guest_code(uintptr_t address) {
+    return stub_page && address-(uintptr_t)stub_page<4096;
+}
+#endif
 
 static ABI int32_t fiber_get_self(GuestFiber **fiber) {
     if (!fiber) return FIBER_ERROR_NULL;
@@ -350,13 +482,33 @@ static ABI int32_t fiber_stop_size_check(void) {
 
 static const RuntimeExport exports[]={
     {"_sceFiberInitializeImpl",fiber_initialize}, {"sceFiberOptParamInitialize",fiber_opt_initialize},
-    {"sceFiberFinalize",fiber_finalize}, {"sceFiberRun",fiber_run}, {"sceFiberSwitch",fiber_switch},
+    {"sceFiberFinalize",fiber_finalize},
+#ifdef GUEST_CPU_NATIVE
+    {"sceFiberRun",fiber_run}, {"sceFiberSwitch",fiber_switch},
     {"_sceFiberAttachContextAndRun",fiber_run_with}, {"_sceFiberAttachContextAndSwitch",fiber_switch_with},
-    {"sceFiberGetSelf",fiber_get_self}, {"sceFiberReturnToThread",fiber_return_to_thread},
+    {"sceFiberReturnToThread",fiber_return_to_thread},
+#endif
+    {"sceFiberGetSelf",fiber_get_self},
     {"sceFiberGetInfo",fiber_get_info}, {"sceFiberRename",fiber_rename},
     {"sceFiberStartContextSizeCheck",fiber_start_size_check}, {"sceFiberStopContextSizeCheck",fiber_stop_size_check},
 };
+#ifdef GUEST_CPU_NATIVE
 uintptr_t runtime_fiber_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
+int runtime_fiber_guest_code(uintptr_t address) { (void)address; return 0; }
+#else
+/* The switching functions are guest code (the stubs); the rest are host functions. */
+static const struct { const char *name; unsigned offset; } stub_exports[]={
+    {"sceFiberRun",FIBER_STUB_RUN}, {"sceFiberSwitch",FIBER_STUB_SWITCH},
+    {"_sceFiberAttachContextAndRun",FIBER_STUB_RUN_WITH}, {"_sceFiberAttachContextAndSwitch",FIBER_STUB_SWITCH_WITH},
+    {"sceFiberReturnToThread",FIBER_STUB_RETURN},
+};
+uintptr_t runtime_fiber_resolve(const char *name) {
+    const char *symbol=runtime_symbol(name);
+    for (size_t i=0;symbol && i<sizeof(stub_exports)/sizeof(*stub_exports);++i)
+        if (!strcmp(symbol,stub_exports[i].name)) return (uintptr_t)(stubs()+stub_exports[i].offset);
+    return RUNTIME_LOOKUP(exports,name);
+}
+#endif
 void runtime_fiber_report(void) {
     printf("Runtime: fibers started=%llu, switches=%llu\n",(unsigned long long)fibers_started,(unsigned long long)switches);
 }

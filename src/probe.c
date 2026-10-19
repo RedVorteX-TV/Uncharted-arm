@@ -9,9 +9,10 @@
 #include <time.h>
 #include <cpuid.h>
 #include "runtime.h"
+#include "guest_cpu.h"
 #include "gpu/bbgpu.h"
-#if !defined(__x86_64__) || !defined(__GNUC__)
-#error This prototype requires x86-64 GCC or Clang (including MinGW).
+#if !defined(__GNUC__) || (!defined(__x86_64__) && defined(_WIN32))
+#error This prototype requires GCC or Clang, on x86-64 for MinGW.
 #endif
 #ifdef _WIN32
 #include <windows.h>
@@ -360,7 +361,8 @@ static uint64_t patch_tcb_loads(const Segment *segments, uint64_t count) {
 #endif
 #ifndef _WIN32
 static void fault(int sig, siginfo_t *info, void *context) {
-    /* GPU page tracking (write-protected guest pages) is resolved first. */
+    /* The guest CPU's own faults (FEXCore's JIT), then GPU page tracking (write-protected guest pages). */
+    if (guest_cpu_handle_fault(sig, info, context)) return;
     if (gpu_enabled && sig == SIGSEGV && bbgpu_handle_fault(context, info->si_addr)) return;
     /* A speculative guest memory read (runtime_memory.c) failed: resume its recovery point. */
     if ((sig == SIGSEGV || sig == SIGBUS) && runtime_fault_recover) {
@@ -387,6 +389,10 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
+    if (in_guest == GUEST_CPU_IN_HOST_CALL && regs.rip - (uintptr_t)image < 0x10000000) {
+        snprintf(line, sizeof(line), "  called by the game at guest offset 0x%lx\n", (unsigned long)(regs.rip - (uintptr_t)image));
+        ssize_t written_=write(2, line, strlen(line)); (void)written_;
+    }
     if (gpu_enabled) bbgpu_dump_guest_writes(context);
     /* Host call chain (frames with unwind info; guest frames end it). */
     void *frames[32];
@@ -528,8 +534,8 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
  * hooks every 16-byte aligned function in that range that begins with a frame-pointer prologue.
  * The counts that changed are printed every 2 s. */
 #include <pthread.h>
-typedef struct { volatile uint64_t calls, rdi, rsi, rdx, rcx, r8, r15; uint64_t offset, printed; } GuestHook;
-static GuestHook *guest_hooks;
+typedef struct { volatile uint64_t calls, rdi, rsi, rdx, rcx, r8, r15; uint64_t offset, printed; } GuestHookCounter;
+static GuestHookCounter *guest_hooks;
 static size_t guest_hook_count;
 static uint64_t guest_image_size;
 /* A pointer argument into the image (or guest memory the tracker knows) shown as text. */
@@ -553,7 +559,7 @@ static void *report_guest_hooks(void *unused) {
         clock_gettime(CLOCK_MONOTONIC,&now);
         printf("Hooks at %.1f s\n",(double)now.tv_sec+now.tv_nsec/1e9);
         for (size_t i=0;i<guest_hook_count;++i) {
-            GuestHook *h=&guest_hooks[i];
+            GuestHookCounter *h=&guest_hooks[i];
             uint64_t calls=h->calls;
             if (calls==h->printed) continue;
             printf("Hook %#" PRIx64 ": %" PRIu64 " calls (+%" PRIu64 ", last rdi %#" PRIx64 " rsi %#" PRIx64 " rdx %#" PRIx64
@@ -577,7 +583,7 @@ static void *dump_hook_object(void *unused) {
     const uint64_t offset=strtoull(spec,&end,0);
     const size_t bytes=*end==':' ? (size_t)strtoull(end+1,&end,0) : 0;
     FILE *f=*end==':' ? fopen(end+1,"wb") : NULL;
-    GuestHook *h=NULL;
+    GuestHookCounter *h=NULL;
     for (size_t i=0;i<guest_hook_count;++i) if (guest_hooks[i].offset==offset) h=&guest_hooks[i];
     if (!f || !h || !bytes) { printf("BB_HOOK_DUMP: bad specification\n"); return NULL; }
     unsigned char *copy=malloc(bytes);
@@ -648,7 +654,7 @@ static void install_guest_hooks(Segment *segments, uint64_t ns) {
             size_t moved=first==last ? (size_t)n : prologue_bytes(f);
             if (first!=last && !moved) continue;
             if (moved<5 || moved>16 || guest_hook_count==MAX_HOOKS) fail("bad BB_GUEST_HOOKS entry");
-            GuestHook *h=&guest_hooks[guest_hook_count];
+            GuestHookCounter *h=&guest_hooks[guest_hook_count];
             unsigned char *t=thunks+guest_hook_count*THUNK;
             ++guest_hook_count;
             h->offset=offset;
@@ -928,6 +934,7 @@ int main(int argc, char **argv) {
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
     mallopt(M_ARENA_MAX,1);
     mallopt(M_MMAP_THRESHOLD,32*1024*1024);
+    guest_cpu_init(runtime_low_map);
 #endif
     if (argc == 2 && !strcmp(argv[1], "--vulkan-only")) return vulkan_smoke();
     check_cpu();
@@ -1158,7 +1165,8 @@ int main(int argc, char **argv) {
                         : (uintptr_t)image + relocs[i].value;
         if (relocs[i].kind) {
             uintptr_t resolved = runtime_resolve(names[relocs[i].value], relocs[i].kind == 2);
-            if (resolved && relocs[i].kind == 1) value = guest_cpu_host_function((void *)resolved);
+            if (resolved && relocs[i].kind == 1)
+                value = runtime_fiber_guest_code(resolved) ? resolved : guest_cpu_host_function((void *)resolved);
             else if (resolved) value = resolved + relocs[i].addend;
             else if (native_libc && bindings[relocs[i].value]) {
                 uint64_t address=bindings[relocs[i].value];
@@ -1191,6 +1199,14 @@ int main(int argc, char **argv) {
     if (!executable_entry) fail("entry is not executable");
     printf("Mapped %" PRIu64 " bytes, %" PRIu64 " segments; applied %" PRIu64 " relocations\n", size, ns, nr);
     printf("Guest image at %p\n", (void *)image);
+#ifndef _WIN32
+    /* The guest main thread runs on a stack below 1 TiB like PS4 stacks (set before the module
+     * initializers: with FEXCore they run on it too). */
+    enum { MAIN_STACK=8*1024*1024 };
+    unsigned char *stack=runtime_low_map(MAIN_STACK,PROT_READ|PROT_WRITE);
+    if (!stack) fail("cannot allocate guest main stack");
+    guest_cpu_thread_stack(stack+MAIN_STACK-64,MAIN_STACK-64);
+#endif
     if (native_libc) {
         for (uint64_t m=0;m<module_count;++m) {
             int init_executable=0;
@@ -1207,8 +1223,8 @@ int main(int argc, char **argv) {
         /* Dependencies start in link order (libc first), as the PS4 dynamic linker does. */
         for (uint64_t m=0;m<module_count;++m) {
             printf("Starting linked module %" PRIu64 " at image offset 0x%" PRIx64 "; native bindings=%" PRIu64 "\n",m,modules[m].init,nb);
-            typedef int (ABI *ModuleInit)(uint64_t,void *,void *);
-            int result=((ModuleInit)(image+modules[m].init))(0,NULL,NULL);
+            const uint64_t init_args[3]={0,0,0};
+            int result=(int)guest_cpu_call((uintptr_t)(image+modules[m].init),3,init_args);
             printf("Module %" PRIu64 " initializer returned %d\n",m,result);
             if (result) fail("module initializer failed");
         }
@@ -1220,7 +1236,8 @@ int main(int argc, char **argv) {
 #endif
     /* argv: the executable and, after sceSystemServiceLoadExec, the arguments it was given
      * (--guest-argv: one per line, the guest path first). */
-    struct { uint64_t argc; const char *argv[34]; } params = {1, {"/app0/eboot.bin", NULL}};
+    /* Static: the host stack may lie above the guest's 40-bit pointers (arm64 hosts). */
+    static struct { uint64_t argc; const char *argv[34]; } params = {1, {"/app0/eboot.bin", NULL}};
     if (guest_argv_file) {
         FILE *list=fopen(guest_argv_file,"rb");
         static char lines[33][1024];
@@ -1236,12 +1253,11 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
     typedef void (ABI *Entry)(void *, void (ABI *)(void));
     ((Entry)(image + entry))(&params, guest_exit);
-#else
-    /* The guest main thread runs on a stack below 1 TiB like PS4 stacks. */
-    enum { MAIN_STACK=8*1024*1024 };
-    unsigned char *stack=runtime_low_map(MAIN_STACK,PROT_READ|PROT_WRITE);
-    if (!stack) fail("cannot allocate guest main stack");
+#elif defined(GUEST_CPU_NATIVE)
     enter_on_stack(image+entry,&params,(void *)guest_exit,stack+MAIN_STACK-64);
+#else
+    const uint64_t entry_args[2]={(uint64_t)(uintptr_t)&params,guest_cpu_host_function((void *)guest_exit)};
+    guest_cpu_call((uintptr_t)(image+entry),2,entry_args);
 #endif
     fail("entry unexpectedly returned");
 }

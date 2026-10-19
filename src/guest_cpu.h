@@ -9,7 +9,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <signal.h>
-#if defined(__x86_64__)
+/* BB_FORCE_GUEST_CPU: x86-64 builds that type-check the FEXCore paths (no native crossings). */
+#if defined(__x86_64__) && !defined(BB_FORCE_GUEST_CPU)
 #define GUEST_CPU_NATIVE 1
 #endif
 #ifdef __cplusplus
