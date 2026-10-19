@@ -22,6 +22,13 @@ void runtime_restart(void);
 #else
 #define ABI
 #endif
+/* Game callbacks (RuntimeGuestCallback) use the Microsoft x64 convention on x86-64 hosts; the thunks
+ * that call them are x86-64 only, so the attribute has no meaning elsewhere. */
+#if defined(__x86_64__)
+#define MS_ABI __attribute__((ms_abi))
+#else
+#define MS_ABI
+#endif
 typedef void (ABI *GuestCallback)(void);
 void runtime_start(uint64_t capabilities);
 uintptr_t runtime_resolve(const char *name, int is_data);
@@ -109,7 +116,7 @@ typedef struct {
     uint64_t offset;
     const unsigned char *signature;
     size_t signature_size, moved;
-    void (__attribute__((ms_abi)) *callback)(uint64_t rdi, uint64_t rsi, uint64_t image, uint64_t r14);
+    void (MS_ABI *callback)(uint64_t rdi, uint64_t rsi, uint64_t image, uint64_t r14);
     const unsigned char *patch;
 } RuntimeGuestCallback;
 const RuntimeGuestCallback *runtime_guest_callbacks(size_t *count);

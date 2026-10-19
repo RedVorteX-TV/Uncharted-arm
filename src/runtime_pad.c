@@ -359,15 +359,15 @@ static void follow_camera(uint64_t camera, uint32_t dir_offset, uint32_t arc_off
         *arc=v<0.0f ? 0.0f : v>1.0f ? 1.0f : v;
     }
 }
-static void __attribute__((ms_abi)) u1_follow_camera(uint64_t camera, uint64_t unused, uint64_t image, uint64_t r14) {
+static void MS_ABI u1_follow_camera(uint64_t camera, uint64_t unused, uint64_t image, uint64_t r14) {
     (void)unused; (void)image; (void)r14;
     follow_camera(camera,0x1310,0x12bc,61.0f);
 }
-static void __attribute__((ms_abi)) u2_follow_camera(uint64_t camera, uint64_t unused, uint64_t image, uint64_t r14) {
+static void MS_ABI u2_follow_camera(uint64_t camera, uint64_t unused, uint64_t image, uint64_t r14) {
     (void)unused; (void)image; (void)r14;
     follow_camera(camera,0x9ec0,0x9e60,135.0f);
 }
-static void __attribute__((ms_abi)) u3_follow_camera(uint64_t camera, uint64_t unused, uint64_t image, uint64_t r14) {
+static void MS_ABI u3_follow_camera(uint64_t camera, uint64_t unused, uint64_t image, uint64_t r14) {
     (void)unused; (void)image; (void)r14;
     follow_camera(camera,0x78c0,0x7874,105.0f);
 }
@@ -407,14 +407,14 @@ static float follow_stick(float rate) {
     if (x>0.9f) x=0.9f;
     return rate<0 ? -x : x;
 }
-static void __attribute__((ms_abi)) u1_pad_update(uint64_t state, uint64_t unused, uint64_t image, uint64_t r14) {
+static void MS_ABI u1_pad_update(uint64_t state, uint64_t unused, uint64_t image, uint64_t r14) {
     (void)unused; (void)r14;
     if (mouse_debug() && joypad_state!=state)
         printf("Mouse: joypad state %#llx (image %#llx, offset %#llx)\n",(unsigned long long)state,
                (unsigned long long)image,(unsigned long long)(state-image));
     joypad_state=state;
 }
-static void __attribute__((ms_abi)) u1_joypad_sticks(uint64_t unused0, uint64_t unused1, uint64_t image, uint64_t r14) {
+static void MS_ABI u1_joypad_sticks(uint64_t unused0, uint64_t unused1, uint64_t image, uint64_t r14) {
     (void)unused0; (void)unused1; (void)image;
     if (!joypad_state || r14-0x62!=joypad_state) return; /* pad 0 only */
     const uint64_t now=now_us();
