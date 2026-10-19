@@ -103,7 +103,7 @@ static void attach(GuestThread *t) {
     tcb[1]=(uint64_t)(uintptr_t)dtv;         /* tcb_dtv (static module only) */
     tcb[2]=(uint64_t)(uintptr_t)t;           /* tcb_thread */
     t->tls_block=block; t->tcb=tcb;
-    set_gs(tcb);
+    guest_cpu_set_gs(tcb);
     current=t;
 }
 static GuestThread *new_thread(void) {

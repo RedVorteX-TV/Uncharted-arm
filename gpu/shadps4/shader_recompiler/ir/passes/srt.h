@@ -5,6 +5,7 @@
 
 #include <boost/container/set.hpp>
 #include <boost/container/small_vector.hpp>
+#include "common/arch.h"
 #include "common/types.h"
 
 namespace Serialization {

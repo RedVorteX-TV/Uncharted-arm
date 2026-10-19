@@ -20,7 +20,7 @@
 #include <cstring>
 #include <memory>
 #include <thread>
-#include <x86intrin.h>
+#include "bbport_cpu.h"
 
 #include "common/assert.h"
 #include "common/thread.h"
@@ -109,10 +109,10 @@ public:
         ++drains;
         const u32 slot = reason < NumReasons ? reason : ReasonRasterizer;
         ++drains_by_reason[slot];
-        const u64 start = __rdtsc();
+        const u64 start = BbCpu::Cycles();
         for (u32 spins = 0; consumed.load(std::memory_order_acquire) != head; ++spins) {
             if (spins < 4096) {
-                __builtin_ia32_pause();
+                BbCpu::Pause();
             } else if (spins < 4096 + 32) {
                 std::this_thread::yield();
             } else {
@@ -126,7 +126,7 @@ public:
                 drainer_waiting.store(false, std::memory_order_relaxed);
             }
         }
-        const u64 waited = __rdtsc() - start;
+        const u64 waited = BbCpu::Cycles() - start;
         drain_cycles += waited;
         cycles_by_reason[slot] += waited;
     }
@@ -161,7 +161,7 @@ private:
 
     void WaitForSpace(u64 at, u64 size) {
         while (at + size - consumed.load(std::memory_order_acquire) > Capacity) {
-            __builtin_ia32_pause();
+            BbCpu::Pause();
         }
     }
 
@@ -188,7 +188,7 @@ private:
                     if (stop.stop_requested()) {
                         return;
                     }
-                    __builtin_ia32_pause();
+                    BbCpu::Pause();
                     if (!(spins & 255) && std::chrono::steady_clock::now() >= spin_until) {
                         const u32 seen = wake.load(std::memory_order_seq_cst);
                         sleeping.store(true, std::memory_order_seq_cst);
