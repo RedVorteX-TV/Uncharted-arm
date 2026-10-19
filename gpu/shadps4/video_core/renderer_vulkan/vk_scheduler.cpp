@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <thread>
+#include "bbport_cpu.h"
 #include <algorithm>
 #include <cstdio>
 #ifdef _WIN32
@@ -345,7 +346,7 @@ void Scheduler::RecorderThread(std::stop_token stoken) {
             BbThreads::Available() >= 12 ? 200 : 20);
         const auto spin_until = std::chrono::steady_clock::now() + spin_time;
         for (u32 spins = 1; queued_chunks.load(std::memory_order_acquire) == 0; ++spins) {
-            __builtin_ia32_pause();
+            BbCpu::Pause();
             // The clock is read every 256 pauses, not per iteration.
             if (!(spins & 255) &&
                 (stoken.stop_requested() || std::chrono::steady_clock::now() >= spin_until)) {

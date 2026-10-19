@@ -440,10 +440,38 @@ static bool IsAllowedOffsetInstruction(const IR::Inst* inst) {
     case IR::Opcode::UMin32:
     case IR::Opcode::UMax32:
     case IR::Opcode::BitFieldUExtract:
+    case IR::Opcode::ReadFirstLane: // bbport: see ComputeOffset
         return true;
     default:
         return false;
     }
+}
+
+// bbport: whether an offset is known when the walker runs (user data, constants and arithmetic on
+// them), checked before ComputeOffset (which logs an error for values that vary per lane).
+static bool IsBindTimeOffset(const IR::Value& value) {
+    if (value.IsImmediate()) {
+        return true;
+    }
+    const IR::Inst* inst = value.Inst();
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::GetUserData:
+    case IR::Opcode::ReadConstBuffer:
+        return true;
+    case IR::Opcode::ReadConst:
+        return !(inst->Flags<u32>() & ReadConstWindowFlag);
+    default:
+        break;
+    }
+    if (!IsAllowedOffsetInstruction(inst)) {
+        return false;
+    }
+    for (size_t arg = 0; arg < inst->NumArgs(); ++arg) {
+        if (!IsBindTimeOffset(inst->Arg(arg))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 #ifdef ARCH_X86_64
@@ -710,57 +738,6 @@ static bool EmitComputeOffsetBitFieldUExtract(Xbyak::CodeGenerator& c, Xbyak::Re
     return true;
 }
 
-static bool IsAllowedOffsetInstruction(const IR::Inst* inst) {
-    switch (inst->GetOpcode()) {
-    case IR::Opcode::GetUserData:
-    case IR::Opcode::ReadConst:
-    case IR::Opcode::ReadConstBuffer:
-    case IR::Opcode::IAdd32:
-    case IR::Opcode::ISub32:
-    case IR::Opcode::IMul32:
-    case IR::Opcode::ShiftLeftLogical32:
-    case IR::Opcode::ShiftRightLogical32:
-    case IR::Opcode::BitwiseAnd32:
-    case IR::Opcode::BitwiseOr32:
-    case IR::Opcode::BitwiseXor32:
-    case IR::Opcode::BitwiseNot32:
-    case IR::Opcode::UMin32:
-    case IR::Opcode::UMax32:
-    case IR::Opcode::BitFieldUExtract:
-    case IR::Opcode::ReadFirstLane: // bbport: see ComputeOffset
-        return true;
-    default:
-        return false;
-    }
-}
-
-// bbport: whether an offset is known when the walker runs (user data, constants and arithmetic on
-// them), checked before ComputeOffset (which logs an error for values that vary per lane).
-static bool IsBindTimeOffset(const IR::Value& value) {
-    if (value.IsImmediate()) {
-        return true;
-    }
-    const IR::Inst* inst = value.Inst();
-    switch (inst->GetOpcode()) {
-    case IR::Opcode::GetUserData:
-    case IR::Opcode::ReadConstBuffer:
-        return true;
-    case IR::Opcode::ReadConst:
-        return !(inst->Flags<u32>() & ReadConstWindowFlag);
-    default:
-        break;
-    }
-    if (!IsAllowedOffsetInstruction(inst)) {
-        return false;
-    }
-    for (size_t arg = 0; arg < inst->NumArgs(); ++arg) {
-        if (!IsBindTimeOffset(inst->Arg(arg))) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static bool ComputeOffset(Xbyak::CodeGenerator& c, Xbyak::Reg32 reg, PassInfo& pass_info,
                           const IR::Value& off_dw) {
     ASSERT(reg != ecx && reg != edx);
@@ -980,6 +957,10 @@ static bool ComputeOffset(SrtProgram& p, PassInfo& pass_info, const IR::Value& o
         return true;
     case IR::Opcode::ReadConst:
     case IR::Opcode::ReadConstBuffer:
+        if (inst->GetOpcode() == IR::Opcode::ReadConst &&
+            (pass_info.DeduplicateInstruction(inst)->Flags<u32>() & ReadConstWindowFlag)) {
+            return false; // bbport: varies per lane
+        }
         if (u16 offset = GetFlatbufOffset(pass_info.DeduplicateInstruction(inst)); offset != 0) {
             p.insert(p.end(), {OpFlat, offset});
             return true;
@@ -1009,6 +990,10 @@ static bool ComputeOffset(SrtProgram& p, PassInfo& pass_info, const IR::Value& o
         return EmitComputeOffsetOp(p, pass_info, inst, OpUMax, 2);
     case IR::Opcode::BitFieldUExtract:
         return EmitComputeOffsetOp(p, pass_info, inst, OpBitFieldUExtract, 3);
+    case IR::Opcode::ReadFirstLane:
+        // bbport: a uniform offset moved through a vector register (v_mov + v_readfirstlane)
+        // has the value of its operand; operands that vary per lane fail below as before.
+        return ComputeOffset(p, pass_info, inst->Arg(0));
     default:
         LOG_ERROR(Render_Recompiler, "Unexpected instruction for offset computation, {}",
                   magic_enum::enum_name(inst->GetOpcode()));
@@ -1038,12 +1023,21 @@ static void VisitPointer(const IR::Value& off_dw, IR::Inst* subtree, PassInfo& p
     PassInfo::PtrUserList* use_list = pass_info.GetUsesAsPointer(subtree);
     ASSERT(use_list);
 
+    boost::container::small_vector<IR::Inst*, 8> windowed;
     for (auto [src_off_dw, use] : *use_list) {
         if (src_off_dw.IsImmediate()) {
             p.insert(p.end(), {OpCopyImm, src_off_dw.U32(), pass_info.dst_off_dw});
         } else {
+            if (use->GetOpcode() == IR::Opcode::ReadConst && !IsBindTimeOffset(src_off_dw)) {
+                windowed.push_back(use); // bbport: an offset that varies per lane
+                continue;
+            }
             SrtProgram offset;
             if (!ComputeOffset(offset, pass_info, src_off_dw)) {
+                if (use->GetOpcode() == IR::Opcode::ReadConst) {
+                    windowed.push_back(use);
+                    continue;
+                }
                 LOG_ERROR(Render_Recompiler, "Failed to compute offset for SRT walker");
                 continue;
             }
@@ -1052,6 +1046,18 @@ static void VisitPointer(const IR::Value& off_dw, IR::Inst* subtree, PassInfo& p
         }
         SetFlatbufOffset(use, pass_info.dst_off_dw);
         pass_info.dst_off_dw++;
+    }
+    // bbport: reads at offsets that vary per lane share a copy of the block's first
+    // ReadConstWindowDwords dwords (ReadConstWindowFlag), as the x86-64 walker does.
+    if (!windowed.empty()) {
+        const u32 start = pass_info.dst_off_dw;
+        for (u32 i = 0; i < ReadConstWindowDwords; ++i) {
+            p.insert(p.end(), {OpCopyImm, i, start + i});
+        }
+        pass_info.dst_off_dw += ReadConstWindowDwords;
+        for (IR::Inst* use : windowed) {
+            use->SetFlags<u32>(start | ReadConstWindowFlag);
+        }
     }
 
     for (const auto [src_off_dw, use] : *use_list) {

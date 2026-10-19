@@ -207,9 +207,9 @@ private:
                 Consumed(at);
                 continue;
             }
-            const u64 start = __rdtsc();
+            const u64 start = BbCpu::Cycles();
             handler(context, reinterpret_cast<const u8*>(header + 1), header->payload);
-            busy_cycles.fetch_add(__rdtsc() - start, std::memory_order_relaxed);
+            busy_cycles.fetch_add(BbCpu::Cycles() - start, std::memory_order_relaxed);
             at += header->size;
             Consumed(at);
         }
