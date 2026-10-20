@@ -447,9 +447,10 @@ bool TemporalUpscaler::EnsureResources(u32 w, u32 h, u32 ow, u32 oh, bool hdr) {
             PrintIssues("create info", issues);
             return false;
         }
-        if (ffxVkPortableUpscaleContextCreate(&device_info, &create_info, &context) !=
-            FFX_VK_PORTABLE_OK) {
-            std::printf("Upscaler: FSR 3 context creation failed\n");
+        if (const auto result = ffxVkPortableUpscaleContextCreate(&device_info, &create_info, &context);
+            result != FFX_VK_PORTABLE_OK) {
+            std::printf("Upscaler: FSR 3 context creation failed (%d, render %ux%u, output %ux%u, %s)\n",
+                        int(result), w, h, ow, oh, hdr ? "HDR scene color" : "tonemapped");
             context = nullptr;
             return false;
         }
