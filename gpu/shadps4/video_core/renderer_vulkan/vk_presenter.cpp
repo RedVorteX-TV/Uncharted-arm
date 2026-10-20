@@ -532,7 +532,11 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
         reported_fast = true;
         std::printf("Frame generation: paused while the game runs above 165 FPS\n");
     }
-    if (frame_generator->Wanted() && !frame->is_hdr && !upscaled && !fast_game) {
+    // Upscaling presets (Uncharted): the host display buffer at the output size is the frame,
+    // with the picture before its HUD captured at the same size (TemporalUpscaler::UpscaleToUi).
+    const bool generate_upscaled = upscaled && rasterizer->GetUpscaler().CompositeFrames();
+    if (frame_generator->Wanted() && !frame->is_hdr && (!upscaled || generate_upscaled) &&
+        !fast_game) {
         EnsureGenerated(frame);
         // The picture before the UI, composed like the frame (equal outside the UI).
         vk::Image hudless{};

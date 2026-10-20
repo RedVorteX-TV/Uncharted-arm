@@ -52,6 +52,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.sharpness = Clamp(f, 0.0f, 2.0f);
     } else if (key == "jitter") {
         v.jitter = i != 0;
+    } else if (key == "settings_version") {
+        v.settings_version = i;
     } else if (key == "reactive") {
         v.reactive = i != 0;
     } else if (key == "object_motion") {
@@ -120,7 +122,15 @@ void Load() {
         }
         std::fclose(file);
         std::printf("Settings: %s\n", Path());
+        // Linux fork: sub-pixel jitter off by default. Settings older than version 3 had it
+        // switched back on (version 2); distant objects still shimmer and shake with it, so it is
+        // turned off once. It can be switched on again in the overlay.
+        if (v.settings_version < 3 && v.jitter) {
+            v.jitter = false;
+            std::printf("Settings: sub-pixel jitter switched off (default)\n");
+        }
     }
+    v.settings_version = 3;
     // Environment overrides (scripts, A/B tests).
     if (const char* env = std::getenv("BB_UPSCALER")) {
         v.upscaler = UpscalerOff;
@@ -211,6 +221,7 @@ void Save() {
     }
     std::fprintf(file,
                  "# bbport settings (in-game menu: Insert / L3+R3)\n"
+                 "settings_version=3\n"
                  "upscaler=%s\npreset=%d\nsharpen=%d\nsharpness=%.2f\njitter=%d\n"
                  "reactive=%d\nobject_motion=%d\nreactive_scale=%.2f\nreactive_threshold=%.2f\nreactive_max=%.2f\n"
                  "debug_view=%d\nshow_fps=%d\nfsr4_auto_exposure=%d\nfsr4_invert_jitter=%d\n",
