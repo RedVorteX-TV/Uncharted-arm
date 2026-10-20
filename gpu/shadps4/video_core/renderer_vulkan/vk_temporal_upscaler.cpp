@@ -1323,8 +1323,9 @@ void TemporalUpscaler::CaptureFrameGen() {
 
 void TemporalUpscaler::OnDrawRecorded(u64 ps_hash, VideoCore::ImageId color) {
     // This draw starts the upscaler's next frame (OnFrameStart: it writes the display buffer);
-    // the frame generator knows whether this frame's inputs were taken.
-    if (!hudless_hash || u32(ps_hash) != hudless_hash || !color || !frame_generator ||
+    // the frame generator knows whether this frame's inputs were taken. With an upscaling
+    // preset the picture before the UI is the upscaled one (UpscaleToUi).
+    if (composite_frames || !hudless_hash || u32(ps_hash) != hudless_hash || !color || !frame_generator ||
         !frame_generator->Wanted()) {
         return;
     }
@@ -2109,6 +2110,34 @@ void TemporalUpscaler::UpscaleToUi(VideoCore::ImageId source) {
         ui_phase = true;
         ui_color = ldr_target;
         ui_depth = {};
+    }
+    // Frame generation: the picture before the HUD at the output size, as the presenter shows
+    // the frame (the host display buffer).
+    if (ui_phase && frame_generator && frame_generator->Wanted()) {
+        scheduler.EndRendering();
+        const auto cmd = scheduler.CommandBuffer();
+        vk::ImageMemoryBarrier2 b{
+            .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .srcAccessMask = vk::AccessFlagBits2::eMemoryWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+            .image = vk::Image(ui_image),
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+        cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
+        frame_generator->CaptureHudless(cmd, vk::Image(ui_image), ui_format, ui_width, ui_height);
+        b.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+        b.srcAccessMask = vk::AccessFlagBits2::eTransferRead;
+        b.dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput |
+                         vk::PipelineStageFlagBits2::eTransfer;
+        b.dstAccessMask = vk::AccessFlagBits2::eColorAttachmentRead |
+                          vk::AccessFlagBits2::eColorAttachmentWrite |
+                          vk::AccessFlagBits2::eTransferRead;
+        b.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+        b.newLayout = vk::ImageLayout::eGeneral;
+        cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
     }
 }
 

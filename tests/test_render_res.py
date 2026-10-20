@@ -43,7 +43,7 @@ class UpscalePresets(unittest.TestCase):
             return env
 
     def test_quality_1440p(self):
-        env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '2560x1440', 'BB_UPSCALE_PRESET': 'quality'})
+        env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '2560x1440', 'BB_UPSCALE_QUALITY': 'quality'})
         self.assertEqual(env['BB_RENDER_RES'], '1712x960')
         self.assertEqual(env['BB_OUTPUT_RES'], '2560x1440')
         self.assertEqual(env['BB_SCENE_SIZE'], '1712x960')

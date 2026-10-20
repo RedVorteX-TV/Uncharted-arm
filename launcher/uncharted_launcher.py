@@ -90,7 +90,7 @@ WINDOW_SIZES = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
 # Render resolution (BB_RESOLUTION; run.py, scripts/render_res.py, after BilalReloaded's Uncharted
 # PC port): the games' display settings and memory table are patched for it, and the
 # anti-aliasing runs at it. Drake's Fortune renders at most 2880 x 1620 (its memory layout).
-# Upscaling presets (BB_UPSCALE_PRESET; run.py): the resolution above is the output, the game
+# Upscaling presets (BB_UPSCALE_QUALITY; run.py): the resolution above is the output, the game
 # draws at it divided by the scale and the anti-aliasing chosen (DLSS, FSR 4, FSR 3.1; TAA with
 # FSR 1) brings each frame up to it; the HUD and menus are drawn at the output size.
 UPSCALE_PRESETS = [('off', 'Native (anti-aliasing only: Native AA / DLAA)'), ('quality', 'Quality (× 1.5)'),
@@ -387,7 +387,7 @@ def game_environment(s, start=None):
     env['BB_RESOLUTION'] = str(s.get('render_resolution') or '1920x1080')
     upscaler = str(s.get('anti_aliasing') or 'off')
     # No upscaler: the games draw at the resolution (a quality has nothing to upscale with).
-    env['BB_UPSCALE_PRESET'] = str(s.get('upscale_preset') or 'off') if upscaler != 'off' else 'off'
+    env['BB_UPSCALE_QUALITY'] = str(s.get('upscale_preset') or 'off') if upscaler != 'off' else 'off'
     # FSR 1: the upscaler chosen, or the window scaling (a window larger than the picture).
     env['BB_FSR1'] = '1' if upscaler == 'fsr1' or s.get('scaler', 'fsr1') == 'fsr1' else '0'
     # One sharpness for every upscaler: the temporal ones' own (BB_FSR_SHARPNESS) and FSR 1's

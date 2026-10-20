@@ -10,7 +10,7 @@ BB_USER_DIR   saves and shader caches (default user/ beside this script)
 BB_RESOLUTION / BB_RESOLUTION_U1 / _U2 / _U3   resolution WxH (default 1920x1080, the PS4's):
               the game's display settings and memory table are patched for the size it draws at
               (scripts/render_res.py, after BilalReloaded's Uncharted PC port)
-BB_UPSCALE_PRESET / _U1 / _U2 / _U3   quality, balanced, performance or ultra: the game draws
+BB_UPSCALE_QUALITY / _U1 / _U2 / _U3   quality, balanced, performance or ultra: the game draws
               at the resolution divided by 1.5 / 1.7 / 2 / 3 and DLSS / FSR upscales to it
 Extra arguments go to bb-probe. When the game starts another executable of the collection
 (sceSystemServiceLoadExec), that one is prepared and started in its place.
@@ -156,7 +156,9 @@ def render_720p(env):
         if key.strip() == 'render_720p':
             return value.strip() == '1'
     return False
-# Upscaling presets (BB_UPSCALE_PRESET[_U1/_U2/_U3]): the resolution chosen (BB_RESOLUTION) is the
+
+
+# Upscaling presets (BB_UPSCALE_QUALITY[_U1/_U2/_U3]): the resolution chosen (BB_RESOLUTION) is the
 # output; the game draws at it divided by the preset's scale, and DLSS / FSR 4 / FSR 3.1 (or TAA
 # with FSR 1) bring each frame up to it before the HUD and menus are drawn at the output size
 # (TemporalUpscaler::OnComposite). After BilalReloaded's Uncharted PC port.
@@ -175,7 +177,7 @@ def parse_size(text):
 
 def render_resolution(env, exe, out, image):
     """The image to start for the chosen resolution (BB_RESOLUTION[_U1/_U2/_U3]=WxH) and upscaling
-    preset (BB_UPSCALE_PRESET[_U1/_U2/_U3]): boot-linked.bin patched by scripts/render_res.py for
+    preset (BB_UPSCALE_QUALITY[_U1/_U2/_U3]): boot-linked.bin patched by scripts/render_res.py for
     the size the game draws at, kept until it or the scripts change, and the environment for it:
     the scene size (anti-aliasing, scene depth), the movie size (cutscene movies scaled to it),
     the direct memory the larger render target heaps need, and, when the game draws below the
@@ -199,7 +201,7 @@ def render_resolution(env, exe, out, image):
     size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
     output = parse_size(size) if size not in ('', 'native', 'off', '0') else None
     output = output or (1920, 1080)
-    preset = (env.get(f'BB_UPSCALE_PRESET_{key.upper()}') or env.get('BB_UPSCALE_PRESET', '')).strip().lower()
+    preset = (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
     scale = UPSCALE_SCALES.get(preset)
     if scale and env.get('BB_UPSCALER', '').lower() == 'none':
         print('Upscaling preset: needs the camera tracking (BB_UPSCALER=none): drawing at the output size')
