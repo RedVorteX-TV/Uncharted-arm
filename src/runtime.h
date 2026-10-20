@@ -120,4 +120,7 @@ typedef struct {
     const unsigned char *patch;
 } RuntimeGuestCallback;
 const RuntimeGuestCallback *runtime_guest_callbacks(size_t *count);
+/* BB_GUEST_PROFILE=prefix: sampling profile of the guest threads with that name prefix
+ * (runtime_profile.c); `image`/`size`: the main image, for image-relative addresses. */
+void runtime_profile_start(const void *image, uint64_t size);
 #endif
