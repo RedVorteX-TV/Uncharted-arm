@@ -93,7 +93,7 @@ WINDOW_SIZES = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
 # Upscaling presets (BB_UPSCALE_PRESET; run.py): the resolution above is the output, the game
 # draws at it divided by the scale and the anti-aliasing chosen (DLSS, FSR 4, FSR 3.1; TAA with
 # FSR 1) brings each frame up to it; the HUD and menus are drawn at the output size.
-UPSCALE_PRESETS = [('off', 'Native (no upscaling)'), ('quality', 'Quality (× 1.5)'),
+UPSCALE_PRESETS = [('off', 'Native (anti-aliasing only: Native AA / DLAA)'), ('quality', 'Quality (× 1.5)'),
                    ('balanced', 'Balanced (× 1.7)'), ('performance', 'Performance (× 2)'),
                    ('ultra', 'Ultra Performance (× 3)')]
 RENDER_RESOLUTIONS = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
@@ -104,10 +104,16 @@ SCALERS = [('fsr1', 'FSR 1 (AMD FidelityFX, sharp)'), ('bilinear', 'Smooth (bili
 SHARPENING = [('off', 'Off'), ('1000', 'Low'), ('500', 'Medium'), ('250', 'High'), ('0', 'Maximum')]
 # Temporal anti-aliasing at the games' 1920x1080 (BB_UPSCALER): it takes the scene before the
 # games' post-processing with their own motion vectors, so it replaces their edge smoothing.
-ANTI_ALIASING = [('off', "Off (the game's own)"), ('taa', 'TAA'), ('fsr3', 'AMD FSR 3.1 (Native AA)'),
-                 ('fsr4', 'AMD FSR 4 (Native AA)'), ('dlss', 'NVIDIA DLSS (DLAA, GeForce RTX)')]
-FSR411 = ('fsr411', 'AMD FSR 4.1.1 (Native AA)')
+# The upscaler (Display -> Upscaling): BB_UPSCALER for the temporal ones (FSR 3.1, FSR 4, DLSS,
+# and TAA, anti-aliasing only), FSR 1 (spatial: BB_FSR1, the frame alone) or off. With the Native
+# quality they only smooth edges at the resolution (Native AA, DLAA).
+ANTI_ALIASING = [('off', "Off (the game's own anti-aliasing)"), ('taa', 'TAA (anti-aliasing only)'),
+                 ('fsr1', 'AMD FSR 1 (spatial)'), ('fsr3', 'AMD FSR 3.1'), ('fsr4', 'AMD FSR 4'),
+                 ('dlss', 'NVIDIA DLSS (GeForce RTX)')]
+FSR411 = ('fsr411', 'AMD FSR 4.1.1')
 AA_SHARPNESS = [('0', 'Off'), ('0.2', 'Low'), ('0.4', 'Medium'), ('0.7', 'High')]
+# The same levels for FSR 1's RCAS (SHARPENING's attenuations).
+RCAS_FOR_SHARPNESS = {'0': 'off', '0.2': '1000', '0.4': '500', '0.7': '250'}
 # Frames generated between two of the game's (BB_FRAME_GEN, BB_FRAME_GEN_MULTIPLIER).
 FRAME_GENERATION = [('off', 'Off'), ('fsr3', 'AMD FSR 3 Frame Generation (any GPU)'),
                     ('dlss', 'NVIDIA DLSS Frame Generation (GeForce RTX 40/50)')]
@@ -379,13 +385,19 @@ def game_environment(s, start=None):
     env['BB_VBLANK_HZ'] = str(s.get('frame_rate') or '60')
     env['BB_WINDOW_SIZE'] = str(s.get('window_size') or '1920x1080')
     env['BB_RESOLUTION'] = str(s.get('render_resolution') or '1920x1080')
-    env['BB_UPSCALE_PRESET'] = str(s.get('upscale_preset') or 'off')
-    env['BB_FSR1'] = '1' if s.get('scaler', 'fsr1') == 'fsr1' else '0'
-    sharpening = str(s.get('sharpening') or 'off')
+    upscaler = str(s.get('anti_aliasing') or 'off')
+    # No upscaler: the games draw at the resolution (a quality has nothing to upscale with).
+    env['BB_UPSCALE_PRESET'] = str(s.get('upscale_preset') or 'off') if upscaler != 'off' else 'off'
+    # FSR 1: the upscaler chosen, or the window scaling (a window larger than the picture).
+    env['BB_FSR1'] = '1' if upscaler == 'fsr1' or s.get('scaler', 'fsr1') == 'fsr1' else '0'
+    # One sharpness for every upscaler: the temporal ones' own (BB_FSR_SHARPNESS) and FSR 1's
+    # RCAS pass (BB_RCAS_ATTENUATION in thousandths of a stop, lower is sharper).
+    sharpness = str(s.get('aa_sharpness') or '0')
+    sharpening = RCAS_FOR_SHARPNESS.get(sharpness, 'off')
     env['BB_RCAS'] = '0' if sharpening == 'off' else '1'
     if sharpening != 'off':
         env['BB_RCAS_ATTENUATION'] = sharpening
-    env['BB_UPSCALER'] = str(s.get('anti_aliasing') or 'off')
+    env['BB_UPSCALER'] = 'off' if upscaler == 'fsr1' else upscaler
     env['BB_FSR_SHARPNESS'] = str(s.get('aa_sharpness') or '0')
     env['BB_FRAME_GEN'] = str(s.get('frame_generation') or 'off')
     env['BB_FRAME_GEN_MULTIPLIER'] = str(s.get('frame_gen_multiplier') or '2')
@@ -1071,29 +1083,27 @@ class Launcher:
         self.row(f, _('Frame rate'), self.choice(f, 'frame_rate', FRAME_RATES, 34), hint)
         self.section(f, _('Resolution'))
         self.row(f, _('Resolution'), self.choice(f, 'render_resolution', RENDER_RESOLUTIONS, 34),
-                 _('The size of the picture (the PS4: 1920 × 1080). Without upscaling the games draw at '
-                   'it: above 1080p that needs a faster GPU and more video memory (1440p: 8 GB is enough; '
-                   '4K: 10 GB or more). Drake\'s Fortune draws at most 2880 × 1620 and is upscaled from '
-                   'there. The first start at a new size prepares the game again.'))
-        self.row(f, _('Upscaling'), self.choice(f, 'upscale_preset', UPSCALE_PRESETS, 34),
-                 _('The games draw below the resolution (Quality: ÷ 1.5, Balanced: ÷ 1.7, Performance: '
-                   '÷ 2, Ultra Performance: ÷ 3) and the anti-aliasing below rebuilds each frame at the '
-                   'resolution: pick NVIDIA DLSS or AMD FSR 4 for it. The HUD and menus stay sharp at '
-                   'the resolution.'))
+                 _('The size of the picture (the PS4: 1920 × 1080); set your screen\'s. With the Native '
+                   'quality the games draw at it: above 1080p that needs a faster GPU and more video '
+                   'memory. Drake\'s Fortune draws at most 2880 × 1620 and is upscaled from there. The '
+                   'first start at a new size prepares the game again.'))
         self.row(f, _('Window size'), self.choice(f, 'window_size', WINDOW_SIZES, 34),
-                 _('The rendered image is scaled to the window (or the screen in fullscreen). Pick '
-                   'the same size as the resolution for a sharp 1:1 picture.'))
-        self.row(f, _('Window scaling'), self.choice(f, 'scaler', SCALERS, 34),
-                 _('FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.'))
-        self.row(f, _('Sharpening'), self.choice(f, 'sharpening', SHARPENING, 34),
-                 _('AMD RCAS after FSR 1 (only while the image is enlarged).'))
-        self.section(f, _('Anti-aliasing'))
+                 _('The picture is scaled to the window (or the screen in fullscreen). Pick the same '
+                   'size as the resolution for a sharp 1:1 picture.'))
+        self.section(f, _('Upscaling'))
         modes = ANTI_ALIASING + ([FSR411] if fsr411_assets() else [])
-        self.row(f, _('Anti-aliasing'), self.choice(f, 'anti_aliasing', modes, 34),
-                 _('Temporal anti-aliasing at the games\' 1920 × 1080, with their own motion vectors: '
-                   'smoother edges and less shimmering than the games\' own. DLSS needs a GeForce RTX; '
-                   'FSR 4 runs best on a Radeon RX 7000/9000 or a GeForce RTX 40/50.'))
-        self.row(f, _('Anti-aliasing sharpness'), self.choice(f, 'aa_sharpness', AA_SHARPNESS, 34))
+        self.row(f, _('Upscaler'), self.choice(f, 'anti_aliasing', modes, 34),
+                 _('DLSS, FSR 4 and FSR 3.1 rebuild each frame with the games\' depth and motion: they '
+                   'smooth edges and, below Native, draw fewer pixels and rebuild the resolution. DLSS '
+                   'needs a GeForce RTX; FSR 4 runs best on a Radeon RX 7000/9000 or a GeForce RTX 40/50. '
+                   'FSR 1 enlarges the frame alone (sharp but no anti-aliasing); TAA only smooths edges.'))
+        self.row(f, _('Quality'), self.choice(f, 'upscale_preset', UPSCALE_PRESETS, 34),
+                 _('Native draws at the resolution (anti-aliasing only: Native AA, DLAA). Quality draws '
+                   'at ÷ 1.5 (1440p: 1712 × 960), Balanced ÷ 1.7, Performance ÷ 2, Ultra Performance ÷ 3. '
+                   'The HUD and menus stay at the resolution.'))
+        self.row(f, _('Sharpness'), self.choice(f, 'aa_sharpness', AA_SHARPNESS, 34),
+                 _('For every upscaler: DLSS, FSR 4 and FSR 3.1 sharpen their result, FSR 1 adds AMD '
+                   'RCAS after it enlarges the picture.'))
         self.section(f, _('Frame generation'))
         hint = _('Frames made between two of the game\'s, for smoother motion: 60 FPS shows as 120. '
                  'Use Mailbox or Immediate presentation and a display of at least that refresh rate. '
