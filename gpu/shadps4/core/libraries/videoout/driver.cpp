@@ -14,6 +14,7 @@
 #include <sys/resource.h>
 #endif
 #include "common/assert.h"
+#include "bbport_settings.h"
 #include "bbport_toggles.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "common/debug.h"
@@ -683,10 +684,15 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
     // after the slot, but no earlier than a period minus `slack` after the flip made. Counting
     // only from the flip (PR #28 as proposed) added the wake-up delay to every frame: 116 FPS
     // at a cap of 120.
-    const u32 frame_limit = EmulatorSettings.GetFrameLimit();
-    const auto frame_period = frame_limit ? std::chrono::nanoseconds(1000000000 / frame_limit)
-                                          : std::chrono::nanoseconds(0);
-    const auto slack = frame_period / 16;
+    // The in-game menu's limit (BbSettings fps_limit) replaces it, followed from the next vblank.
+    const auto chosen_limit = [] {
+        const int chosen = BbSettings::Get().fps_limit.load(std::memory_order_relaxed);
+        return chosen > 0 ? u32(chosen) : EmulatorSettings.GetFrameLimit();
+    };
+    u32 frame_limit = chosen_limit();
+    auto frame_period = frame_limit ? std::chrono::nanoseconds(1000000000 / frame_limit)
+                                    : std::chrono::nanoseconds(0);
+    auto slack = frame_period / 16;
     const auto next_slot = [&](std::chrono::steady_clock::time_point slot) {
         return std::max(slot + frame_period,
                         std::chrono::steady_clock::now() + frame_period - slack);
@@ -707,7 +713,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
 
     // bbport: with a frame limit (uncapped presets) a queued flip is presented as soon as it
     // arrives and its slot allows, between vblanks, instead of on the next vblank tick.
-    const bool immediate_flips = frame_limit != 0;
+    bool immediate_flips = frame_limit != 0;
 
     // bbport: prerecorded movies (Uncharted's cutscenes) show one video frame per vblank of
     // a 60 Hz display and played too fast at 120 Hz. While a movie is being decoded the guest
@@ -724,6 +730,15 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
             DrawLastFrame();
             timer.End();
             continue;
+        }
+        if (const u32 limit = chosen_limit(); limit != frame_limit) {
+            frame_limit = limit;
+            frame_period = limit ? std::chrono::nanoseconds(1000000000 / limit)
+                                 : std::chrono::nanoseconds(0);
+            slack = frame_period / 16;
+            immediate_flips = limit != 0;
+            next_flip = std::chrono::steady_clock::now();
+            std::printf("VideoOut: frame limit %u FPS (menu)\n", limit);
         }
 
         // Check if it's time to take a request.

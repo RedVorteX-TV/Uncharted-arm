@@ -55,6 +55,9 @@ inline constexpr int OutputWidths[] = {1280, 1920, 2560, 3840};
 inline constexpr int OutputHeights[] = {720, 1080, 1440, 2160};
 inline constexpr int OutputCount = 4;
 inline constexpr int OutputDefault = 1; ///< 1920x1080, the game's own size
+/// Frame rate limits offered by the menu (0: off). 40 divides 120 Hz panels evenly.
+inline constexpr int FpsLimits[] = {0, 30, 40, 45, 60};
+inline constexpr int FpsLimitCount = int(sizeof(FpsLimits) / sizeof(FpsLimits[0]));
 
 struct Values {
     std::atomic<int> upscaler{UpscalerFsr3};
@@ -69,6 +72,9 @@ struct Values {
     std::atomic<float> reactive_max{0.9f};
     std::atomic<int> debug_view{DebugNone};
     std::atomic<bool> show_fps{false};
+    /// Frame rate limit chosen in the menu, applied from the next frame (driver.cpp); 0: the
+    /// port's default (no limit with the game's 60 Hz vblank). BB_FPS_LIMIT sets it at start.
+    std::atomic<int> fps_limit{0};
     // FSR 4 checks (menu): the provider's auto exposure, the jitter sign it is given.
     std::atomic<bool> fsr4_auto_exposure{true};
     std::atomic<bool> fsr4_invert_jitter{false};

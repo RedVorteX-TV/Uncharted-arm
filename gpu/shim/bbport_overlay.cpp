@@ -183,6 +183,30 @@ void Menu() {
     ImGui::Text(T("%.0f FPS  (%.1f ms)", "%.0f FPS  (%.1f мс)"),
                 frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f, frame_ms_avg);
 
+    ImGui::SeparatorText(T("Frame rate", "Частота кадров"));
+    {
+        int limit_index = 0;
+        for (int i = 0; i < BbSettings::FpsLimitCount; ++i) {
+            if (BbSettings::FpsLimits[i] == s.fps_limit) limit_index = i;
+        }
+        static const char* limit_names[] = {"Off", "30 FPS", "40 FPS (120 Hz screens)", "45 FPS",
+                                            "60 FPS"};
+        static_assert(sizeof(limit_names) / sizeof(*limit_names) == BbSettings::FpsLimitCount);
+        if (ImGui::BeginCombo(T("Frame rate limit", "Ограничение FPS"), limit_names[limit_index])) {
+            for (int i = 0; i < BbSettings::FpsLimitCount; ++i) {
+                if (ImGui::Selectable(limit_names[i], i == limit_index)) {
+                    Store(s.fps_limit, BbSettings::FpsLimits[i], true);
+                }
+            }
+            ImGui::EndCombo();
+        }
+        Hint(T("A steady rate the GPU can always reach feels smoother than a varying higher one, "
+               "and saves battery and heat. 40 FPS shows every frame for exactly 3 refreshes of a "
+               "120 Hz screen. Applies immediately.",
+               "Ровная частота, которую GPU всегда держит, плавнее скачущей более высокой и "
+               "экономит батарею. 40 FPS — ровно 3 обновления экрана 120 Гц. Сразу."));
+    }
+
     ImGui::SeparatorText(T("Anti-aliasing", "Сглаживание"));
     const char* upscalers[] = {T("Off (the game's own)", "Выкл (сглаживание игры)"), "FSR 3.1",
                                "FSR 4 (INT8)", "FSR 4.1.1 (INT8)", "TAA", "DLSS (NVIDIA RTX)"};
