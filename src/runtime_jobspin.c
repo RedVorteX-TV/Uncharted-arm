@@ -10,11 +10,11 @@
  *     cmp  r8, 1000
  *     jl   B                     ; yes, fewer than 1000 passes: B: pause; jmp next pass
  *     ...                        ; else: wait on the job semaphore (woken when work arrives)
- * The `pause` at B gets a hook that, after a short spin, sets the pass count to 1000: the worker
+ * The `pause` at B gets a hook that, after a spin, sets the pass count to 1000: the worker
  * then sleeps on the game's own semaphore right away instead of after 1000 passes. The `pause` at
  * A, where the game offers no wait, sleeps a little between passes once the spin is long.
  *
- * BB_JOB_SPIN=<passes>,<sleep us> (default 64,50); BB_JOB_SPIN=0 leaves the game's loop as is.
+ * BB_JOB_SPIN=<passes>,<sleep us> (default 256,20); BB_JOB_SPIN=0 leaves the game's loop as is.
  * Only on hosts where the guest CPU can hook instructions (FEXCore); x86-64 hosts keep the loop. */
 #define _GNU_SOURCE
 #include "runtime.h"
@@ -30,7 +30,7 @@ void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t siz
     (void)image; (void)start; (void)size;
 }
 #else
-static unsigned free_passes = 64, sleep_us = 50;
+static unsigned free_passes = 256, sleep_us = 20;
 static int64_t wait_passes = 1000;
 static unsigned long long sleeps, early_waits;
 
