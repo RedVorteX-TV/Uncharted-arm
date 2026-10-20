@@ -7,6 +7,9 @@ BB_GAME_DIR_U1 / _U2 / _U3   optional: the folder of a game that was dumped on i
               that game instead of BB_GAME_DIR (its executable may be that folder's eboot.bin)
 BB_EXE        u1 / u2 / u3 or an executable name (default u1: eboot.bin, the collection menu)
 BB_USER_DIR   saves and shader caches (default user/ beside this script)
+BB_RESOLUTION / BB_RESOLUTION_U1 / _U2 / _U3   render resolution WxH (default 1920x1080, the
+              PS4's): the game's display settings and memory table are patched for it
+              (scripts/render_res.py, after BilalReloaded's Uncharted PC port)
 Extra arguments go to bb-probe. When the game starts another executable of the collection
 (sceSystemServiceLoadExec), that one is prepared and started in its place.
 The in-game "Apply and restart" runs this script again through BB_RESTART_COMMAND;
@@ -151,6 +154,49 @@ def render_720p(env):
         if key.strip() == 'render_720p':
             return value.strip() == '1'
     return False
+def render_resolution(env, exe, out, image):
+    """The image to start for the chosen render resolution (BB_RESOLUTION[_U1/_U2/_U3]=WxH):
+    boot-linked.bin patched by scripts/render_res.py, kept until it or the scripts change, and the
+    environment for it: the scene size (anti-aliasing, scene depth), the movie size (cutscene
+    movies scaled to it) and the direct memory the larger render target heaps need. 1920x1080 or
+    nothing chosen: the image as it is."""
+    key = next((k for k, v in EXECUTABLES.items() if v == exe), '')
+    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE'):
+        env.pop(name, None)
+    if 'BB_DMEM_MB_USER' in env:
+        env['BB_DMEM_MB'] = env['BB_DMEM_MB_USER']
+    else:
+        env.pop('BB_DMEM_MB', None)
+    size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
+    # The 720p mode (Steam Deck mode, ARM's render_720p) renders at 720p its own way
+    # (scripts/render_720p.py).
+    if render_720p(env):
+        if size and size not in ('1920x1080', 'native', 'off', '0'):
+            print(f'Render resolution: {size} not used with the 720p mode (the game renders at 1280x720)')
+        return image
+    if not key or not size or size in ('1920x1080', 'native', 'off', '0'):
+        return image
+    import json
+    patched = out / f'boot-res-{size}.bin'
+    meta = patched.with_suffix('.json')
+    sources = [image, PORT / 'scripts' / 'render_res.py']
+    if not (patched.is_file() and meta.is_file() and
+            all(patched.stat().st_mtime >= s.stat().st_mtime for s in sources)):
+        print(f'Render resolution: preparing {size} for {key.upper()} ...')
+        for old in out.glob('boot-res-*'):
+            old.unlink(missing_ok=True)
+        run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', size)
+    info = json.loads(meta.read_text(encoding='utf-8'))
+    render = info['render']
+    env['BB_SCENE_SIZE'] = render
+    env['BB_MOVIE_SIZE'] = render
+    if info.get('extra_mib'):
+        needed = 5056 + int(info['extra_mib']) + 64
+        player = env.get('BB_DMEM_MB_USER', '')
+        env['BB_DMEM_MB'] = str(max(needed, int(player)) if player.isdigit() else needed)
+    print(f'Render resolution: {key.upper()} at {render}'
+          f'{" (" + size + " asked)" if render != size else ""}, direct memory {env.get("BB_DMEM_MB", "5056")} MiB')
+    return patched
 
 
 def main():
@@ -211,6 +257,9 @@ def main():
     # GPU caches (shaders, pipelines) beside the saves; read before main(), so set here.
     env.setdefault('BB_GPU_USER_DIR', str(user_dir))
     env.setdefault('BB_VBLANK_HZ', '60')
+    # A direct memory size the player set stays theirs; the render resolution raises it per game.
+    if env.get('BB_DMEM_MB') and 'BB_DMEM_MB_USER' not in env:
+        env['BB_DMEM_MB_USER'] = env['BB_DMEM_MB']
     loadexec = out_root / 'loadexec.txt'
     env['BB_LOADEXEC_FILE'] = str(loadexec)
     guest_argv = None
@@ -250,11 +299,12 @@ def main():
             fail(f'No {file} in {game}.')
         out = out_root / Path(exe).stem.split('-')[0]
         prepare(game, file, out)
+        image = render_resolution(env, exe, out, out / 'boot-linked.bin')
         run_script('content_profile.py', game, '--out', out, '--sku', env.get('BB_CONTENT_SKU', 'full'))
         this = ['--run'] if getattr(sys, 'frozen', False) else [str(Path(__file__).resolve())]
         env['BB_EXE'] = exe
         env['BB_RESTART_COMMAND'] = (subprocess.list2cmdline if WINDOWS else shlex.join)([sys.executable, *this, '--after', str(os.getpid()), *args])
-        command = [str(probe), str(out / 'boot-linked.bin'), '--content-profile', str(out / 'content.bin'),
+        command = [str(probe), str(image), '--content-profile', str(out / 'content.bin'),
                    '--app0', str(game), '--user', str(user_dir), '--timeout', env.get('BB_TIMEOUT', '0')]
         if guest_argv:
             command += ['--guest-argv', str(guest_argv)]

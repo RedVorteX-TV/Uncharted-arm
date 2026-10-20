@@ -87,6 +87,13 @@ FRAME_RATES = [('60', '60 FPS (as on PS4)'), ('120', '120 FPS'), ('144', '144 FP
 WINDOW_SIZES = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
                 ('1920x1080', "1920 × 1080 (the games' own)"), ('2560x1440', '2560 × 1440'),
                 ('3840x2160', '3840 × 2160 (4K)')]
+# Render resolution (BB_RESOLUTION; run.py, scripts/render_res.py, after BilalReloaded's Uncharted
+# PC port): the games' display settings and memory table are patched for it, and the
+# anti-aliasing runs at it. Drake's Fortune renders at most 2880 x 1620 (its memory layout).
+RENDER_RESOLUTIONS = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
+                      ('1920x1080', "1920 × 1080 (the games' own)"), ('2560x1440', '2560 × 1440'),
+                      ('2880x1620', '2880 × 1620'), ('3200x1800', '3200 × 1800'),
+                      ('3840x2160', '3840 × 2160 (4K; Drake\'s Fortune 1620p)')]
 SCALERS = [('fsr1', 'FSR 1 (AMD FidelityFX, sharp)'), ('bilinear', 'Smooth (bilinear)')]
 SHARPENING = [('off', 'Off'), ('1000', 'Low'), ('500', 'Medium'), ('250', 'High'), ('0', 'Maximum')]
 # Temporal anti-aliasing at the games' 1920x1080 (BB_UPSCALER): it takes the scene before the
@@ -152,7 +159,8 @@ RESERVED_KEYS = {'Insert': 'Insert opens the in-game settings menu.',
 
 APP_DEFAULTS = {'game_dir': '', 'game_dir_u1': '', 'game_dir_u2': '', 'game_dir_u3': '', 'user_dir': '', 'start': 'u1', 'language': '1', 'player_name': '',
                 'fullscreen': False, 'present_mode': 'Mailbox', 'frame_rate': '60', 'show_fps': False,
-                'window_size': '1920x1080', 'scaler': 'fsr1', 'sharpening': '500',
+                'window_size': '1920x1080', 'render_resolution': '1920x1080', 'scaler': 'fsr1',
+                'sharpening': '500',
                 'anti_aliasing': 'off', 'aa_sharpness': '0.2', 'frame_generation': 'off',
                 'frame_gen_multiplier': '2', 'extra_env': '', 'close_on_play': False,
                 'mouse_look': True, 'mouse_sensitivity': '1.0', 'mouse_invert_y': False,
@@ -363,6 +371,7 @@ def game_environment(s, start=None):
     env['BB_PRESENT_MODE'] = s['present_mode']
     env['BB_VBLANK_HZ'] = str(s.get('frame_rate') or '60')
     env['BB_WINDOW_SIZE'] = str(s.get('window_size') or '1920x1080')
+    env['BB_RESOLUTION'] = str(s.get('render_resolution') or '1920x1080')
     env['BB_FSR1'] = '1' if s.get('scaler', 'fsr1') == 'fsr1' else '0'
     sharpening = str(s.get('sharpening') or 'off')
     env['BB_RCAS'] = '0' if sharpening == 'off' else '1'
@@ -1053,9 +1062,13 @@ class Launcher:
             hint += ' ' + _('Your display runs at {} Hz.').format(refresh)
         self.row(f, _('Frame rate'), self.choice(f, 'frame_rate', FRAME_RATES, 34), hint)
         self.section(f, _('Resolution'))
+        self.row(f, _('Render resolution'), self.choice(f, 'render_resolution', RENDER_RESOLUTIONS, 34),
+                 _('The size the games draw at (the PS4: 1920 × 1080). Above it needs a faster GPU and '
+                   'more video memory (1440p: 8 GB is enough; 4K: 10 GB or more). Drake\'s Fortune draws '
+                   'at most 2880 × 1620. The first start at a new size prepares the game again.'))
         self.row(f, _('Window size'), self.choice(f, 'window_size', WINDOW_SIZES, 34),
-                 _('The games render at 1920 × 1080. A larger window, or fullscreen on a 1440p or 4K '
-                   'screen, gets the image upscaled to fit.'))
+                 _('The rendered image is scaled to the window (or the screen in fullscreen). Pick '
+                   'the same size as the render resolution for a sharp 1:1 picture.'))
         self.row(f, _('Upscaling'), self.choice(f, 'scaler', SCALERS, 34),
                  _('FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.'))
         self.row(f, _('Sharpening'), self.choice(f, 'sharpening', SHARPENING, 34),
@@ -1668,6 +1681,10 @@ def version_tuple(text):
 
 def latest_release():
     """(version, zip URL, page URL, notes) of the newest GitHub release; notes is its text."""
+    # A custom build (NO_UPDATE_CHECK in the package, e.g. the render resolution test build) is
+    # never replaced by an official release.
+    if (PORT_DIR / 'NO_UPDATE_CHECK').is_file():
+        raise OSError('updates are off in this custom build')
     request = urllib.request.Request(RELEASES_API, headers={'Accept': 'application/vnd.github+json',
                                                             'User-Agent': 'uncharted-launcher'})
     with urllib.request.urlopen(request, timeout=15) as response:

@@ -30,10 +30,20 @@ private:
     AVFrame* ConvertNV12Frame(AVFrame& frame);
     /// Linux fork: a frame larger than the decoder's configured maximum, scaled down to fit it.
     AVFrame* FitToMaxSize(AVFrame& frame);
+    /// Render resolution (BB_MOVIE_SIZE, bbport_movie.h): the frame also scaled to the display
+    /// size the movie player reads it with, into the scratch frame of the game's frame buffer at
+    /// base. True when written.
+    bool WriteMovieCopy(const AVFrame& frame, u64 base);
+    /// Copies a decoded frame into the game's buffer and fills the output info (Decode, Flush).
+    void Output(AVFrame& frame, OrbisVideodec2FrameBuffer& frame_buffer,
+                OrbisVideodec2OutputInfo& output_info, u32 height_align = 16);
 
 private:
     AVCodecContext* m_codec_context = nullptr;
     SwsContext* m_sws_context = nullptr;
+    SwsContext* m_scale_context = nullptr;
+    AVFrame* m_scaled = nullptr;
+    std::vector<u8> m_movie_copy;
     SwsContext* m_fit_context = nullptr;
     u32 m_max_width = 0;
     u32 m_max_height = 0;

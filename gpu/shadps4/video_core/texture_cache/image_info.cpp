@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/assert.h"
+#include "bbport_movie.h"
 #include "core/libraries/kernel/process.h"
 #include "core/libraries/videoout/buffer.h"
 #include "shader_recompiler/resource.h"
@@ -139,6 +140,12 @@ ImageInfo::ImageInfo(const AmdGpu::Image& image, const Shader::ImageResource& de
     bank_swizzle = image.GetBankSwizzle();
 
     guest_address = image.Address();
+    // Render resolution: movie frames the game describes with its patched display size
+    // (bbport_movie.h).
+    if (type == AmdGpu::ImageType::Color2D && resources.levels == 1 && resources.layers == 1 &&
+        !props.is_tiled) {
+        BbMovie::Remap(guest_address, size.width, size.height, pitch, num_bits);
+    }
 
     alt_tile = Libraries::Kernel::sceKernelIsNeoMode() && image.alt_tile_mode;
     UpdateSize();
