@@ -123,4 +123,7 @@ const RuntimeGuestCallback *runtime_guest_callbacks(size_t *count);
 /* BB_GUEST_PROFILE=prefix: sampling profile of the guest threads with that name prefix
  * (runtime_profile.c); `image`/`size`: the main image, for image-relative addresses. */
 void runtime_profile_start(const void *image, uint64_t size);
+/* Uncharted's spinning job workers sleep instead (runtime_jobspin.c, FEXCore hosts): scans the
+ * executable segment [start, start + size) of `image`. */
+void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t size);
 #endif
