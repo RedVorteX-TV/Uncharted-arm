@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <mutex>
 #include "videodec2_impl.h"
 
@@ -16,6 +14,11 @@
 #include "videodec_error.h"
 
 #include "common/support/avdec.h"
+#include "core/memory.h"
+#include "bbport_movie.h"
+
+#include <algorithm>
+#include <cstring>
 
 namespace Libraries::Videodec2 {
 
@@ -85,6 +88,7 @@ VdecDecoder::VdecDecoder(const OrbisVideodec2DecoderConfigInfo& config_info,
     // movie collects them.
     m_codec_context->thread_count = 4;
     m_codec_context->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    m_codec_context->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
 
     avcodec_open2(m_codec_context, codec, nullptr);
 }
@@ -92,7 +96,9 @@ VdecDecoder::VdecDecoder(const OrbisVideodec2DecoderConfigInfo& config_info,
 VdecDecoder::~VdecDecoder() {
     avcodec_free_context(&m_codec_context);
     sws_freeContext(m_sws_context);
+    sws_freeContext(m_scale_context);
     sws_freeContext(m_fit_context);
+    av_frame_free(&m_scaled);
 }
 
 s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
@@ -188,66 +194,10 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
     }
     const auto t_fitted = stats ? std::chrono::steady_clock::now() : t_start;
 
-    const bool is_avc = m_codec_context->codec_id == AV_CODEC_ID_H264;
-    const u64 info_size =
-        is_avc ? sizeof(OrbisVideodec2AvcPictureInfo) : sizeof(OrbisVideodec2HevcPictureInfo);
-    Videodec::CopyNV12Data((u8*)frame_buffer.frame_buffer,
-                           frame_buffer.frame_buffer_size - info_size, *frame, height_align);
-    frame_buffer.is_accepted = true;
+    Output(*frame, frame_buffer, output_info, height_align);
     if (stats) {
         NoteDecode(true, Ms(t_start, t_decoded), Ms(t_decoded, t_converted),
                    Ms(t_converted, t_fitted), Ms(t_fitted, std::chrono::steady_clock::now()));
-    }
-
-    const auto width = Common::AlignUp<u32>(frame->width, 16);
-    const auto pitch = Common::AlignUp<u32>(frame->width, 64);
-    const auto height = Common::AlignUp<u32>(frame->height, height_align);
-
-    output_info.is_valid = true;
-    output_info.is_error_frame = false;
-    output_info.picture_count = 1; // TODO: 2 pictures for interlaced video
-    output_info.codec_type = is_avc ? OrbisVideodec2CodecType::Avc : OrbisVideodec2CodecType::Hevc;
-    output_info.frame_width = width;
-    output_info.frame_pitch = pitch;
-    output_info.frame_height = height;
-    output_info.frame_buffer = frame_buffer.frame_buffer;
-    output_info.frame_buffer_size = (pitch * height * 3) / 2;
-
-    // Only set frameFormat and framePitchInBytes if the game uses the newer struct version.
-    if (output_info.this_size == sizeof(OrbisVideodec2OutputInfo)) {
-        output_info.frame_format = 0;
-        output_info.frame_pitch_in_bytes = pitch;
-    }
-
-    if (is_avc) {
-        auto& picture_info = *(OrbisVideodec2AvcPictureInfo*)((u8*)output_info.frame_buffer +
-                                                              output_info.frame_buffer_size);
-
-        picture_info = {};
-        picture_info.is_valid = true;
-
-        picture_info.pts_data = frame->pts;
-        picture_info.dts_data = frame->pkt_dts;
-        picture_info.attached_data = reinterpret_cast<u64>(frame->opaque);
-
-        picture_info.frame_crop_top_offset = 0;
-        picture_info.frame_crop_left_offset = 0;
-        picture_info.frame_crop_right_offset = pitch - frame->width;
-        picture_info.frame_crop_bottom_offset = height - frame->height;
-    } else {
-        auto& picture_info = *(OrbisVideodec2HevcPictureInfo*)((u8*)output_info.frame_buffer +
-                                                               output_info.frame_buffer_size);
-        picture_info = {};
-        picture_info.is_valid = true;
-
-        picture_info.pts_data = frame->pts;
-        picture_info.dts_data = frame->pkt_dts;
-        picture_info.attached_data = reinterpret_cast<u64>(frame->opaque);
-
-        picture_info.frame_crop_top_offset = 0;
-        picture_info.frame_crop_left_offset = 0;
-        picture_info.frame_crop_right_offset = pitch - frame->width;
-        picture_info.frame_crop_bottom_offset = height - frame->height;
     }
 
     av_packet_free(&packet);
@@ -299,16 +249,39 @@ s32 VdecDecoder::Flush(OrbisVideodec2FrameBuffer& frame_buffer,
         }
     }
 
+    Output(*frame, frame_buffer, output_info, height_align);
+
+    av_frame_free(&frame);
+    return ORBIS_OK;
+}
+
+void VdecDecoder::Output(AVFrame& frame, OrbisVideodec2FrameBuffer& frame_buffer,
+                         OrbisVideodec2OutputInfo& output_info, u32 height_align) {
     const bool is_avc = m_codec_context->codec_id == AV_CODEC_ID_H264;
     const u64 info_size =
         is_avc ? sizeof(OrbisVideodec2AvcPictureInfo) : sizeof(OrbisVideodec2HevcPictureInfo);
     Videodec::CopyNV12Data((u8*)frame_buffer.frame_buffer,
-                           frame_buffer.frame_buffer_size - info_size, *frame, height_align);
+                           frame_buffer.frame_buffer_size - info_size, frame, height_align);
+    // Render resolution (bbport_movie.h): the decoded layout (chroma after the luma rows aligned
+    // to 16), and with a copy scaled to the movie display size the frame is reported at that size:
+    // the movie player's conversion shader spans the frame size it is given.
+    const u64 base = (u64)frame_buffer.frame_buffer;
+    BbMovie::RecordFrame(base, (u32)frame.width, (u32)frame.height, Common::AlignUp<u32>(frame.width, 64),
+                         Common::AlignUp<u32>(frame.height, height_align));
+    u32 shown_width = (u32)frame.width, shown_height = (u32)frame.height;
+    u32 shown_align = height_align; // the Deck's 720p fit (FitToMaxSize) aligns rows to 64
+    if (WriteMovieCopy(frame, base)) {
+        BbMovie::DisplaySize(shown_width, shown_height);
+        shown_align = 16;
+    }
     frame_buffer.is_accepted = true;
 
-    const auto width = Common::AlignUp<u32>(frame->width, 16);
-    const auto pitch = Common::AlignUp<u32>(frame->width, 64);
-    const auto height = Common::AlignUp<u32>(frame->height, height_align);
+    const auto width = Common::AlignUp<u32>(shown_width, 16);
+    const auto pitch = Common::AlignUp<u32>(shown_width, 64);
+    const auto height = Common::AlignUp<u32>(shown_height, shown_align);
+    // The picture info follows the decoded frame (its own size, not the display size).
+    const auto decoded_pitch = Common::AlignUp<u32>(frame.width, 64);
+    const auto decoded_height = Common::AlignUp<u32>(frame.height, height_align);
 
     output_info.is_valid = true;
     output_info.is_error_frame = false;
@@ -318,7 +291,7 @@ s32 VdecDecoder::Flush(OrbisVideodec2FrameBuffer& frame_buffer,
     output_info.frame_pitch = pitch;
     output_info.frame_height = height;
     output_info.frame_buffer = frame_buffer.frame_buffer;
-    output_info.frame_buffer_size = (pitch * height * 3) / 2;
+    output_info.frame_buffer_size = (decoded_pitch * decoded_height * 3) / 2;
 
     // Only set frameFormat and framePitchInBytes if the game uses the newer struct version.
     if (output_info.this_size == sizeof(OrbisVideodec2OutputInfo)) {
@@ -326,39 +299,119 @@ s32 VdecDecoder::Flush(OrbisVideodec2FrameBuffer& frame_buffer,
         output_info.frame_pitch_in_bytes = pitch;
     }
 
-    if (m_codec_context->codec_id == AV_CODEC_ID_H264) {
+    if (is_avc) {
         auto& picture_info = *(OrbisVideodec2AvcPictureInfo*)((u8*)output_info.frame_buffer +
                                                               output_info.frame_buffer_size);
 
         picture_info = {};
         picture_info.is_valid = true;
 
-        picture_info.pts_data = frame->pts;
-        picture_info.dts_data = frame->pkt_dts;
-        picture_info.attached_data = reinterpret_cast<u64>(frame->opaque);
+        picture_info.pts_data = frame.pts;
+        picture_info.dts_data = frame.pkt_dts;
+        picture_info.attached_data = reinterpret_cast<u64>(frame.opaque);
 
         picture_info.frame_crop_top_offset = 0;
         picture_info.frame_crop_left_offset = 0;
-        picture_info.frame_crop_right_offset = pitch - frame->width;
-        picture_info.frame_crop_bottom_offset = height - frame->height;
+        picture_info.frame_crop_right_offset = pitch - shown_width;
+        picture_info.frame_crop_bottom_offset = height - shown_height;
     } else {
         auto& picture_info = *(OrbisVideodec2HevcPictureInfo*)((u8*)output_info.frame_buffer +
                                                                output_info.frame_buffer_size);
         picture_info = {};
         picture_info.is_valid = true;
 
-        picture_info.pts_data = frame->pts;
-        picture_info.dts_data = frame->pkt_dts;
-        picture_info.attached_data = reinterpret_cast<u64>(frame->opaque);
+        picture_info.pts_data = frame.pts;
+        picture_info.dts_data = frame.pkt_dts;
+        picture_info.attached_data = reinterpret_cast<u64>(frame.opaque);
 
         picture_info.frame_crop_top_offset = 0;
         picture_info.frame_crop_left_offset = 0;
-        picture_info.frame_crop_right_offset = pitch - frame->width;
-        picture_info.frame_crop_bottom_offset = height - frame->height;
+        picture_info.frame_crop_right_offset = pitch - shown_width;
+        picture_info.frame_crop_bottom_offset = height - shown_height;
     }
+}
 
-    av_frame_free(&frame);
-    return ORBIS_OK;
+// Render resolution (BB_MOVIE_SIZE, bbport_movie.h; after BilalReloaded's Uncharted PC port): the
+// frame also scaled to the display size the movie player reads it with, into the scratch frame
+// of the game's frame buffer at base. True when written.
+bool VdecDecoder::WriteMovieCopy(const AVFrame& frame, u64 base) {
+    u32 width = 0, height = 0;
+    if (!BbMovie::DisplaySize(width, height) ||
+        ((u32)frame.width == width && (u32)frame.height == height)) {
+        return false;
+    }
+    u8* dst = BbMovie::ScratchFrame(base);
+    if (!dst) {
+        return false;
+    }
+    if (!m_scaled) {
+        m_scaled = av_frame_alloc();
+    }
+    if (!m_scaled) {
+        return false;
+    }
+    // The movie keeps its own shape inside the display size: black bars at the top and bottom
+    // (16:10) or at the sides (ultrawide) instead of a stretched picture. 16:9 sizes fill it.
+    u32 fit_width = width, fit_height = height;
+    if ((u64)frame.width * height > (u64)frame.height * width) {
+        fit_height = std::min(height, (u32)((u64)width * frame.height / frame.width) & ~1u);
+    } else {
+        fit_width = std::min(width, (u32)((u64)height * frame.width / frame.height) & ~1u);
+    }
+    const u32 left = (width - fit_width) / 2 & ~1u, top = (height - fit_height) / 2 & ~1u;
+    if ((u32)m_scaled->width != fit_width || (u32)m_scaled->height != fit_height) {
+        av_frame_unref(m_scaled);
+        m_scaled->format = AV_PIX_FMT_NV12;
+        m_scaled->width = (int)fit_width;
+        m_scaled->height = (int)fit_height;
+        if (av_frame_get_buffer(m_scaled, 0) < 0) {
+            av_frame_unref(m_scaled);
+            return false;
+        }
+    }
+    m_scale_context = sws_getCachedContext(m_scale_context, frame.width, frame.height,
+                                           AV_PIX_FMT_NV12, (int)fit_width, (int)fit_height,
+                                           AV_PIX_FMT_NV12, SWS_BICUBIC, nullptr, nullptr, nullptr);
+    if (!m_scale_context || sws_scale(m_scale_context, frame.data, frame.linesize, 0, frame.height,
+                                      m_scaled->data, m_scaled->linesize) < 0) {
+        return false;
+    }
+    const u32 pitch = BbMovie::ScaledPitch(), rows = BbMovie::ScaledRows();
+    const u32 chroma_pitch = BbMovie::ScaledChromaPitch();
+    const u64 bytes = BbMovie::ScaledFrameBytes();
+    // Black (video range) around the picture.
+    m_movie_copy.assign(bytes, 128);
+    u8* copy = m_movie_copy.data();
+    u8* chroma = copy + (u64)pitch * rows;
+    std::memset(copy, 16, (u64)pitch * rows);
+    for (u32 y = 0; y < fit_height; ++y) {
+        std::memcpy(copy + (u64)(top + y) * pitch + left,
+                    m_scaled->data[0] + (u64)y * m_scaled->linesize[0], fit_width);
+        if (y < fit_height / 2) {
+            std::memcpy(chroma + (u64)(top / 2 + y) * chroma_pitch + left,
+                        m_scaled->data[1] + (u64)y * m_scaled->linesize[1], fit_width);
+        }
+    }
+    // The rows up to the aligned height repeat the last one (sampling at the bottom edge reads
+    // them at heights that aren't a multiple of 16, e.g. 1620).
+    for (u32 y = height; y < rows; ++y) {
+        std::memcpy(copy + (u64)y * pitch, copy + (u64)(height - 1) * pitch, width);
+    }
+    for (u32 y = height / 2; y < rows / 2; ++y) {
+        std::memcpy(chroma + (u64)y * chroma_pitch, chroma + (u64)(height / 2 - 1) * chroma_pitch,
+                    width);
+    }
+    // The GPU caches learn of the new frame explicitly (one write through the backing view, no
+    // page faults per row). Invalidated before (any GPU copy of these pages goes back first)
+    // and after the write.
+    auto* memory = Core::Memory::Instance();
+    const VAddr address = reinterpret_cast<VAddr>(dst);
+    memory->InvalidateMemory(address, bytes);
+    if (!memory->TryWriteBacking(dst, copy, bytes)) {
+        std::memcpy(dst, copy, bytes);
+    }
+    memory->InvalidateMemory(address, bytes);
+    return true;
 }
 
 s32 VdecDecoder::Reset() {

@@ -256,8 +256,9 @@ void Menu() {
         }
         ImGui::EndCombo();
     }
-    Hint(T("Runs at the game's 1920x1080 on the scene before post-processing, with the game's own "
-           "motion vectors, and replaces its edge smoothing. Changes apply on the next frame.",
+    Hint(T("Runs at the game's render resolution (launcher: Display) on the scene before "
+           "post-processing, with the game's own motion vectors, and replaces its edge smoothing. "
+           "Changes apply on the next frame.",
            "Работает в родном 1920x1080 игры на сцене до постобработки, с векторами движения "
            "самой игры, и заменяет её сглаживание. Применяется со следующего кадра."));
     if (const char* problem = s.dlss_problem.load(); problem && upscaler == BbSettings::UpscalerDlss) {
