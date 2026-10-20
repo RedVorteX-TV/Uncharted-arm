@@ -1387,10 +1387,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         return; // bbport: BB_SKIP_SHADERS also matches vertex shaders
     }
     const auto& regs = Regs();
-    // bbport: the pass copying a finished frame to a display buffer; the previous draw's
-    // target is that frame.
-    if (camera_motion->Enabled() && regs.color_buffers[0] &&
-        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
+    const auto frame_start = [&] {
         scene_started = false;
         camera_motion->OnDisplayPass(cb_descs[0].first);
         if (upscaler->OnFrameStart()) {
@@ -1403,12 +1400,38 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         static const char* scene_debug = std::getenv("BB_SCENE_DEBUG");
         scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
         scene_targets->debug = scene_debug_frame;
+    };
+    // bbport: the pass copying a finished frame to a display buffer; the previous draw's
+    // target is that frame. After BilalReloaded's Uncharted PC port (from Supermedo/uncharted_pc
+    // #261): Uncharted draws twice into the same display buffer per frame (484cdbf5, then
+    // 749bbec9): only the first starts a frame. The second reset the upscaler's history every
+    // frame (shimmer on every edge under TAA, FSR and DLAA) and skipped every other jitter
+    // phase. BB_ONE_FRAME_START=0 brings the old behaviour back. With an upscaling preset
+    // (TemporalUpscaler::OnComposite) the frames start at the upscale instead.
+    static const bool every_display_draw = [] {
+        const char* env = std::getenv("BB_ONE_FRAME_START");
+        return env && env[0] == '0';
+    }();
+    if (camera_motion->Enabled() && !upscaler->CompositeFrames() && regs.color_buffers[0] &&
+        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
+        (scene_started || regs.color_buffers[0].Address() != frame_display_address ||
+         every_display_draw)) {
+        frame_display_address = regs.color_buffers[0].Address();
+        frame_start();
     }
     bind_prepared = used_prepared;
     motion_draw = pipeline->GetGraphicsKey().motion_vectors;
     motion_geometry = 0;
 
     PrepareRenderState(pipeline);
+    if (upscaler->CompositeFrames()) {
+        const auto* fragment = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        if (fragment && upscaler->OnComposite(fragment->pgm_hash, cb_descs[0].first)) {
+            bind_prepared = nullptr; // as after a draw: later dispatches bind without its sharps
+            frame_start();           // the guest's copy is replaced by the upscale
+            return;
+        }
+    }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
         upscaler->OnDraw(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash,

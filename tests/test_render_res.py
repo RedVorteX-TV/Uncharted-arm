@@ -26,6 +26,40 @@ def image(base=0x47):
     return data
 
 
+class UpscalePresets(unittest.TestCase):
+    def run_sizes(self, exe, env):
+        import shutil
+        import sys
+        import tempfile
+        from pathlib import Path
+        sys.path.insert(0, str(ROOT))
+        import run
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder)
+            (out / 'boot-linked.bin').write_bytes(image())
+            env = dict(env)
+            run.render_resolution(env, exe, out, out / 'boot-linked.bin')
+            shutil.rmtree(out, ignore_errors=True)
+            return env
+
+    def test_quality_1440p(self):
+        env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '2560x1440', 'BB_UPSCALE_PRESET': 'quality'})
+        self.assertEqual(env['BB_RENDER_RES'], '1712x960')
+        self.assertEqual(env['BB_OUTPUT_RES'], '2560x1440')
+        self.assertEqual(env['BB_SCENE_SIZE'], '1712x960')
+        self.assertEqual(env['BB_UI_COMPOSITE_PS'], '749bbec9')
+
+    def test_native_1080p_untouched(self):
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'})
+        self.assertNotIn('BB_RENDER_RES', env)
+        self.assertNotIn('BB_MOVIE_SIZE', env)
+
+    def test_drakes_fortune_4k_upscaled_from_1620p(self):
+        env = self.run_sizes('eboot.bin', {'BB_RESOLUTION': '3840x2160'})
+        self.assertEqual(env['BB_RENDER_RES'], '2880x1620')
+        self.assertEqual(env['BB_OUTPUT_RES'], '3840x2160')
+
+
 class RenderResolution(unittest.TestCase):
     def test_1440p_stores_and_memory(self):
         patched, render, extra = render_res.patch_image(image(), 'u2', 2560, 1440)

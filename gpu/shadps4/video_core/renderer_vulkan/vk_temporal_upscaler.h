@@ -22,6 +22,7 @@
 #include "video_core/renderer_vulkan/vk_common.h"
 #include "video_core/renderer_vulkan/vk_dlss.h"
 #include "video_core/renderer_vulkan/vk_fsr4.h"
+#include "video_core/renderer_vulkan/host_passes/fsr_pass.h"
 #include "video_core/texture_cache/image.h"
 
 struct FfxVkPortableUpscaleContext;
@@ -67,6 +68,17 @@ public:
     /// bbport: frame generation takes its depth and motion vectors at the same point.
     void SetFrameGenerator(FrameGenerator* generator) noexcept {
         frame_generator = generator;
+    }
+    /// Upscaling presets (after BilalReloaded's Uncharted PC port): Uncharted drawn below the
+    /// output size (velocity mode, BB_RENDER_RES smaller than BB_OUTPUT_RES, BB_UI_COMPOSITE_PS).
+    /// The game copies its finished frame back into the display buffer with that pixel shader
+    /// and draws the HUD and menus over it. That copy is replaced by the upscale into a host
+    /// display buffer of the output size; the HUD and menu draws after it go there at the output
+    /// resolution. True: skip the guest's draw, and the next frame starts here (the rasterizer
+    /// calls OnFrameStart).
+    bool OnComposite(u64 ps_hash, VideoCore::ImageId color);
+    [[nodiscard]] bool CompositeFrames() const noexcept {
+        return composite_frames;
     }
     /// bbport: BB_HUDLESS_PS=<pixel shader hash>: the draw that writes the game's finished
     /// picture into the display buffer before the UI (Uncharted). After it, frame generation
@@ -260,6 +272,19 @@ private:
     };
     std::mutex display_mutex;
     std::unordered_map<VAddr, DisplayImage> displays;
+    /// The host buffer for a display buffer at ui_width x ui_height (display_mutex held).
+    DisplayImage& HostDisplay(VAddr address, vk::Format format);
+    /// Upscales source (the finished frame at the render size) into ui_image; draws into source
+    /// go to ui_image after it.
+    void UpscaleToUi(VideoCore::ImageId source);
+    u64 composite_ps = 0;
+    u64 tonemap_ps = 0;               ///< the draw finishing the frame (BB_UI_TONEMAP_PS)
+    VideoCore::ImageId tonemap_target{};
+    bool tonemap_pending = false;     ///< the next draw upscales tonemap_target
+    bool composite_frames = false;  ///< OnComposite replaces the frame's display copy
+    bool composite_done = false;    ///< this frame's OnComposite ran: its UI draws follow
+    HostPasses::FsrPass fsr1_pass;  ///< FSR 1 (EASU) at OnComposite without a temporal upscale
+    bool fsr1_created = false;
     FfxVkPortableUpscaleContext* context = nullptr;
     bool resources_ready = false; ///< images below match width/height/out size
     bool resources_fsr4 = false;  ///< made for FSR 4 (no FSR 3 context)

@@ -7,9 +7,11 @@ BB_GAME_DIR_U1 / _U2 / _U3   optional: the folder of a game that was dumped on i
               that game instead of BB_GAME_DIR (its executable may be that folder's eboot.bin)
 BB_EXE        u1 / u2 / u3 or an executable name (default u1: eboot.bin, the collection menu)
 BB_USER_DIR   saves and shader caches (default user/ beside this script)
-BB_RESOLUTION / BB_RESOLUTION_U1 / _U2 / _U3   render resolution WxH (default 1920x1080, the
-              PS4's): the game's display settings and memory table are patched for it
+BB_RESOLUTION / BB_RESOLUTION_U1 / _U2 / _U3   resolution WxH (default 1920x1080, the PS4's):
+              the game's display settings and memory table are patched for the size it draws at
               (scripts/render_res.py, after BilalReloaded's Uncharted PC port)
+BB_UPSCALE_PRESET / _U1 / _U2 / _U3   quality, balanced, performance or ultra: the game draws
+              at the resolution divided by 1.5 / 1.7 / 2 / 3 and DLSS / FSR upscales to it
 Extra arguments go to bb-probe. When the game starts another executable of the collection
 (sceSystemServiceLoadExec), that one is prepared and started in its place.
 The in-game "Apply and restart" runs this script again through BB_RESTART_COMMAND;
@@ -154,48 +156,91 @@ def render_720p(env):
         if key.strip() == 'render_720p':
             return value.strip() == '1'
     return False
+# Upscaling presets (BB_UPSCALE_PRESET[_U1/_U2/_U3]): the resolution chosen (BB_RESOLUTION) is the
+# output; the game draws at it divided by the preset's scale, and DLSS / FSR 4 / FSR 3.1 (or TAA
+# with FSR 1) bring each frame up to it before the HUD and menus are drawn at the output size
+# (TemporalUpscaler::OnComposite). After BilalReloaded's Uncharted PC port.
+UPSCALE_SCALES = {'quality': 1.5, 'balanced': 1.7, 'performance': 2.0, 'ultra': 3.0}
+COMPOSITE_PS = '749bbec9'  # the copy of the finished frame into the display buffer (all three games)
+TONEMAP_PS = '484cdbf5'    # the draw finishing the frame (Uncharted 3 draws prompts into it after)
+
+
+def parse_size(text):
+    try:
+        width, height = (int(value) for value in text.lower().split('x'))
+        return width, height
+    except ValueError:
+        return None
+
+
 def render_resolution(env, exe, out, image):
-    """The image to start for the chosen render resolution (BB_RESOLUTION[_U1/_U2/_U3]=WxH):
-    boot-linked.bin patched by scripts/render_res.py, kept until it or the scripts change, and the
-    environment for it: the scene size (anti-aliasing, scene depth), the movie size (cutscene
-    movies scaled to it) and the direct memory the larger render target heaps need. 1920x1080 or
-    nothing chosen: the image as it is."""
+    """The image to start for the chosen resolution (BB_RESOLUTION[_U1/_U2/_U3]=WxH) and upscaling
+    preset (BB_UPSCALE_PRESET[_U1/_U2/_U3]): boot-linked.bin patched by scripts/render_res.py for
+    the size the game draws at, kept until it or the scripts change, and the environment for it:
+    the scene size (anti-aliasing, scene depth), the movie size (cutscene movies scaled to it),
+    the direct memory the larger render target heaps need, and, when the game draws below the
+    resolution chosen, the upscale to it. 1920x1080 without a preset: the image as it is."""
     key = next((k for k, v in EXECUTABLES.items() if v == exe), '')
-    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE'):
+    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE', 'BB_RENDER_RES', 'BB_OUTPUT_RES',
+                 'BB_UI_COMPOSITE_PS', 'BB_UI_TONEMAP_PS'):
         env.pop(name, None)
     if 'BB_DMEM_MB_USER' in env:
         env['BB_DMEM_MB'] = env['BB_DMEM_MB_USER']
     else:
         env.pop('BB_DMEM_MB', None)
-    size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
+    if not key:
+        return image
     # The 720p mode (Steam Deck mode, ARM's render_720p) renders at 720p its own way
     # (scripts/render_720p.py).
     if render_720p(env):
-        if size and size not in ('1920x1080', 'native', 'off', '0'):
-            print(f'Render resolution: {size} not used with the 720p mode (the game renders at 1280x720)')
+        if env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION'):
+            print('Render resolution: not used with the 720p mode (the game renders at 1280x720)')
         return image
-    if not key or not size or size in ('1920x1080', 'native', 'off', '0'):
-        return image
-    import json
-    patched = out / f'boot-res-{size}.bin'
-    meta = patched.with_suffix('.json')
-    sources = [image, PORT / 'scripts' / 'render_res.py']
-    if not (patched.is_file() and meta.is_file() and
-            all(patched.stat().st_mtime >= s.stat().st_mtime for s in sources)):
-        print(f'Render resolution: preparing {size} for {key.upper()} ...')
-        for old in out.glob('boot-res-*'):
-            old.unlink(missing_ok=True)
-        run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', size)
-    info = json.loads(meta.read_text(encoding='utf-8'))
-    render = info['render']
-    env['BB_SCENE_SIZE'] = render
-    env['BB_MOVIE_SIZE'] = render
-    if info.get('extra_mib'):
-        needed = 5056 + int(info['extra_mib']) + 64
-        player = env.get('BB_DMEM_MB_USER', '')
-        env['BB_DMEM_MB'] = str(max(needed, int(player)) if player.isdigit() else needed)
-    print(f'Render resolution: {key.upper()} at {render}'
-          f'{" (" + size + " asked)" if render != size else ""}, direct memory {env.get("BB_DMEM_MB", "5056")} MiB')
+    size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
+    output = parse_size(size) if size not in ('', 'native', 'off', '0') else None
+    output = output or (1920, 1080)
+    preset = (env.get(f'BB_UPSCALE_PRESET_{key.upper()}') or env.get('BB_UPSCALE_PRESET', '')).strip().lower()
+    scale = UPSCALE_SCALES.get(preset)
+    if scale and env.get('BB_UPSCALER', '').lower() == 'none':
+        print('Upscaling preset: needs the camera tracking (BB_UPSCALER=none): drawing at the output size')
+        scale = None
+    wanted = output
+    if scale:
+        # Widths in steps of 16 (Uncharted 3 asserts it in its post processing), heights of 4.
+        wanted = (max(640, round(output[0] / scale / 16) * 16), max(360, round(output[1] / scale / 4) * 4))
+    render = wanted
+    patched = image
+    if wanted != (1920, 1080):
+        import json
+        text = f'{wanted[0]}x{wanted[1]}'
+        patched = out / f'boot-res-{text}.bin'
+        meta = patched.with_suffix('.json')
+        sources = [image, PORT / 'scripts' / 'render_res.py']
+        if not (patched.is_file() and meta.is_file() and
+                all(patched.stat().st_mtime >= s.stat().st_mtime for s in sources)):
+            print(f'Render resolution: preparing {text} for {key.upper()} ...')
+            for old in out.glob('boot-res-*'):
+                old.unlink(missing_ok=True)
+            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text)
+        info = json.loads(meta.read_text(encoding='utf-8'))
+        render = parse_size(info['render'])
+        if info.get('extra_mib'):
+            needed = 5056 + int(info['extra_mib']) + 64
+            player = env.get('BB_DMEM_MB_USER', '')
+            env['BB_DMEM_MB'] = str(max(needed, int(player)) if player.isdigit() else needed)
+    render_text = f'{render[0]}x{render[1]}'
+    env['BB_SCENE_SIZE'] = render_text
+    if render != (1920, 1080):
+        env['BB_MOVIE_SIZE'] = render_text
+    upscaled = render[0] < output[0] or render[1] < output[1]
+    if upscaled:
+        env['BB_RENDER_RES'] = render_text
+        env['BB_OUTPUT_RES'] = f'{output[0]}x{output[1]}'
+        env['BB_UI_COMPOSITE_PS'] = COMPOSITE_PS
+        env['BB_UI_TONEMAP_PS'] = TONEMAP_PS
+    print(f'Render resolution: {key.upper()} draws {render_text}'
+          f'{", upscaled to " + env["BB_OUTPUT_RES"] + (" (" + preset + ")" if scale else "") if upscaled else ""}'
+          f', direct memory {env.get("BB_DMEM_MB", "5056")} MiB')
     return patched
 
 
