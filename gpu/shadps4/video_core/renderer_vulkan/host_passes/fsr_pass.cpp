@@ -131,7 +131,7 @@ void FsrPass::Create(vk::Device device, VmaAllocator allocator, u32 num_images) 
 
 vk::ImageView FsrPass::Render(vk::CommandBuffer cmdbuf, vk::ImageView input,
                               vk::Extent2D input_size, vk::Extent2D output_size, Settings settings,
-                              bool hdr) {
+                              bool hdr, vk::Extent2D input_image_size) {
     if (!settings.enable) {
         DebugState.is_using_fsr = false;
         return input;
@@ -189,12 +189,15 @@ vk::ImageView FsrPass::Render(vk::CommandBuffer cmdbuf, vk::ImageView input,
         .pImageMemoryBarriers = enter_barrier.data(),
     });
 
+    if (input_image_size.width == 0 || input_image_size.height == 0) {
+        input_image_size = input_size;
+    }
     FSRConstants consts{};
     FsrEasuCon(reinterpret_cast<AU1*>(&consts.Const0), reinterpret_cast<AU1*>(&consts.Const1),
                reinterpret_cast<AU1*>(&consts.Const2), reinterpret_cast<AU1*>(&consts.Const3),
                static_cast<AF1>(input_size.width), static_cast<AF1>(input_size.height),
-               static_cast<AF1>(input_size.width), static_cast<AF1>(input_size.height), (AF1)width,
-               (AF1)height);
+               static_cast<AF1>(input_image_size.width), static_cast<AF1>(input_image_size.height),
+               (AF1)width, (AF1)height);
     consts.Sample[0] = hdr && !settings.use_rcas ? 1 : 0;
 
     if (settings.use_rcas) {
@@ -319,7 +322,19 @@ vk::ImageView FsrPass::Render(vk::CommandBuffer cmdbuf, vk::ImageView input,
         }
 
     } else {
-        // only easu
+        // only easu: straight into the output image, which needs the general layout too
+        // (BilalReloaded's Uncharted PC port).
+        const vk::ImageMemoryBarrier2 to_general{
+            .srcStageMask = vk::PipelineStageFlagBits2::eTopOfPipe,
+            .srcAccessMask = vk::AccessFlagBits2::eNone,
+            .dstStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+            .dstAccessMask = vk::AccessFlagBits2::eShaderStorageWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .image = img.output_image,
+            .subresourceRange = simple_subresource,
+        };
+        cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_general});
         std::array<vk::DescriptorImageInfo, 3> img_info{{
             {
                 .imageView = input,
@@ -384,6 +399,7 @@ vk::ImageView FsrPass::Render(vk::CommandBuffer cmdbuf, vk::ImageView input,
         cmdbuf.endDebugUtilsLabelEXT();
     }
 
+    last_output = img.output_image;
     return img.output_image_view.get();
 }
 

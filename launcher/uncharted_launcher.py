@@ -90,6 +90,12 @@ WINDOW_SIZES = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
 # Render resolution (BB_RESOLUTION; run.py, scripts/render_res.py, after BilalReloaded's Uncharted
 # PC port): the games' display settings and memory table are patched for it, and the
 # anti-aliasing runs at it. Drake's Fortune renders at most 2880 x 1620 (its memory layout).
+# Upscaling presets (BB_UPSCALE_PRESET; run.py): the resolution above is the output, the game
+# draws at it divided by the scale and the anti-aliasing chosen (DLSS, FSR 4, FSR 3.1; TAA with
+# FSR 1) brings each frame up to it; the HUD and menus are drawn at the output size.
+UPSCALE_PRESETS = [('off', 'Native (no upscaling)'), ('quality', 'Quality (× 1.5)'),
+                   ('balanced', 'Balanced (× 1.7)'), ('performance', 'Performance (× 2)'),
+                   ('ultra', 'Ultra Performance (× 3)')]
 RENDER_RESOLUTIONS = [('1280x720', '1280 × 720'), ('1600x900', '1600 × 900'),
                       ('1920x1080', "1920 × 1080 (the games' own)"), ('2560x1440', '2560 × 1440'),
                       ('2880x1620', '2880 × 1620'), ('3200x1800', '3200 × 1800'),
@@ -159,7 +165,8 @@ RESERVED_KEYS = {'Insert': 'Insert opens the in-game settings menu.',
 
 APP_DEFAULTS = {'game_dir': '', 'game_dir_u1': '', 'game_dir_u2': '', 'game_dir_u3': '', 'user_dir': '', 'start': 'u1', 'language': '1', 'player_name': '',
                 'fullscreen': False, 'present_mode': 'Mailbox', 'frame_rate': '60', 'show_fps': False,
-                'window_size': '1920x1080', 'render_resolution': '1920x1080', 'scaler': 'fsr1',
+                'window_size': '1920x1080', 'render_resolution': '1920x1080', 'upscale_preset': 'off',
+                'scaler': 'fsr1',
                 'sharpening': '500',
                 'anti_aliasing': 'off', 'aa_sharpness': '0.2', 'frame_generation': 'off',
                 'frame_gen_multiplier': '2', 'extra_env': '', 'close_on_play': False,
@@ -372,6 +379,7 @@ def game_environment(s, start=None):
     env['BB_VBLANK_HZ'] = str(s.get('frame_rate') or '60')
     env['BB_WINDOW_SIZE'] = str(s.get('window_size') or '1920x1080')
     env['BB_RESOLUTION'] = str(s.get('render_resolution') or '1920x1080')
+    env['BB_UPSCALE_PRESET'] = str(s.get('upscale_preset') or 'off')
     env['BB_FSR1'] = '1' if s.get('scaler', 'fsr1') == 'fsr1' else '0'
     sharpening = str(s.get('sharpening') or 'off')
     env['BB_RCAS'] = '0' if sharpening == 'off' else '1'
@@ -1062,14 +1070,20 @@ class Launcher:
             hint += ' ' + _('Your display runs at {} Hz.').format(refresh)
         self.row(f, _('Frame rate'), self.choice(f, 'frame_rate', FRAME_RATES, 34), hint)
         self.section(f, _('Resolution'))
-        self.row(f, _('Render resolution'), self.choice(f, 'render_resolution', RENDER_RESOLUTIONS, 34),
-                 _('The size the games draw at (the PS4: 1920 × 1080). Above it needs a faster GPU and '
-                   'more video memory (1440p: 8 GB is enough; 4K: 10 GB or more). Drake\'s Fortune draws '
-                   'at most 2880 × 1620. The first start at a new size prepares the game again.'))
+        self.row(f, _('Resolution'), self.choice(f, 'render_resolution', RENDER_RESOLUTIONS, 34),
+                 _('The size of the picture (the PS4: 1920 × 1080). Without upscaling the games draw at '
+                   'it: above 1080p that needs a faster GPU and more video memory (1440p: 8 GB is enough; '
+                   '4K: 10 GB or more). Drake\'s Fortune draws at most 2880 × 1620 and is upscaled from '
+                   'there. The first start at a new size prepares the game again.'))
+        self.row(f, _('Upscaling'), self.choice(f, 'upscale_preset', UPSCALE_PRESETS, 34),
+                 _('The games draw below the resolution (Quality: ÷ 1.5, Balanced: ÷ 1.7, Performance: '
+                   '÷ 2, Ultra Performance: ÷ 3) and the anti-aliasing below rebuilds each frame at the '
+                   'resolution: pick NVIDIA DLSS or AMD FSR 4 for it. The HUD and menus stay sharp at '
+                   'the resolution.'))
         self.row(f, _('Window size'), self.choice(f, 'window_size', WINDOW_SIZES, 34),
                  _('The rendered image is scaled to the window (or the screen in fullscreen). Pick '
-                   'the same size as the render resolution for a sharp 1:1 picture.'))
-        self.row(f, _('Upscaling'), self.choice(f, 'scaler', SCALERS, 34),
+                   'the same size as the resolution for a sharp 1:1 picture.'))
+        self.row(f, _('Window scaling'), self.choice(f, 'scaler', SCALERS, 34),
                  _('FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.'))
         self.row(f, _('Sharpening'), self.choice(f, 'sharpening', SHARPENING, 34),
                  _('AMD RCAS after FSR 1 (only while the image is enlarged).'))
