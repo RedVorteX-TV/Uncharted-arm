@@ -135,6 +135,15 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
                        reqs.memoryTypeBits)
             .value();
     arena_memory_type_bits = reqs.memoryTypeBits;
+    {
+        const auto flags =
+            instance.GetMemoryProperties().memoryTypes[arena_memory_type_index].propertyFlags;
+        const char* merge_env = std::getenv("BB_GPU_MERGE");
+        const char* uma_env = std::getenv("BB_UMA_READBACK");
+        uma_read_back = merge_env && merge_env[0] == '0' && !(uma_env && uma_env[0] == '0') &&
+                        (flags & vk::MemoryPropertyFlagBits::eHostVisible);
+        uma_coherent = bool(flags & vk::MemoryPropertyFlagBits::eHostCoherent);
+    }
 
     const u64 bda_pagetable_size =
         (blocks_per_arena_page * num_arena_pages) * sizeof(vk::DeviceAddress);
@@ -156,14 +165,21 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
     if (instance.GetSideQueue() && !(side_env && side_env[0] == '0')) {
         side_queue = std::make_unique<SideQueue>(instance, instance.GetSideQueue());
     }
-    // ARM port: whether read backs of GPU data (BB_GPU_MERGE=0, Uncharted 2) have a queue of their
-    // own or wait for all the work queued for graphics (GPU ticks in BB_FRAME_STATS).
-    std::printf("GPU read backs: %s\n", side_queue ? "on a side queue"
-                                                    : "no side queue, they wait for the graphics queue");
+    // ARM port: how read backs of GPU data (BB_GPU_MERGE=0, Uncharted 2) avoid waiting for all the
+    // work queued for graphics (GPU ticks in BB_FRAME_STATS), if they can.
+    if (side_queue) {
+        uma_read_back = false;
+    }
+    Vulkan::g_host_read_barrier = uma_read_back;
+    std::printf("GPU read backs: %s\n",
+                side_queue     ? "on a side queue"
+                : uma_read_back ? (uma_coherent ? "from mapped GPU memory (unified memory)"
+                                                : "from mapped GPU memory (unified memory, non-coherent)")
+                                : "no side queue, they wait for the graphics queue");
 }
 
 bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
-    if (!side_queue) {
+    if (!side_queue && !uma_read_back) {
         return false;
     }
     const auto start_time = std::chrono::steady_clock::now();
@@ -248,11 +264,19 @@ bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
             total += end - start;
         });
     }
-    auto& side = *side_queue;
-    if (total > SideQueue::StagingSize) {
+    if (!side_queue) {
+        // Unified memory: the completed GPU writes are read where they are. A range not mapped
+        // (another memory type) leaves the read back to the full path.
+        for (const auto& copy : copies) {
+            if (!ReadMapped(arena->cpu_addr + copy.srcOffset, copy.size)) {
+                return false;
+            }
+        }
+    } else if (total > SideQueue::StagingSize) {
         return false;
     }
-    if (total != 0) {
+    if (side_queue && total != 0) {
+        auto& side = *side_queue;
         std::scoped_lock lk{side.mutex};
         Vulkan::Check(side.device.resetCommandPool(*side.pool));
         Vulkan::Check(side.cmdbuf.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit}));
@@ -300,6 +324,65 @@ bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
             .count(),
         std::memory_order_relaxed);
     return true;
+}
+
+void BufferCache::MapBacking(vk::DeviceMemory device_memory, u32 type_index) {
+    const auto flags = instance.GetMemoryProperties().memoryTypes[type_index].propertyFlags;
+    if (!uma_read_back || !(flags & vk::MemoryPropertyFlagBits::eHostVisible)) {
+        return;
+    }
+    void* data = nullptr;
+    if (instance.GetDevice().mapMemory(device_memory, 0, VK_WHOLE_SIZE, {}, &data) ==
+            vk::Result::eSuccess &&
+        data) {
+        std::scoped_lock lk{mapped_mutex};
+        mapped_backings[static_cast<VkDeviceMemory>(device_memory)] = static_cast<u8*>(data);
+    }
+}
+
+bool BufferCache::ReadMapped(VAddr addr, u64 size) {
+    const VAddr end = addr + size;
+    VAddr at = addr;
+    bool ok = true;
+    resident_ranges.ForEachInRange(addr >> block_shift, ((end - 1) >> block_shift) + 1,
+                                   [&](const Backing& backing) {
+        if (!ok || at >= end) {
+            return;
+        }
+        const VAddr from = std::max<VAddr>(at, backing.start << block_shift);
+        const VAddr to = std::min<VAddr>(end, backing.end << block_shift);
+        if (from != at || from >= to) { // not resident in between
+            ok = false;
+            return;
+        }
+        u8* mapped = nullptr;
+        {
+            std::scoped_lock lk{mapped_mutex};
+            const auto it = mapped_backings.find(static_cast<VkDeviceMemory>(backing.memory));
+            mapped = it == mapped_backings.end() ? nullptr : it->second;
+        }
+        if (!mapped) {
+            ok = false;
+            return;
+        }
+        const u64 offset = backing.offset + (from - (backing.start << block_shift));
+        if (!uma_coherent) {
+            const u64 atom = instance.NonCoherentAtomSize();
+            const u64 first = Common::AlignDown(offset, atom);
+            const vk::MappedMemoryRange range = {
+                .memory = backing.memory,
+                .offset = first,
+                .size = Common::AlignUp(offset + (to - from), atom) - first,
+            };
+            if (instance.GetDevice().invalidateMappedMemoryRanges(range) != vk::Result::eSuccess) {
+                ok = false;
+                return;
+            }
+        }
+        memory->TryWriteBacking(std::bit_cast<u8*>(from), mapped + offset, to - from);
+        at = to;
+    });
+    return ok && at == end;
 }
 
 BufferCache::~BufferCache() = default;
@@ -1110,6 +1193,7 @@ void BufferCache::EnsureResident(const Buffer* arena, u64 first_block, u64 last_
         }
     }
     device_memory = Vulkan::Check(vk::ResultValue<vk::DeviceMemory>{alloc_result, device_memory});
+    MapBacking(device_memory, alloc_info.memoryTypeIndex);
     static const bool arena_log = [] {
         const char* env = std::getenv("BB_ARENA_LOG");
         return env && env[0] == '1';

@@ -216,6 +216,15 @@ private:
     struct SideQueue;
     std::unique_ptr<SideQueue> side_queue;
     bool DownloadOnSideQueue(VAddr page, u64 length);
+    /// ARM port: without a side queue, on a GPU whose memory the CPU reaches (unified memory:
+    /// Adreno), the same read back is a copy from the GPU memory itself once the writing work has
+    /// completed (BB_UMA_READBACK=0: off). The backing memory is mapped as it is allocated.
+    bool uma_read_back{};
+    bool uma_coherent{};
+    std::mutex mapped_mutex;
+    std::unordered_map<VkDeviceMemory, u8*> mapped_backings;
+    void MapBacking(vk::DeviceMemory memory, u32 type_index);
+    bool ReadMapped(VAddr addr, u64 size);
 
     std::unique_ptr<FaultManager> fault_manager;
     std::unique_ptr<Buffer> bda_pagetable_buffer;
