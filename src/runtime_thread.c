@@ -289,16 +289,37 @@ void runtime_set_guest_fpu(void) {
     __asm__ volatile("ldmxcsr %0" : : "m"(mxcsr));
     __asm__ volatile("fldcw %0" : : "m"(fpucw));
 #else
-    /* aarch64: the guest's MXCSR is FEXCore state, not the host's; not supported yet. */
-    static int told;
-    if (!told++) fputs("Runtime: BB_GUEST_MXCSR is ignored on this CPU (FEXCore)\n",stderr);
+    /* FEXCore: MXCSR and the x87 control word are guest state, set by guest code: a stub
+     * `ldmxcsr [rdi]; fldcw [rsi]; ret` with the two values after it, run on this thread's
+     * guest stack (host_start calls this once the stack is set). */
+    static unsigned char *stub;
+    static pthread_mutex_t stub_lock=PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&stub_lock);
+    if (!stub) {
+        unsigned char *page=runtime_low_map(4096,PROT_READ|PROT_WRITE);
+        if (!page) { pthread_mutex_unlock(&stub_lock); fputs("Runtime: no memory for the FPU stub\n",stderr); return; }
+        static const unsigned char code[]={0x0f,0xae,0x17, 0xd9,0x2e, 0xc3}; /* ldmxcsr [rdi]; fldcw [rsi]; ret */
+        const uint32_t mxcsr=value;
+        const uint16_t fpucw=0x037f;
+        memcpy(page,code,sizeof(code));
+        memcpy(page+16,&mxcsr,4);
+        memcpy(page+20,&fpucw,2);
+        if (mprotect(page,4096,PROT_READ|PROT_EXEC)) { pthread_mutex_unlock(&stub_lock); perror("Runtime: mprotect(FPU stub)"); return; }
+        guest_cpu_code((uintptr_t)page,4096);
+        stub=page;
+    }
+    pthread_mutex_unlock(&stub_lock);
+    const uint64_t args[2]={(uint64_t)(uintptr_t)(stub+16),(uint64_t)(uintptr_t)(stub+20)};
+    guest_cpu_call((uintptr_t)stub,2,args);
 #endif
 }
 static void *host_start(void *p) {
     GuestThread *t=p;
     attach(t);
     set_host_name(t->name);
+#ifdef GUEST_CPU_NATIVE
     runtime_set_guest_fpu();
+#endif
     if (t->attr.affinity!=0x7f) apply_affinity(t,1);
 #ifdef GUEST_CPU_NATIVE
     if (!exit_setjmp(t)) t->result=t->entry(t->argument);
@@ -306,6 +327,7 @@ static void *host_start(void *p) {
 #else
     /* FEXCore: the guest runs on its own stack below 1 TiB; the host stack stays the pthread's. */
     if (t->guest_stack) guest_cpu_thread_stack(t->guest_stack+t->guest_stack_size,t->guest_stack_size);
+    runtime_set_guest_fpu();
     const uint64_t argument=(uint64_t)(uintptr_t)t->argument;
     if (!exit_setjmp(t)) t->result=(void *)(uintptr_t)guest_cpu_call((uintptr_t)t->entry,1,&argument);
     else guest_cpu_abandon();
