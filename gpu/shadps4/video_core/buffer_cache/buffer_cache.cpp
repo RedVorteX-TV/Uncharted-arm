@@ -156,6 +156,10 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
     if (instance.GetSideQueue() && !(side_env && side_env[0] == '0')) {
         side_queue = std::make_unique<SideQueue>(instance, instance.GetSideQueue());
     }
+    // ARM port: whether read backs of GPU data (BB_GPU_MERGE=0, Uncharted 2) have a queue of their
+    // own or wait for all the work queued for graphics (GPU ticks in BB_FRAME_STATS).
+    std::printf("GPU read backs: %s\n", side_queue ? "on a side queue"
+                                                    : "no side queue, they wait for the graphics queue");
 }
 
 bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
