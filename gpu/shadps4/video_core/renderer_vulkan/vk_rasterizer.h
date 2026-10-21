@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdlib>
 #include <mutex>
 #include <vector>
 
@@ -77,8 +78,27 @@ public:
         } else {
             func();
         }
+        // ARM port: with read backs from mapped GPU memory (accurate GPU memory on unified
+        // memory, Uncharted 2 and 3 on Adreno) the work is submitted every 100 draws and
+        // dispatches, so a read back waits for less work queued after the GPU write (U3 on the
+        // Odin 3: 29-36 -> 40-42 FPS). BB_FLUSH_DRAWS=N sets the count, 0 turns it off.
+        const u32 every = FlushEveryDraws();
+        if (every && ++draws_since_flush >= every) {
+            Flush();
+        }
     }
 
+    static u32 FlushEveryDraws() {
+        static const u32 every = [] {
+            const char* env = std::getenv("BB_FLUSH_DRAWS");
+            if (env && *env) {
+                return static_cast<u32>(std::strtoul(env, nullptr, 10));
+            }
+            return Vulkan::g_host_read_barrier ? 100u : 0u;
+        }();
+        return every;
+    }
+    u32 draws_since_flush = 0;
     void ScopeMarkerBegin(const std::string_view& str, bool from_guest = false);
     void ScopeMarkerEnd(bool from_guest = false);
     void ScopedMarkerInsert(const std::string_view& str, bool from_guest = false);

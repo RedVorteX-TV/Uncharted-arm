@@ -225,7 +225,7 @@ private:
     std::unordered_map<VkDeviceMemory, u8*> mapped_backings;
     void MapBacking(vk::DeviceMemory memory, u32 type_index);
     bool ReadMapped(VAddr addr, u64 size);
-    void NoteReadBack(VAddr page, u64 fault_tick, u64 current_tick, u64 wait_ns);
+    void NoteReadBack(VAddr page, u64 fault_tick, u64 current_tick, u64 wait_ns, bool done_before);
 
     std::unique_ptr<FaultManager> fault_manager;
     std::unique_ptr<Buffer> bda_pagetable_buffer;

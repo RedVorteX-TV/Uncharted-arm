@@ -181,7 +181,8 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
 /// ARM port, BB_READBACK_STATS=1: where the read backs of accurate GPU memory wait. Every 10 s:
 /// how many, how long, how far behind the GPU was (submissions between the write and the fault),
 /// and the pages that wait most. GPU thread only.
-void BufferCache::NoteReadBack(VAddr page, u64 fault_tick, u64 current_tick, u64 wait_ns) {
+void BufferCache::NoteReadBack(VAddr page, u64 fault_tick, u64 current_tick, u64 wait_ns,
+                               bool done_before) {
     struct PageStats {
         u64 count, waits, wait_ns, behind;
     };
@@ -194,7 +195,7 @@ void BufferCache::NoteReadBack(VAddr page, u64 fault_tick, u64 current_tick, u64
     auto& entry = pages[page];
     ++entry.count;
     entry.wait_ns += wait_ns;
-    if (!fault_tick || scheduler.IsFree(fault_tick)) {
+    if (done_before) {
         ++done;
     } else if (fault_tick >= current_tick) {
         ++unsubmitted;
@@ -278,7 +279,8 @@ bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
         // here, which deadlocks with the recording thread (loading screen hang); the full read
         // back below handles those.
         const u64 current = scheduler.CurrentTick();
-        const bool must_wait = fault_tick && !scheduler.IsFree(fault_tick) && fault_tick < current;
+        const bool done_before = !fault_tick || scheduler.IsFree(fault_tick);
+        const bool must_wait = !done_before && fault_tick < current;
         const auto wait_start = std::chrono::steady_clock::now();
         if (must_wait) {
             scheduler.Wait(fault_tick);
@@ -288,7 +290,7 @@ bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
                                                 std::chrono::steady_clock::now() - wait_start)
                                                 .count()
                                           : 0;
-            NoteReadBack(page, fault_tick, current, wait_ns);
+            NoteReadBack(page, fault_tick, current, wait_ns, done_before);
         }
     }
     {

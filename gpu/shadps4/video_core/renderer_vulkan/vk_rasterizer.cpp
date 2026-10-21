@@ -2201,6 +2201,7 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
 }
 
 u64 Rasterizer::Flush() {
+    draws_since_flush = 0;
     DrainDrawPipe();
     const u64 current_tick = scheduler.CurrentTick();
     SubmitInfo info{};
