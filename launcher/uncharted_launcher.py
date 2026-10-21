@@ -1669,7 +1669,7 @@ def latest_release():
         version = release['tag_name'].lstrip('v')
     url = next((asset['browser_download_url'] for asset in release.get('assets', [])
                 if (asset.get('name', '').lower().endswith('.zip') if WINDOWS  # Linux fork: the AppImage
-                    else asset.get('name') == 'Uncharted-x86_64.AppImage')), None)
+                    else asset.get('name') == f'Uncharted-{os.uname().machine}.AppImage')), None)
     return version, url, release.get('html_url') or RELEASES_PAGE, release.get('body') or ''
 
 

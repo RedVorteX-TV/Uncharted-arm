@@ -78,4 +78,13 @@ for name in libstdc++.so.6 libgcc_s.so.1; do
     [[ -n $path ]] && cp -L -- "$path" out/lib/
 done
 ls out/lib | sed 's/^/  /'
+
+# BB_APPIMAGE=1 (packaging/armada/appimage.sh): the launcher frozen with PyInstaller and
+# everything packed into dist/Uncharted-aarch64.AppImage (packaging/linux/package.sh).
+if [[ ${BB_APPIMAGE:-0} == 1 ]]; then
+    echo "== AppImage"
+    for dep in python3-tkinter tk file findutils curl rpm binutils; do install_alternatives "$dep" 1; done
+    if (( ${#missing[@]} )); then echo "No se pudieron instalar: ${missing[*]}" >&2; exit 1; fi
+    LINUX_BUILD=${LINUX_BUILD:-arm-$(git rev-parse --short HEAD 2>/dev/null || echo dev)} bash packaging/linux/package.sh
+fi
 echo "== done"

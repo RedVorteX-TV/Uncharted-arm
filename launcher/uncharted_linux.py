@@ -7,6 +7,7 @@ the launcher only calls into this module where it would otherwise call a Windows
 import ctypes
 import ctypes.util
 import os
+import platform
 import re
 from pathlib import Path
 import shutil
@@ -36,6 +37,11 @@ TITLE = 'Uncharted: The Nathan Drake Collection'
 
 def config_dir():
     return Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'uncharted-launcher'
+
+
+# ARM port: an aarch64 host (ARM handhelds such as the AYN Odin 3, phones and boards). The games
+# run through FEXCore there; the Settings page offers what these GPUs run well (ARM_* below).
+ARM = platform.machine().lower() in ('aarch64', 'arm64')
 
 
 def steam_deck():
@@ -448,6 +454,72 @@ def apply_defaults(ns):
         ns['FRAME_RATES'].insert(0, ('30', '30 FPS'))
     if not any(value == '1280x800' for value, _text in ns['WINDOW_SIZES']):
         ns['WINDOW_SIZES'].insert(1, ('1280x800', '1280 × 800 (Steam Deck)'))
+    if ARM:
+        apply_arm_defaults(ns)
+
+
+# ARM port: the settings an ARM handheld starts with, and the frame rate limits it offers. The
+# frame rate is a limit there (fps_limit in bbport.ini, BB_VBLANK_HZ stays 60): 40 FPS paces
+# evenly on 120 Hz screens. Rendering at 1280x720 (render_720p) and FSR 1 to the screen give
+# Uncharted 1 ~50 FPS on a Snapdragon 8 Elite where 1080p gives ~35. The 720p mode, FSR 1 and
+# the frame rate limit are shared with the in-game menu through bbport.ini (ARM_INI).
+# Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
+ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
+                'render_720p': True, 'scaler': 'fsr1', 'check_updates': False}
+ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
+                   ('60', '60 FPS'), ('0', 'No limit')]
+ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
+ARM_INI = ('fps_limit', 'render_720p', 'fsr1')
+
+
+def apply_arm_defaults(ns):
+    """ARM hosts: no Steam Deck mode, the ARM defaults, frame rate limits instead of display
+    rates, and no NVIDIA or FSR 4 choices (those need GPUs these devices do not have)."""
+    ns['APP_DEFAULTS'].update(ARM_DEFAULTS)
+    ns['FRAME_RATES'][:] = ARM_FRAME_RATES
+    for name, key in (('ANTI_ALIASING', 'anti_aliasing'), ('FRAME_GENERATION', 'frame_generation')):
+        ns[name][:] = [(value, text) for value, text in ns[name] if value not in ARM_UNAVAILABLE[key]]
+    ns['FRAME_GEN_MULTIPLIERS'][:] = [(value, text) for value, text in ns['FRAME_GEN_MULTIPLIERS'] if value == '2']
+    ROW_HINTS['Frame rate'] = 'A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.'
+
+
+def arm_ini_values(settings):
+    """bbport.ini's fps_limit, render_720p and fsr1 for these launcher settings."""
+    rate = str(settings.get('frame_rate') or '40')
+    if rate not in [value for value, _text in ARM_FRAME_RATES]:
+        rate = ARM_DEFAULTS['frame_rate']
+    return {'fps_limit': rate, 'render_720p': '1' if settings.get('render_720p', True) else '0',
+            'fsr1': '1' if str(settings.get('scaler') or 'fsr1') == 'fsr1' else '0'}
+
+
+def arm_settings_from_ini(text):
+    """The launcher settings bbport.ini's fps_limit, render_720p and fsr1 stand for (the in-game
+    menu changes them too): {setting: value} for the keys present."""
+    out = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition('=')
+        key, value = key.strip(), value.strip()
+        if not sep or line.lstrip().startswith('#'):
+            continue
+        if key == 'fps_limit' and value in [v for v, _t in ARM_FRAME_RATES]:
+            out['frame_rate'] = value
+        elif key == 'render_720p' and value in ('0', '1'):
+            out['render_720p'] = value == '1'
+        elif key == 'fsr1' and value in ('0', '1'):
+            out['scaler'] = 'fsr1' if value == '1' else 'bilinear'
+    return out
+
+
+def arm_environment(settings, env):
+    """ARM hosts: the game's display rate stays 60 Hz (the limit is fps_limit); 720p, FSR 1 and
+    the limit come from bbport.ini, so that the in-game menu's changes hold after a restart; what
+    these GPUs cannot run falls back to off."""
+    env['BB_VBLANK_HZ'] = '60'
+    for name in ('BB_FPS_LIMIT', 'BB_RENDER_720P', 'BB_FSR1'):
+        env.pop(name, None)
+    for key, name in (('anti_aliasing', 'BB_UPSCALER'), ('frame_generation', 'BB_FRAME_GEN')):
+        if str(settings.get(key) or 'off') in ARM_UNAVAILABLE[key]:
+            env[name] = 'off'
 
 
 def saves_for(game_dir):
@@ -489,7 +561,7 @@ def deck_frame_rate_30(saved):
     """Steam Deck mode's default became 30 FPS (it was 60, which the Deck does not hold yet): saved
     settings from an older launcher switch to 30 once, even when the game starts from Steam without
     the launcher window. 60 can be chosen again. Returns True when `saved` changed."""
-    if not saved or saved.get('deck_30fps'):
+    if ARM or not saved or saved.get('deck_30fps'):
         return False
     saved['deck_30fps'] = True
     if saved.get('steam_deck') and str(saved.get('frame_rate')) == '60':
@@ -509,6 +581,9 @@ def deck_environment(settings, env):
     cannot run. Applied before the player's own Environment entries, which can override any of it.
     The GPU readbacks choice was removed (Off made Uncharted 2's convoy unpassable, Precise hangs
     Uncharted 2 at startup), so a gpu_readbacks value saved by an older launcher is ignored."""
+    if ARM:
+        arm_environment(settings, env)
+        return
     if not settings.get('steam_deck'):
         return
     rate = str(settings.get('frame_rate') or '')
@@ -858,9 +933,21 @@ def launcher_class(base, ns):
                 handler = lambda e, d=delta: self.on_wheel(SimpleNamespace(delta=d, widget=e.widget))
                 self.root.bind_all(button, handler)
                 self.root.bind_class('TCombobox', button, handler)
+            if ARM:  # the in-game menu may have changed them since the last start
+                self.arm_sync_from_ini()
             self.var('steam_deck').trace_add('write', lambda *_a: self.steam_deck_changed())
             self.steam_deck_changed(startup=True)
             self.build_save_button()
+
+        def arm_sync_from_ini(self):
+            try:
+                text = ns['ini_path']().read_text(encoding='utf-8')
+            except OSError:
+                return
+            for key, value in arm_settings_from_ini(text).items():
+                self.app[key] = value
+                if key in self.vars:
+                    self.vars[key].set(value)
 
         def build_save_button(self):
             """Save changes, bottom right: dim until a setting changes, then gold until saved.
@@ -904,6 +991,12 @@ def launcher_class(base, ns):
 
         def collect(self):
             super().collect()
+            if ARM:  # 720p, FSR 1 and the frame rate limit: bbport.ini, shared with the in-game menu
+                try:
+                    for key, value in arm_ini_values(self.app).items():
+                        ns['set_ini'](key, value)
+                except OSError:
+                    pass
             if hasattr(self, 'saved_settings'):
                 self.saved_settings = self.settings_now()
                 self.after_setting_change()
@@ -1291,7 +1384,11 @@ def launcher_class(base, ns):
                 head.winfo_children()[1].pack_forget()
             self.page_inner = getattr(self, 'page_inner', {})
             self.page_inner[name] = f
-            if name == 'display':
+            if name == 'display' and ARM:
+                self.check(f, 'render_720p', _('Render at 1280 × 720'),
+                           _('The games render at 720p and the upscaling below scales them to the '
+                             'screen: much higher FPS on ARM handhelds. Also in the in-game menu (L3+R3).'))
+            elif name == 'display':
                 self.check(f, 'steam_deck', _('Steam Deck mode'),
                            _('Optimizes settings for Steam Deck. 1280x800 60FPS'))
             return f

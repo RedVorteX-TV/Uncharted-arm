@@ -29,15 +29,15 @@ if command -v podman >/dev/null; then
     # Rootless podman: root in the container is this user on the host, so out/ stays ours.
     # A named volume keeps the dnf cache between builds.
     podman run --rm --net=host --security-opt label=disable \
-        -e BB_LTO="${BB_LTO:-OFF}" -e BB_PGO="${BB_PGO:-off}" \
+        -e BB_LTO="${BB_LTO:-OFF}" -e BB_PGO="${BB_PGO:-off}" -e BB_APPIMAGE="${BB_APPIMAGE:-0}" \
         -v uncharted-dnf-cache:/var/cache/libdnf5 \
         -v "$PORT:$PORT" -w "$PORT" "$image" bash "$inner"
 elif command -v toolbox >/dev/null; then
     toolbox create -y -r "$release" -c uncharted-build 2>/dev/null || true
-    toolbox run -c uncharted-build bash "$inner"
+    toolbox run -c uncharted-build env BB_APPIMAGE="${BB_APPIMAGE:-0}" bash "$inner"
 elif command -v distrobox >/dev/null; then
     distrobox create -Y -i "$image" -n uncharted-build 2>/dev/null || true
-    distrobox enter uncharted-build -- bash "$inner"
+    distrobox enter uncharted-build -- env BB_APPIMAGE="${BB_APPIMAGE:-0}" bash "$inner"
 else
     echo "Need podman, toolbox or distrobox to build without touching the system." >&2
     exit 1
