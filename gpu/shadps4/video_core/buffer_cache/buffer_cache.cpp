@@ -178,6 +178,62 @@ BufferCache::BufferCache(const Vulkan::Instance& instance_, Vulkan::Scheduler& s
                                 : "no side queue, they wait for the graphics queue");
 }
 
+/// ARM port, BB_READBACK_STATS=1: where the read backs of accurate GPU memory wait. Every 10 s:
+/// how many, how long, how far behind the GPU was (submissions between the write and the fault),
+/// and the pages that wait most. GPU thread only.
+void BufferCache::NoteReadBack(VAddr page, u64 fault_tick, u64 current_tick, u64 wait_ns) {
+    struct PageStats {
+        u64 count, waits, wait_ns, behind;
+    };
+    static std::unordered_map<VAddr, PageStats> pages;
+    static u64 behind_hist[5], unsubmitted, done, total, total_wait_ns;
+    static u64 first_tick = current_tick;
+    static auto window = std::chrono::steady_clock::now();
+    ++total;
+    total_wait_ns += wait_ns;
+    auto& entry = pages[page];
+    ++entry.count;
+    entry.wait_ns += wait_ns;
+    if (!fault_tick || scheduler.IsFree(fault_tick)) {
+        ++done;
+    } else if (fault_tick >= current_tick) {
+        ++unsubmitted;
+    } else {
+        const u64 behind = current_tick - fault_tick;
+        ++behind_hist[std::min<u64>(behind, 4)];
+        ++entry.waits;
+        entry.behind += behind;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - window).count();
+    if (seconds < 10.0) {
+        return;
+    }
+    std::printf("Read back stats (%.0f s): %.0f/s, %.0f us waited each on average; GPU write done "
+                "%.0f/s, still being recorded %.0f/s, submitted and running %.0f/s (1 submission "
+                "behind %.0f/s, 2: %.0f/s, 3: %.0f/s, more: %.0f/s); %.0f submissions/s\n",
+                seconds, total / seconds, total ? total_wait_ns / 1e3 / total : 0.0,
+                done / seconds, unsubmitted / seconds,
+                (behind_hist[1] + behind_hist[2] + behind_hist[3] + behind_hist[4]) / seconds,
+                behind_hist[1] / seconds, behind_hist[2] / seconds, behind_hist[3] / seconds,
+                behind_hist[4] / seconds, (current_tick - first_tick) / seconds);
+    std::vector<std::pair<VAddr, PageStats>> top(pages.begin(), pages.end());
+    std::ranges::sort(top, [](const auto& a, const auto& b) { return a.second.wait_ns > b.second.wait_ns; });
+    for (std::size_t i = 0; i < top.size() && i < 8; ++i) {
+        const auto& [address, st] = top[i];
+        std::printf("  page 0x%llx: %.0f/s, waited %.0f/s for %.0f us each, %.1f submissions behind\n",
+                    static_cast<unsigned long long>(address), st.count / seconds, st.waits / seconds,
+                    st.waits ? st.wait_ns / 1e3 / st.waits : 0.0,
+                    st.waits ? double(st.behind) / st.waits : 0.0);
+    }
+    std::fflush(stdout);
+    pages.clear();
+    std::fill(std::begin(behind_hist), std::end(behind_hist), 0);
+    unsubmitted = done = total = total_wait_ns = 0;
+    first_tick = current_tick;
+    window = now;
+}
+
 bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
     if (!side_queue && !uma_read_back) {
         return false;
@@ -203,6 +259,10 @@ bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
         const char* side = std::getenv("BB_SIDE_WAIT");
         return env && env[0] == '0' && !(side && side[0] == '0');
     }();
+    static const bool readback_stats = [] {
+        const char* env = std::getenv("BB_READBACK_STATS");
+        return env && env[0] == '1';
+    }();
     if (wait_writes) {
         u64 fault_tick = 0;
         {
@@ -217,8 +277,18 @@ bool BufferCache::DownloadOnSideQueue(VAddr page, u64 length) {
         // Only work already submitted: a tick still being recorded would need a flush from
         // here, which deadlocks with the recording thread (loading screen hang); the full read
         // back below handles those.
-        if (fault_tick && !scheduler.IsFree(fault_tick) && fault_tick < scheduler.CurrentTick()) {
+        const u64 current = scheduler.CurrentTick();
+        const bool must_wait = fault_tick && !scheduler.IsFree(fault_tick) && fault_tick < current;
+        const auto wait_start = std::chrono::steady_clock::now();
+        if (must_wait) {
             scheduler.Wait(fault_tick);
+        }
+        if (readback_stats) {
+            const u64 wait_ns = must_wait ? std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                std::chrono::steady_clock::now() - wait_start)
+                                                .count()
+                                          : 0;
+            NoteReadBack(page, fault_tick, current, wait_ns);
         }
     }
     {
