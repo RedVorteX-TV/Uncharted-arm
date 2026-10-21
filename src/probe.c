@@ -772,6 +772,8 @@ static unsigned char *near_image_memory(size_t size) {
         }
     }
 #endif
+    /* FEXCore runs guest code only from ranges it is told about: the thunks are guest code. */
+    if (memory) guest_cpu_code((uintptr_t)memory,size);
     return memory;
 }
 /* Linux fork: Uncharted 1 without the collection menu (BB_SKIP_COLLECTION_MENU=1; run.py sets it
@@ -877,11 +879,20 @@ static void install_game_callbacks(Segment *segments, uint64_t ns, uint64_t imag
             t[k++]=0xf3; t[k++]=0x0f; t[k++]=0x7f; t[k++]=(unsigned char)(0x84|x<<3); t[k++]=0x24;
             memcpy(t+k,&disp,4); k+=4;
         }
+        const uintptr_t base=(uintptr_t)image;
+#ifdef GUEST_CPU_NATIVE
+        const uintptr_t host=(uintptr_t)c->callback;
         t[k++]=0x48; t[k++]=0x89; t[k++]=0xf9;                      /* mov rcx, rdi */
         t[k++]=0x48; t[k++]=0x89; t[k++]=0xf2;                      /* mov rdx, rsi */
-        const uintptr_t base=(uintptr_t)image, host=(uintptr_t)c->callback;
         t[k++]=0x49; t[k++]=0xb8; memcpy(t+k,&base,8); k+=8;        /* movabs r8, image */
         t[k++]=0x4d; t[k++]=0x89; t[k++]=0xf1;                      /* mov r9, r14 */
+#else
+        /* FEXCore: the callback through its guest stub, which takes the System V registers:
+         * rdi and rsi as they are, rdx = image, rcx = r14. */
+        const uintptr_t host=(uintptr_t)guest_cpu_host_function((void *)c->callback);
+        t[k++]=0x48; t[k++]=0xba; memcpy(t+k,&base,8); k+=8;        /* movabs rdx, image */
+        t[k++]=0x4c; t[k++]=0x89; t[k++]=0xf1;                      /* mov rcx, r14 */
+#endif
         t[k++]=0x48; t[k++]=0xb8; memcpy(t+k,&host,8); k+=8;        /* movabs rax, callback */
         t[k++]=0xff; t[k++]=0xd0;                                   /* call rax */
         for (int x=0;x<8;++x) {                                     /* movdqu xmmx, [rsp+0x20+16x] */
