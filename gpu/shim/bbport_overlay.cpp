@@ -135,13 +135,17 @@ void Store(std::atomic<T>& target, T value, bool changed) {
 }
 
 void Checkbox(const char* label, std::atomic<bool>& value) {
+    // The widget first, then the copy of v: the order of function arguments is unspecified, and
+    // on aarch64 v was copied before ImGui changed it (checkboxes and sliders never changed).
     bool v = value;
-    Store(value, v, ImGui::Checkbox(label, &v));
+    const bool changed = ImGui::Checkbox(label, &v);
+    Store(value, v, changed);
 }
 
 void Slider(const char* label, std::atomic<float>& value, float lo, float hi) {
     float v = value;
-    Store(value, v, ImGui::SliderFloat(label, &v, lo, hi, "%.2f"));
+    const bool changed = ImGui::SliderFloat(label, &v, lo, hi, "%.2f");
+    Store(value, v, changed);
 }
 
 void Hint(const char* text) {
