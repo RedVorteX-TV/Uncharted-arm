@@ -1837,6 +1837,55 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     scheduler.KickRecording();
 }
 
+void Rasterizer::NoteSmallWrittenBuffers(const Shader::Info& stage) {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_READBACK_SMALL_BUFFERS");
+        return !(env && env[0] == '0');
+    }();
+    if (!enabled) {
+        return;
+    }
+    for (const auto& desc : stage.buffers) {
+        if (desc.IsSpecial() || !desc.is_written) {
+            continue;
+        }
+        const auto sharp = desc.GetSharp(stage);
+        const u32 size = sharp.GetSize();
+        if (!sharp.base_address || size == 0 || size > 64) {
+            continue;
+        }
+        std::scoped_lock lk{small_written_mutex};
+        const std::pair<VAddr, u32> range{sharp.base_address, size};
+        if (small_written_buffers.size() < 16 &&
+            std::ranges::find(small_written_buffers, range) == small_written_buffers.end()) {
+            small_written_buffers.push_back(range);
+        }
+    }
+}
+
+void Rasterizer::ReadBackSmallWrittenBuffers() {
+    // Linux fork: copied without waiting for the GPU (BufferCache::ReadMemoryAsync): the game
+    // gets the value once the GPU is past the event instead of right at it. Waiting for the GPU
+    // at every end-of-pipe event (ReadMemory) cost Uncharted 1 on the Steam Deck 40% of its
+    // frame rate. BB_READBACK_SMALL_BUFFERS=sync: the waiting copy.
+    static const bool sync = [] {
+        const char* env = std::getenv("BB_READBACK_SMALL_BUFFERS");
+        return env && std::string_view{env} == "sync";
+    }();
+    std::vector<std::pair<VAddr, u32>> ranges;
+    {
+        std::scoped_lock lk{small_written_mutex};
+        ranges.swap(small_written_buffers);
+    }
+    for (const auto& [address, size] : ranges) {
+        if (sync) {
+            buffer_cache.ReadMemory(address, size, false, true);
+        } else {
+            buffer_cache.ReadMemoryAsync(address, size);
+        }
+    }
+}
+
 void Rasterizer::DispatchDirect() {
     RENDERER_TRACE;
     BbStats::dispatches.fetch_add(1, std::memory_order_relaxed);
@@ -1923,6 +1972,7 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     if (!BindResources(pipeline)) {
         return;
     }
+    NoteSmallWrittenBuffers(cs);
     if (StaleCheckEnabled()) {
         VAddr slot = ~VAddr{0};
         u64 slot_size = 0;

@@ -95,6 +95,11 @@ public:
 
     /// Flushes any GPU modified buffer in the logical page range back to CPU memory.
     void ReadMemory(VAddr device_addr, u64 size, bool is_write = false, bool assume_locks = false);
+    /// Linux fork: copies up to 64 GPU-written bytes to guest memory once the GPU has run the
+    /// commands recorded so far, without waiting for it here (small compute results the game's CPU
+    /// code reads, e.g. Uncharted's auto-exposure value). Skipped while the region is not GPU-written
+    /// or every slot is in flight.
+    void ReadMemoryAsync(VAddr device_addr, u32 size);
 
     /// Finds a buffer for the specified region.
     [[nodiscard]] std::pair<const Buffer*, u64> ObtainBuffer(VAddr device_addr, u32 size,
@@ -171,6 +176,10 @@ private:
     bool SynchronizeMemoryFromImage(const Buffer* arena, VAddr device_addr, u32 size);
 
     const Vulkan::Instance& instance;
+    /// ReadMemoryAsync: host-visible slots the GPU copies into, and which are still in flight.
+    std::unique_ptr<Buffer> async_readback;
+    std::unique_ptr<std::atomic<bool>[]> async_slot_busy;
+    u32 async_next_slot{};
     Vulkan::Scheduler& scheduler;
     // bbport: texel buffer ranges known not to alias an image, per image registry generation.
     struct ImageMiss {

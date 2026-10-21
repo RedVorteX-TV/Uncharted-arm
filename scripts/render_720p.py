@@ -16,14 +16,21 @@ import sys
 
 WIDTH, HEIGHT = 1920, 1080
 NEW_WIDTH, NEW_HEIGHT = 1280, 720
-# movl $1920, 0x8(%rdi|%rax); movl $1080, 0xc(%rdi|%rax): the first two size fields.
-SITE = re.compile(rb'\xc7[\x40\x47]\x08\x80\x07\x00\x00\xc7[\x40\x47]\x0c\x38\x04\x00\x00')
+# movl $imm32, disp8(%reg): an optional REX.B prefix (r8-r15), opcode C7, ModRM mod=01 reg=0 with
+# any base register except rsp (0x44, which needs a SIB byte). CUSA02320 builds the structure through
+# %rdi and %rax; other dumps (CUSA02344) use other registers.
+MOVL = rb'\x41?\xc7[\x40-\x43\x45-\x47]'
+MODRM = frozenset(range(0x40, 0x48)) - {0x44}
+# movl $1920, 0x8(%reg); movl $1080, 0xc(%reg): the first two size fields.
+SITE = re.compile(MOVL + rb'\x08\x80\x07\x00\x00' + MOVL + rb'\x0c\x38\x04\x00\x00')
 WINDOW = 0x90  # the size fields of one setup follow within this many bytes
 # movl $1920, d(%rsp); movl $1088, d+4(%rsp): the movie decoder's maximum frame size (Videodec2
 # configuration). The movie shader maps its 720p picture to that size, so it becomes 1280x720
 # and the 1080p movies arrive scaled to it (Videodec2 scales frames down to the maximum).
 DECODER = re.compile(rb'\xc7\x44\x24(.)\x80\x07\x00\x00\xc7\x44\x24(.)\x40\x04\x00\x00', re.S)
-SITES = 3      # two default setups and the 1080p mode
+# CUSA02320 has two default setups and the 1080p mode; CUSA02344 has been reported with one
+# block (Linux fork PR #23). Every block found is patched.
+MAX_SITES = 3
 
 
 def image_base(elf):
@@ -35,7 +42,7 @@ def image_base(elf):
 
 def field_of(elf, at):
     """The structure offset an immediate is stored to (movl disp8, or 0x38/0x3c for movabs)."""
-    if elf[at - 3] == 0xc7 and elf[at - 2] in (0x40, 0x47):
+    if elf[at - 3] == 0xc7 and elf[at - 2] in MODRM:
         return elf[at - 1]
     return 0x38 if elf[at - 2:at] == b'\x48\xb8' else 0x3c
 
@@ -43,15 +50,17 @@ def field_of(elf, at):
 def writes(elf, fields=None):
     base = image_base(elf)
     sites = [m.start() for m in SITE.finditer(elf)]
-    if len(sites) != SITES:
-        raise ValueError(f'expected {SITES} video setting sites, found {len(sites)}')
+    if not 1 <= len(sites) <= MAX_SITES:
+        raise ValueError(f'expected 1 to {MAX_SITES} video setting sites, found {len(sites)}')
     out = []
     for index, site in enumerate(sites):
         # A setup's fields end before the next one (and its cmp/jne) begins.
         end = min(site + WINDOW, sites[index + 1] - 9 if index + 1 < len(sites) else len(elf))
         # cmp $1, %esi; jne <next mode>: the mode switch's 1080p case. It jumps to the game's own
         # 720p case instead (sizes, the 160x180 fields, the 1280.0/720.0 it passes on).
-        if elf[site - 9:site - 6] == b'\x83\xfe\x01' and elf[site - 6:site - 4] == b'\x0f\x85':
+        # (cmp $1 with any 32-bit register: 83 F8+r 01.)
+        if (elf[site - 9] == 0x83 and 0xf8 <= elf[site - 8] <= 0xff and elf[site - 7] == 0x01 and
+                elf[site - 6:site - 4] == b'\x0f\x85'):
             if fields is None:
                 rel = struct.unpack_from('<i', elf, site - 4)[0] + 1  # jmp rel32 is one byte shorter
                 out.append((site - 6 - base, b'\xe9' + struct.pack('<i', rel) + b'\x90'))
@@ -63,7 +72,7 @@ def writes(elf, fields=None):
             if new is None:
                 continue
             # movl $imm32, disp8(%reg), or the two halves of movabs $imm64, %rax
-            movl = elf[at - 3] == 0xc7 and elf[at - 2] in (0x40, 0x47)
+            movl = elf[at - 3] == 0xc7 and elf[at - 2] in MODRM
             movabs = elf[at - 2:at] == b'\x48\xb8' or elf[at - 6:at - 4] == b'\x48\xb8'
             # 1920/8 and 1080/4 only in fields 0x40/0x44 (the 1080p mode's 240x270)
             if value in (WIDTH // 8, HEIGHT // 4) and not (movl and elf[at - 1] in (0x40, 0x44)):

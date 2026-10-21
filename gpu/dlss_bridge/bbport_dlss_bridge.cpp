@@ -24,7 +24,11 @@
 namespace {
 
 constexpr char ProjectId[] = "42359704-c9f3-4806-9fb5-d469000fdb8a";
+#ifdef _WIN32
 constexpr char EngineVersion[] = "bbport-windows";
+#else
+constexpr char EngineVersion[] = "bbport-linux";
+#endif
 
 struct State {
     BbDlssLogFn log{};
@@ -445,6 +449,12 @@ const BbDlssApi api{BBPORT_DLSS_BRIDGE_ABI, Configure,        InstanceExtensions
 
 } // namespace
 
-extern "C" __declspec(dllexport) const BbDlssApi* BbDlssGetApi() {
+#ifdef _WIN32
+#define BB_DLSS_EXPORT __declspec(dllexport)
+#else
+#define BB_DLSS_EXPORT __attribute__((visibility("default")))
+#endif
+
+extern "C" BB_DLSS_EXPORT const BbDlssApi* BbDlssGetApi() {
     return &api;
 }

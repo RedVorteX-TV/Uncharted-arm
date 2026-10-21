@@ -306,6 +306,9 @@ void RunEventWriteEop(Vulkan::Rasterizer& rasterizer, const u8* data) {
     if (readback.second) {
         rasterizer.GetBufferCache().ReadMemory(readback.first, readback.second, false, true);
     }
+    // bbport: small buffers compute shaders wrote since the last event (see
+    // Rasterizer::NoteSmallWrittenBuffers): the game reads them from guest memory.
+    rasterizer.ReadBackSmallWrittenBuffers();
     // Guest memory copies on the copy threads precede the fence the guest sees.
     // BB_ASYNC_FENCES=1 writes it once they are done instead of waiting for them; measured
     // slower (79 vs 83 FPS): the guest waits on these fences, and later fences stall it more
@@ -326,6 +329,78 @@ void RunEventWriteEop(Vulkan::Rasterizer& rasterizer, const u8* data) {
         rasterizer.WaitDeferredSignals();
         SignalEop(eop);
     }
+}
+
+// Linux fork: a compute queue's ReleaseMem fence (memory data, no GDS), in order with the draws
+// and dispatches handed to the draw recording thread, like the graphics end-of-pipe fence:
+// written once the guest memory copies queued before it are done, without the GPU command
+// thread draining the pipe and waiting for them (Uncharted 2's convoy: ~930 fences a frame,
+// 13-15 ms of each frame waited on the Steam Deck). BB_ASC_FENCE_PIPE=0: the old inline wait.
+struct ComputeFence {
+    PM4CmdReleaseMem release_mem;
+    u32 pipe_id;
+};
+
+void SignalComputeFence(const ComputeFence& fence) {
+    // Through the backing memory like SignalEop: this runs on a copy thread, where a store into
+    // a page the GPU caches track would fault and wait for the GPU command thread, which may be
+    // waiting for this very signal (Uncharted 3 froze ~15 s into gameplay).
+    const auto& release_mem = fence.release_mem;
+    u64 data = 0;
+    u32 num_bytes = 0;
+    switch (release_mem.data_sel.Value()) {
+    case DataSelect::Data32Low:
+        data = release_mem.DataDWord();
+        num_bytes = sizeof(u32);
+        break;
+    case DataSelect::Data64:
+        data = release_mem.DataQWord();
+        num_bytes = sizeof(u64);
+        break;
+    case DataSelect::GpuClock64:
+        data = GetGpuClock64();
+        num_bytes = sizeof(u64);
+        break;
+    case DataSelect::PerfCounter:
+        data = GetGpuPerfCounter();
+        num_bytes = sizeof(u64);
+        break;
+    default:
+        break;
+    }
+    if (num_bytes) {
+        void* address = release_mem.Address<void*>();
+        BbWriteLog::Note(reinterpret_cast<u64>(address), &data, num_bytes, BbWriteLog::Fence);
+        if (!Core::Memory::Instance()->TryWriteBacking(address, &data, num_bytes)) {
+            std::memcpy(address, &data, num_bytes);
+        }
+    }
+    const auto irq = release_mem.int_sel.Value();
+    if (irq == InterruptSelect::IrqUndocumented || irq == InterruptSelect::IrqWhenWriteConfirm) {
+        Platform::IrqC::Instance()->Signal(static_cast<Platform::InterruptId>(fence.pipe_id));
+    }
+}
+
+void RunComputeReleaseMem(Vulkan::Rasterizer& rasterizer, const u8* data) {
+    const auto fence = *reinterpret_cast<const ComputeFence*>(data);
+    rasterizer.ProcessDownloadImages();
+    rasterizer.GetBufferCache().CheckStableBindings();
+    rasterizer.CheckConstants();
+    if (Vulkan::DrawPipe::OnStageB() && !BbToggle::Disabled(BbToggle::RecorderFences)) {
+        rasterizer.SignalAfterHostCopies([fence] { SignalComputeFence(fence); });
+    } else {
+        rasterizer.WaitHostCopies();
+        rasterizer.WaitDeferredSignals();
+        SignalComputeFence(fence);
+    }
+}
+
+bool PipelinedComputeFences() {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_ASC_FENCE_PIPE");
+        return !(env && env[0] == '0');
+    }();
+    return enabled;
 }
 
 void RunDmaData(Vulkan::Rasterizer& rasterizer, const u8* data) {
@@ -509,6 +584,7 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
                 YIELD_CE();
                 RESUME_CE(task);
             }
+            task.handle.destroy();
             break;
         }
         default:
@@ -1328,6 +1404,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                     YIELD_GFX();
                     RESUME_GFX(task);
                 }
+                task.handle.destroy();
                 break;
             }
             case PM4ItOpcode::IncrementDeCounter: {
@@ -1432,6 +1509,8 @@ bool AscPacketNeedsDrain(PM4ItOpcode opcode) {
     case PM4ItOpcode::DmaData:
     case PM4ItOpcode::IndirectBuffer: // its own packets decide
         return false;
+    case PM4ItOpcode::ReleaseMem: // handed to the pipe, or drains itself (GDS, BB_ASC_FENCE_PIPE=0)
+        return !PipelinedComputeFences();
     default:
         return true;
     }
@@ -1519,6 +1598,7 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
                 YIELD_ASC(vqid);
                 RESUME_ASC(task, vqid);
             }
+            task.handle.destroy();
             break;
         }
         case PM4ItOpcode::DmaData: {
@@ -1690,6 +1770,15 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
             break;
         }
         case PM4ItOpcode::ReleaseMem: {
+            if (rasterizer && PipelinedComputeFences()) {
+                const auto* fence_packet = reinterpret_cast<const PM4CmdReleaseMem*>(header);
+                if (fence_packet->data_sel.Value() != DataSelect::GdsMemStore) {
+                    const ComputeFence fence{*fence_packet, queue.pipe_id};
+                    rasterizer->RunInOrder(&RunComputeReleaseMem, &fence, sizeof(fence));
+                    break;
+                }
+                rasterizer->DrainDrawPipe(static_cast<u32>(opcode));
+            }
             // bbport: copies deferred to the recording thread precede writes the guest sees, and
             // so do graphics fences deferred to it (the pipe was drained before this packet).
             if (rasterizer) {

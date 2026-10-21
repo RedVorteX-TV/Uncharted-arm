@@ -588,6 +588,45 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
     }
 }
 
+void BufferCache::ReadMemoryAsync(VAddr device_addr, u32 size) {
+    static constexpr u32 SlotSize = 64;
+    static constexpr u32 NumSlots = 4096;
+    if (size == 0 || size > SlotSize || !IsRegionGpuModified(device_addr, size)) {
+        return;
+    }
+    if (!async_readback) {
+        async_readback = std::make_unique<Buffer>(instance, 0, u64{SlotSize} * NumSlots,
+                                                  MemoryType::HostCached, "Async small readback");
+        async_slot_busy = std::make_unique<std::atomic<bool>[]>(NumSlots);
+    }
+    const u32 slot = async_next_slot++ % NumSlots;
+    if (async_slot_busy[slot].load(std::memory_order_acquire)) {
+        return; // the copy before it has not landed yet; the next end-of-pipe event copies again
+    }
+    const u32 first_block = device_addr >> block_shift;
+    const u32 last_block = (device_addr + size - 1) >> block_shift;
+    const Buffer* arena = GetArena(first_block, last_block);
+    if (!arena || device_addr < arena->cpu_addr ||
+        device_addr + size > arena->cpu_addr + arena->size_bytes) {
+        return;
+    }
+    const vk::BufferCopy copy{
+        .srcOffset = device_addr - arena->cpu_addr,
+        .dstOffset = u64{slot} * SlotSize,
+        .size = size,
+    };
+    runtime.CopyBuffer(arena, async_readback.get(), std::span{&copy, 1});
+    async_slot_busy[slot].store(true, std::memory_order_relaxed);
+    scheduler.DeferPriorityOperation([this, slot, device_addr, size] {
+        const u64 offset = u64{slot} * SlotSize;
+        async_readback->Invalidate(offset, size);
+        // Through the backing memory: no write fault on a page the caches track.
+        memory->TryWriteBacking(reinterpret_cast<void*>(device_addr),
+                                async_readback->mapped_data.data() + offset, size);
+        async_slot_busy[slot].store(false, std::memory_order_release);
+    });
+}
+
 void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 size) {
     boost::container::small_vector<vk::BufferCopy, 1> copies;
     u64 total_size_bytes = 0;

@@ -38,6 +38,16 @@ cp -r out/pyi-dist/Uncharted/. "$dest/"
 strip --strip-debug -o "$dest/bin/bb-probe" out/bb-probe
 strip --strip-debug -o "$dest/bin/bb-gpu-capabilities" out/bb-gpu-capabilities
 strip --strip-debug -o "$dest/bin/gpu/libbbgpu.so" out/gpu/libbbgpu.so
+# Linux fork: NVIDIA DLSS (DLAA) when packaging/linux/build_dlss.sh has put the bridge and the
+# SDK's DLSS library in out/dlss: next to bb-probe, where vk_dlss.cpp looks for them.
+if [[ -f out/dlss/libbbport_dlss.so ]] && compgen -G 'out/dlss/libnvidia-ngx-dlss.so.*' >/dev/null; then
+    cp out/dlss/libbbport_dlss.so out/dlss/libnvidia-ngx-dlss*.so.* "$dest/bin/"
+    if [[ -f out/dlss/LICENSE-DLSS-SDK.txt ]]; then cp out/dlss/LICENSE-DLSS-SDK.txt "$dest/licenses/"; fi
+    echo 'DLSS: bridge and NVIDIA DLSS libraries packaged'
+fi
+# FSR 4 assets (tools/fetch_fsr4_assets.sh) when present: run.py starts the game in the package
+# folder, where vk_fsr4.cpp looks for fsr4_shaders/ by default.
+if [[ -d fsr4_shaders ]]; then cp -r fsr4_shaders "$dest/"; echo 'FSR 4: assets packaged'; fi
 # Libraries every desktop and SteamOS have, or that must match the graphics driver, stay out
 # (whole families: libX*, libdrm_*, libpulse*, ...). libva is bundled: the bundled ffmpeg (Debian 13)
 # needs libva 2.21+ (vaMapBuffer2) and Ubuntu 24.04 / Mint 22 / Pop!_OS 24.04 have 2.20, so no game
