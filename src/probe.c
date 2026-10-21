@@ -360,6 +360,50 @@ static uint64_t patch_tcb_loads(const Segment *segments, uint64_t count) {
 }
 #endif
 #ifndef _WIN32
+static uint64_t guest_image_size; /* set by install_game_callbacks */
+/* A guest crash report: the thread, the registers, the code around the faulting instruction and
+ * the return addresses on the guest stack (reads by process_vm_readv: bad pointers cannot fault). */
+static int read_guest(uintptr_t address, void *out, size_t size) {
+    struct iovec local={out,size}, remote={(void *)address,size};
+    return process_vm_readv(getpid(),&local,1,&remote,1,0)==(ssize_t)size;
+}
+static void report_guest_state(const GuestRegs *regs, int at_fault) {
+    static const char *const names[GUEST_GPRS]={"rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi",
+                                                "r8","r9","r10","r11","r12","r13","r14","r15"};
+    char line[512], thread[32]={0};
+    int fd=open("/proc/thread-self/comm",O_RDONLY);
+    if (fd>=0) { ssize_t n=read(fd,thread,sizeof(thread)-1); if (n>0) thread[n-1]=0; close(fd); }
+    int k=snprintf(line,sizeof(line),"  thread '%s', guest registers:\n",thread);
+    { ssize_t written_=write(2,line,(size_t)k); (void)written_; }
+    for (int i=0;i<GUEST_GPRS;i+=4) {
+        k=snprintf(line,sizeof(line),"    %-3s %016llx  %-3s %016llx  %-3s %016llx  %-3s %016llx\n",
+                   names[i],(unsigned long long)regs->gpr[i],names[i+1],(unsigned long long)regs->gpr[i+1],
+                   names[i+2],(unsigned long long)regs->gpr[i+2],names[i+3],(unsigned long long)regs->gpr[i+3]);
+        ssize_t written_=write(2,line,(size_t)k); (void)written_;
+    }
+    unsigned char code[48];
+    const uintptr_t from=at_fault ? (uintptr_t)regs->rip-16 : 0;
+    if (at_fault && read_guest(from,code,sizeof(code))) {
+        k=snprintf(line,sizeof(line),"  code at guest offset 0x%lx:",(unsigned long)(from-(uintptr_t)image));
+        for (size_t i=0;i<sizeof(code);++i)
+            k+=snprintf(line+k,sizeof(line)-(size_t)k,"%s%02x",from+i==(uintptr_t)regs->rip ? " |" : " ",code[i]);
+        k+=snprintf(line+k,sizeof(line)-(size_t)k,"\n");
+        ssize_t written_=write(2,line,(size_t)k); (void)written_;
+    }
+    /* Words on the guest stack that point into the image: likely return addresses. */
+    uint64_t stack[256];
+    if (read_guest((uintptr_t)regs->gpr[GUEST_RSP],stack,sizeof(stack))) {
+        k=snprintf(line,sizeof(line),"  guest stack, image offsets:");
+        int shown=0;
+        for (int i=0;i<256 && shown<16;++i) {
+            if (stack[i]-(uintptr_t)image>=guest_image_size || stack[i]-(uintptr_t)image<0x1000) continue;
+            k+=snprintf(line+k,sizeof(line)-(size_t)k," 0x%lx",(unsigned long)(stack[i]-(uintptr_t)image));
+            ++shown;
+        }
+        k+=snprintf(line+k,sizeof(line)-(size_t)k,"\n");
+        ssize_t written_=write(2,line,(size_t)k); (void)written_;
+    }
+}
 static void fault(int sig, siginfo_t *info, void *context) {
     /* The guest CPU's own faults (FEXCore's JIT), then GPU page tracking (write-protected guest pages). */
     if (guest_cpu_handle_fault(sig, info, context)) return;
@@ -393,6 +437,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
         snprintf(line, sizeof(line), "  called by the game at guest offset 0x%lx\n", (unsigned long)(regs.rip - (uintptr_t)image));
         ssize_t written_=write(2, line, strlen(line)); (void)written_;
     }
+    if (in_guest) report_guest_state(&regs, in_guest == GUEST_CPU_IN_GUEST);
     if (gpu_enabled) bbgpu_dump_guest_writes(context);
     /* Host call chain (frames with unwind info; guest frames end it). */
     void *frames[32];
