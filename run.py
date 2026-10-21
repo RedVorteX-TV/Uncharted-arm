@@ -228,12 +228,9 @@ def main():
         out_root.mkdir(parents=True, exist_ok=True)
         guest_argv.write_text('/app0/eboot.bin\neboot.bin\nispartofuccollection\n', encoding='utf-8')
         print('Starting eboot.bin as part of the collection (BB_U1_DIRECT=1)')
-    # Linux fork: Uncharted 1 opens its own menu, not the collection's (probe.c
-    # patch_collection_skip, from Mevlock's uncharted_pc-dev). Only for this first start: a game
-    # that returns to the collection later (LoadExec into eboot.bin) shows it.
-    # BB_SKIP_COLLECTION_MENU=0 keeps the collection menu.
-    if exe == EXECUTABLES['u1'] and 'BB_SKIP_COLLECTION_MENU' not in env and not guest_argv:
-        env['BB_SKIP_COLLECTION_MENU'] = '1'
+    # The game starts at the collection's menu (choose Uncharted 1, 2 or 3 there).
+    # BB_SKIP_COLLECTION_MENU=1 opens Uncharted 1's own menu instead (probe.c
+    # patch_collection_skip, from Mevlock's uncharted_pc-dev), for this first start only.
     # Uncharted 2 reads the results of GPU work (grenade explosions, vehicle damage, the convoy
     # of chapter 21) from memory it also writes: merging leaves them on the GPU, so it runs with
     # accurate GPU memory (BB_GPU_MERGE=0) unless the player chose otherwise.
