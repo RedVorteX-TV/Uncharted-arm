@@ -254,7 +254,11 @@ void PreciseSleepUntil(std::chrono::steady_clock::time_point deadline) {
 #endif
     }
     while (steady_clock::now() < deadline) {
+#if defined(__x86_64__) || defined(_M_X64)
         __builtin_ia32_pause();
+#elif defined(__aarch64__)
+        __asm__ volatile("yield");
+#endif
     }
 }
 

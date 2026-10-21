@@ -7,7 +7,9 @@
 #include <string.h>
 #include <inttypes.h>
 #include <time.h>
+#if defined(__x86_64__)
 #include <cpuid.h>
+#endif
 #include "runtime.h"
 #include "guest_cpu.h"
 #include "gpu/bbgpu.h"
@@ -151,6 +153,10 @@ static ABI void guest_exit(void) { puts("Runtime: process finalizer callback rea
  * while module 0 initialized), except LZCNT, which older Intel CPUs run as BSR (other results).
  * Exit code 24 with a message instead; BB_SKIP_CPU_CHECK=1 starts anyway. */
 static void check_cpu(void) {
+#if !defined(__x86_64__)
+    /* Other hosts run the game's code through FEXCore, which provides these instructions. */
+    return;
+#else
     if (getenv("BB_SKIP_CPU_CHECK")) return;
     unsigned a=0, b=0, c=0, d=0, basic=0, leaf7=0, extended=0;
     if (__get_cpuid(1,&a,&b,&c,&d)) basic=c;
@@ -198,6 +204,7 @@ static void check_cpu(void) {
     MessageBoxA(NULL,text,"Uncharted",MB_OK|MB_ICONERROR|MB_SETFOREGROUND);
 #endif
     exit(24);
+#endif
 }
 #ifdef _WIN32
 static void describe_address(char *out, size_t size, uintptr_t address) {
