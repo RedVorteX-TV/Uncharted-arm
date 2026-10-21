@@ -284,6 +284,14 @@ def main():
             env['BB_SKIP_COLLECTION_MENU'] = '0'
         guest_argv = out_root / 'guest-argv.txt'
         guest_argv.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        # ARM port: at 1280x720, Uncharted 2 started by the collection menu (as part of the
+        # collection: no logos, straight to its menu) stays on a grey screen, while the same game
+        # started on its own (logos first) runs. Until that is understood, a game the menu starts
+        # at 720p starts on its own; BB_KEEP_COLLECTION_FLAG=1 keeps the menu's arguments.
+        if (target != 'eboot.bin' and 'ispartofuccollection' in lines[1:] and render_720p(env)
+                and env.get('BB_KEEP_COLLECTION_FLAG') != '1'):
+            print(f'Render 720p: starting {target} on its own (intro logos first), not as part of the collection')
+            guest_argv = None
 
 
 if __name__ == '__main__':
