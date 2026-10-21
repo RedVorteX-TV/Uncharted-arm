@@ -136,6 +136,22 @@ def prepare(game, exe, out):
     stamp.write_text(source, encoding='utf-8')
 
 
+def render_720p(env):
+    """BB_RENDER_720P (the launcher's Steam Deck mode), else the in-game menu's choice in bbport.ini
+    (render_720p=1, ARM port), read again at each start so "Apply and restart" picks it up."""
+    if env.get('BB_RENDER_720P') in ('0', '1'):
+        return env['BB_RENDER_720P'] == '1'
+    try:
+        text = Path(env.get('BB_CONFIG', '')).read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return False
+    for line in text.splitlines():
+        key, _, value = line.partition('=')
+        if key.strip() == 'render_720p':
+            return value.strip() == '1'
+    return False
+
+
 def main():
     args = sys.argv[1:]
     if len(args) >= 2 and args[0] == '--after':
@@ -246,7 +262,7 @@ def main():
         # Linux fork: BB_RENDER_720P=1 (Steam Deck mode) renders the game at 1280x720 through its
         # own 720p video settings (scripts/render_720p.py). An executable whose settings are not
         # found starts at its usual 1080p.
-        if env.get('BB_RENDER_720P') == '1':
+        if render_720p(env):
             patches = out / 'render-720p.bin'
             script = ['--script'] if getattr(sys, 'frozen', False) else []
             made = subprocess.run([sys.executable, *script, str(PORT / 'scripts' / 'render_720p.py'),

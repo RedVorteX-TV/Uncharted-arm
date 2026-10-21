@@ -13,6 +13,8 @@
 
 #include <SDL3/SDL.h>
 #include "bbport_settings.h"
+
+extern "C" void runtime_restart(void); // bb-probe (probe.c): restarts through BB_RESTART_COMMAND
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -206,6 +208,27 @@ void Menu() {
                "Ровная частота, которую GPU всегда держит, плавнее скачущей более высокой и "
                "экономит батарею. 40 FPS — ровно 3 обновления экрана 120 Гц. Сразу."));
     }
+
+    ImGui::SeparatorText(T("Resolution", "Разрешение"));
+    Checkbox(T("Render the whole game at 1280x720 (restart)", "Вся игра в 1280x720 (перезапуск)"),
+             s.render_720p);
+    Hint(T("The game switches to its own PS4 720p mode: scene, effects, UI and movies draw at "
+           "1280x720 and the frame is enlarged to the screen. Much faster on handhelds, a little "
+           "softer. From spacepepperoni's Linux fork (its Steam Deck mode).",
+           "Игра переходит в свой режим 720p PS4: всё рисуется в 1280x720 и растягивается на "
+           "экран. Намного быстрее на портативных устройствах, чуть мягче."));
+    if (s.render_720p != s.startup_render_720p) {
+        if (ImGui::Button(T("Apply and restart the game", "Применить и перезапустить игру"))) {
+            BbSettings::Save();
+            runtime_restart();
+        }
+    }
+    Checkbox(T("FSR 1 (sharp scaling to the screen)", "FSR 1 (чёткое масштабирование)"), s.fsr1);
+    Hint(T("How a frame smaller than the screen (the 1280x720 mode on a 1080p screen) is enlarged: "
+           "AMD FSR 1 keeps edges sharp, off uses a softer bilinear scaling. Costs a fraction of a "
+           "millisecond. Applies immediately.",
+           "Как кадр меньше экрана растягивается: AMD FSR 1 сохраняет чёткость, без него — "
+           "мягкое билинейное. Доли миллисекунды. Сразу."));
 
     ImGui::SeparatorText(T("Anti-aliasing", "Сглаживание"));
     const char* upscalers[] = {T("Off (the game's own)", "Выкл (сглаживание игры)"), "FSR 3.1",

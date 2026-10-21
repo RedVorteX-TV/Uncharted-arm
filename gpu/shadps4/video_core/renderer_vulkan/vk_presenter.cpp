@@ -15,6 +15,7 @@
 #include "bbport_overlay.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
+#include "bbport_settings.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/texture_cache/image.h"
 
@@ -510,6 +511,8 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
     }
     expected_ratio = static_cast<float>(image_size.width) / static_cast<float>(image_size.height);
 
+    // bbport: FSR 1 or bilinear for the scaling to the window, as chosen in the in-game menu.
+    fsr_settings.enable = BbSettings::Get().fsr1.load(std::memory_order_relaxed);
     image_view = fsr_pass.Render(cmdbuf, image_view, image_size, {frame->width, frame->height},
                                  fsr_settings, frame->is_hdr);
 

@@ -60,6 +60,10 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.debug_view = std::clamp(i, 0, DebugViewCount - 1);
     } else if (key == "show_fps") {
         v.show_fps = i != 0;
+    } else if (key == "render_720p") {
+        v.render_720p = i != 0;
+    } else if (key == "fsr1") {
+        v.fsr1 = i != 0;
     } else if (key == "fps_limit") {
         v.fps_limit = std::clamp(i, 0, 240);
     } else if (key == "fsr4_auto_exposure") {
@@ -124,7 +128,8 @@ void Load() {
         {"BB_REACTIVE_THRESHOLD", "reactive_threshold"}, {"BB_REACTIVE_MAX", "reactive_max"},
         {"BB_UPSCALE_PRESET", "preset"},            {"BB_OBJECT_MOTION", "object_motion"},
         {"BB_FRAME_GEN", "frame_gen"},              {"BB_FRAME_GEN_MULTIPLIER", "frame_gen_multiplier"},
-        {"BB_FPS_LIMIT", "fps_limit"},
+        {"BB_FPS_LIMIT", "fps_limit"},             {"BB_RENDER_720P", "render_720p"},
+        {"BB_FSR1", "fsr1"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env)) {
@@ -140,6 +145,7 @@ void Load() {
     v.startup_model_lod = v.model_lod;
     v.startup_output_res = v.output_res;
     v.startup_live_resolution = v.live_resolution;
+    v.startup_render_720p = v.render_720p;
 }
 
 void ConfigureUpscalerSupport(bool fsr4, bool fsr411) {
@@ -216,6 +222,8 @@ void Save() {
     std::fprintf(file, "frame_gen=%s\nframe_gen_multiplier=%d\n", FrameGenName(v.frame_gen),
                  v.frame_gen_multiplier.load());
     std::fprintf(file, "fps_limit=%d\n", v.fps_limit.load());
+    // render_720p: read by run.py at start.
+    std::fprintf(file, "render_720p=%d\nfsr1=%d\n", int(v.render_720p.load()), int(v.fsr1.load()));
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

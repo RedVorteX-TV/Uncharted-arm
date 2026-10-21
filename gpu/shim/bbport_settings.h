@@ -75,6 +75,13 @@ struct Values {
     /// Frame rate limit chosen in the menu, applied from the next frame (driver.cpp); 0: the
     /// port's default (no limit with the game's 60 Hz vblank). BB_FPS_LIMIT sets it at start.
     std::atomic<int> fps_limit{0};
+    /// The whole game in its own 1280x720 mode (run.py, scripts/render_720p.py), on restart;
+    /// BB_RENDER_720P overrides.
+    std::atomic<bool> render_720p{false};
+    bool startup_render_720p = false;
+    /// FSR 1 (EASU + RCAS) instead of bilinear where the presenter scales the game's frame to
+    /// the window (the 720p mode on a 1080p screen). Live; BB_FSR1 sets it at start.
+    std::atomic<bool> fsr1{false};
     // FSR 4 checks (menu): the provider's auto exposure, the jitter sign it is given.
     std::atomic<bool> fsr4_auto_exposure{true};
     std::atomic<bool> fsr4_invert_jitter{false};
