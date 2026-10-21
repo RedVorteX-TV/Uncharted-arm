@@ -123,7 +123,11 @@ const RuntimeGuestCallback *runtime_guest_callbacks(size_t *count);
 /* BB_GUEST_PROFILE=prefix: sampling profile of the guest threads with that name prefix
  * (runtime_profile.c); `image`/`size`: the main image, for image-relative addresses. */
 void runtime_profile_start(const void *image, uint64_t size);
+/* BB_THREAD_STATS=1: CPU time per thread and the SoC clocks to the log every 10 s. */
+void runtime_thread_stats_start(void);
 /* Uncharted's spinning job workers sleep instead (runtime_jobspin.c, FEXCore hosts): scans the
  * executable segment [start, start + size) of `image`. */
 void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t size);
+/* After the segments: says so in the log when no worker loop was found. */
+void runtime_job_spin_report(void);
 #endif

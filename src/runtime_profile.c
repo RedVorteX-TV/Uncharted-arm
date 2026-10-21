@@ -4,7 +4,11 @@
  * where it was: guest code (image offset), host code called by the guest (host PC and the guest
  * return address), or neither (host PC: the guest CPU's own code). Threads that are asleep are
  * counted without a signal, so blocking calls are not interrupted. Every 10 s the hottest places
- * are printed with the guest code bytes there. BB_GUEST_PROFILE_HZ overrides the 250 Hz rate. */
+ * are printed with the guest code bytes there. BB_GUEST_PROFILE_HZ overrides the 250 Hz rate.
+ *
+ * BB_THREAD_STATS=1: every 10 s the CPU time of each busy thread (user + system, % of one core)
+ * and the clocks of the CPU clusters and the GPU go to the log, so a game limited by one thread
+ * shows which (no terminal needed: the numbers come from /proc and /sys). */
 #define _GNU_SOURCE
 #include "runtime.h"
 #include "guest_cpu.h"
@@ -14,6 +18,7 @@
 
 #ifdef _WIN32
 void runtime_profile_start(const void *image, uint64_t size) { (void)image; (void)size; }
+void runtime_thread_stats_start(void) {}
 #else
 #include <dlfcn.h>
 #include <dirent.h>
@@ -175,5 +180,136 @@ void runtime_profile_start(const void *image, uint64_t size) {
     pthread_t thread;
     if (pthread_create(&thread, NULL, sampler, NULL) == 0) pthread_detach(thread);
     printf("Guest profile: threads named '%s*', report every 10 s\n", prefix);
+}
+
+/* ---- BB_THREAD_STATS ---- */
+enum { STAT_THREADS = 256 };
+static struct { int tid; unsigned long long ticks; char name[20]; } stat_seen[STAT_THREADS];
+static int read_ticks(int tid, char *name, size_t name_size, unsigned long long *ticks, char *state) {
+    char path[64], buffer[512];
+    snprintf(path, sizeof(path), "/proc/self/task/%d/stat", tid);
+    const int fd = open(path, O_RDONLY);
+    if (fd < 0) return 0;
+    const ssize_t n = read(fd, buffer, sizeof(buffer) - 1);
+    close(fd);
+    if (n <= 0) return 0;
+    buffer[n] = 0;
+    char *open_paren = strchr(buffer, '('), *close_paren = strrchr(buffer, ')');
+    if (!open_paren || !close_paren || close_paren < open_paren) return 0;
+    *close_paren = 0;
+    snprintf(name, name_size, "%s", open_paren + 1);
+    *state = close_paren[2];
+    /* after ") ": state(3) ppid pgrp session tty tpgid flags minflt cminflt majflt cmajflt utime(14) stime(15) */
+    unsigned long long utime = 0, stime = 0;
+    if (sscanf(close_paren + 2, "%*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu", &utime, &stime) != 2) return 0;
+    *ticks = utime + stime;
+    return 1;
+}
+static void print_clocks(void) {
+    char line[512] = "", path[320], value[64];
+    size_t used = 0;
+    unsigned last_policy = ~0u;
+    for (unsigned cpu = 0; cpu < 16; ++cpu) { /* one value per cluster (cpufreq policy) */
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%u/cpufreq/related_cpus", cpu);
+        FILE *f = fopen(path, "r");
+        if (!f) continue;
+        unsigned first = cpu;
+        if (fscanf(f, "%u", &first) != 1) first = cpu;
+        fclose(f);
+        if (first == last_policy) continue;
+        last_policy = first;
+        snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%u/cpufreq/scaling_cur_freq", cpu);
+        if (!(f = fopen(path, "r"))) continue;
+        unsigned long khz = 0;
+        if (fscanf(f, "%lu", &khz) == 1)
+            used += (size_t)snprintf(line + used, sizeof(line) - used, " cpu%u+ %lu MHz", cpu, khz / 1000);
+        fclose(f);
+        if (used >= sizeof(line) - 40) break;
+    }
+    DIR *dir = opendir("/sys/class/devfreq");
+    struct dirent *entry;
+    while (dir && (entry = readdir(dir))) { /* the Adreno's devfreq node: *.gpu */
+        if (!strstr(entry->d_name, "gpu")) continue;
+        snprintf(path, sizeof(path), "/sys/class/devfreq/%s/cur_freq", entry->d_name);
+        FILE *f = fopen(path, "r");
+        if (!f) continue;
+        if (fgets(value, sizeof(value), f))
+            used += (size_t)snprintf(line + used, sizeof(line) - used, " gpu %llu MHz", strtoull(value, NULL, 10) / 1000000ull);
+        fclose(f);
+        break;
+    }
+    if (dir) closedir(dir);
+    if (used) printf("  clocks:%s\n", line);
+}
+static void *thread_stats(void *unused) {
+    (void)unused;
+    const long hz = sysconf(_SC_CLK_TCK) > 0 ? sysconf(_SC_CLK_TCK) : 100;
+    struct timespec before;
+    clock_gettime(CLOCK_MONOTONIC, &before);
+    for (int first = 1;; first = 0) { /* the first pass only takes the starting counts */
+        if (!first) {
+            const struct timespec period = {10, 0};
+            nanosleep(&period, NULL);
+        }
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        const double seconds = (double)(now.tv_sec - before.tv_sec) + (now.tv_nsec - before.tv_nsec) / 1e9;
+        before = now;
+        struct { char name[20]; double percent; char state; } busy[STAT_THREADS];
+        int busy_count = 0;
+        double sum = 0;
+        DIR *dir = opendir("/proc/self/task");
+        struct dirent *entry;
+        while (dir && (entry = readdir(dir))) {
+            const int tid = atoi(entry->d_name);
+            char name[20], state = 0;
+            unsigned long long ticks;
+            if (tid <= 0 || !read_ticks(tid, name, sizeof(name), &ticks, &state)) continue;
+            int slot = -1, free_slot = -1;
+            for (int i = 0; i < STAT_THREADS; ++i) {
+                if (stat_seen[i].tid == tid) { slot = i; break; }
+                if (!stat_seen[i].tid && free_slot < 0) free_slot = i;
+            }
+            unsigned long long previous = 0;
+            if (slot < 0) {
+                if (free_slot < 0) continue;
+                slot = free_slot;
+                stat_seen[slot].tid = tid;
+                previous = ticks; /* first sight: counted from the next report on */
+            } else {
+                previous = stat_seen[slot].ticks;
+            }
+            stat_seen[slot].ticks = ticks;
+            const double percent = seconds > 0 ? 100.0 * (double)(ticks - previous) / (double)hz / seconds : 0.0;
+            sum += percent;
+            if (percent >= 3.0 && busy_count < STAT_THREADS) {
+                snprintf(busy[busy_count].name, sizeof(busy[busy_count].name), "%s", name);
+                busy[busy_count].percent = percent;
+                busy[busy_count].state = state;
+                ++busy_count;
+            }
+        }
+        if (dir) closedir(dir);
+        if (first) continue;
+        for (int a = 0; a < busy_count; ++a) /* busiest first */
+            for (int b = a + 1; b < busy_count; ++b)
+                if (busy[b].percent > busy[a].percent) { __typeof__(busy[0]) t = busy[a]; busy[a] = busy[b]; busy[b] = t; }
+        printf("Thread stats (%.0f s, %% of one core, all threads %.0f%%):\n", seconds, sum);
+        for (int a = 0; a < busy_count && a < 24; ++a)
+            printf("  %5.1f%%  %s\n", busy[a].percent, busy[a].name);
+        print_clocks();
+        fflush(stdout);
+    }
+    return NULL;
+}
+void runtime_thread_stats_start(void) {
+    const char *spec = getenv("BB_THREAD_STATS");
+    if (!spec || !*spec || !strcmp(spec, "0")) return;
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, thread_stats, NULL) == 0) {
+        pthread_setname_np(thread, "bb:ThreadStats");
+        pthread_detach(thread);
+        printf("Thread stats: CPU time per thread and clocks every 10 s (BB_THREAD_STATS)\n");
+    }
 }
 #endif

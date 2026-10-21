@@ -29,10 +29,13 @@
 void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t size) {
     (void)image; (void)start; (void)size;
 }
+void runtime_job_spin_report(void) {}
 #else
 static unsigned free_passes = 256, sleep_us = 20;
 static int64_t wait_passes = 1000;
 static unsigned long long sleeps, early_waits;
+static unsigned loops_found;
+static int disabled;
 
 static uint64_t now_ns(void) {
     struct timespec t;
@@ -98,7 +101,7 @@ static int matches(const unsigned char *p) {
 }
 void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t size) {
     const char *spec = getenv("BB_JOB_SPIN");
-    if (spec && spec[0] == '0' && spec[1] == 0) return;
+    if (spec && spec[0] == '0' && spec[1] == 0) { disabled = 1; return; }
     if (spec && *spec) {
         char *end = NULL;
         free_passes = (unsigned)strtoul(spec, &end, 10);
@@ -109,6 +112,7 @@ void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t siz
         unsigned char *p = image + at;
         if (!matches(p)) continue;
         ++found;
+        ++loops_found;
         unsigned char *a = p + 10 + (signed char)p[9];          /* je target */
         unsigned char *b = p + PATTERN + (signed char)p[PATTERN - 1]; /* jl target */
         int32_t limit;
@@ -130,5 +134,9 @@ void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t siz
     if (found)
         printf("Job spin: %u loop(s), %u hook(s); spin %u passes, then sleep %u us or wait (BB_JOB_SPIN)\n",
                found, hooked, free_passes, sleep_us);
+}
+void runtime_job_spin_report(void) {
+    if (disabled) printf("Job spin: off (BB_JOB_SPIN=0)\n");
+    else if (!loops_found) printf("Job spin: no worker loop found in this executable; its workers spin as on the PS4\n");
 }
 #endif
