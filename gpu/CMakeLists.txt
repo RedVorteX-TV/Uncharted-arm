@@ -48,6 +48,11 @@ elseif (BB_PGO STREQUAL "use")
 endif()
 
 find_package(Vulkan REQUIRED)
+# ARM port: the Vulkan headers build.sh passes (third_party/Vulkan-Headers) ahead of the system's,
+# which other packages' include paths (/usr/include) would otherwise put first (Fedora 44).
+if (Vulkan_INCLUDE_DIR)
+    include_directories(BEFORE SYSTEM ${Vulkan_INCLUDE_DIR})
+endif()
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED)
 # magic_enum: the submodule (third_party/magic_enum), the version the code is written for; system
@@ -70,7 +75,9 @@ endif()
 find_package(VulkanMemoryAllocator CONFIG QUIET)
 if (NOT VulkanMemoryAllocator_FOUND)
     # MSYS2 ships the header (include/vma/vk_mem_alloc.h) without a CMake package.
-    find_path(VMA_INCLUDE_DIR vk_mem_alloc.h PATH_SUFFIXES vma REQUIRED)
+    # ARM port: the vendored header (third_party/vma, as in Pepin208's fork) when the system has none.
+    find_path(VMA_INCLUDE_DIR vk_mem_alloc.h PATH_SUFFIXES vma
+              PATHS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/vma/include REQUIRED)
     add_library(VulkanMemoryAllocator INTERFACE)
     add_library(GPUOpen::VulkanMemoryAllocator ALIAS VulkanMemoryAllocator)
     target_include_directories(VulkanMemoryAllocator INTERFACE ${VMA_INCLUDE_DIR})
