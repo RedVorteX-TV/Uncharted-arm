@@ -49,7 +49,8 @@ if ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3 && co
     fi
     echo 'Need pkg-config with vulkan and sdl3, cmake and ninja (see shell.nix).' >&2; exit 1
 fi
-read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3)"
+# Linux fork: libavcodec/libavutil headers for runtime_ajm.c too (Fedora keeps them in /usr/include/ffmpeg).
+read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3 libavcodec libavutil)"
 # Linux fork: newer Vulkan headers than some distributions ship (third_party/Vulkan-Headers).
 [[ -f third_party/Vulkan-Headers/include/vulkan/vulkan.h ]] || git submodule update --init third_party/Vulkan-Headers
 vulkan_headers=$PWD/third_party/Vulkan-Headers/include
