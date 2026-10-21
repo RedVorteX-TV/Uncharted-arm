@@ -39,6 +39,11 @@ class RenderResolution(unittest.TestCase):
         patched, render, _extra = render_res.patch_image(image(0x40), 'u3', 2560, 1440)
         self.assertIn(bytes([0xc7, 0x40, 0x08]) + (2560).to_bytes(4, 'little'), patched)
 
+    def test_other_base_register(self):  # CUSA02344 builds the settings through other registers
+        patched, _render, _extra = render_res.patch_image(image(0x46), 'u2', 2560, 1440)
+        self.assertIn(bytes([0xc7, 0x46, 0x08]) + (2560).to_bytes(4, 'little'), patched)
+        self.assertIn(bytes([0xc7, 0x46, 0x44]) + (360).to_bytes(4, 'little'), patched)
+
     def test_drakes_fortune_steps_down(self):
         _patched, render, _extra = render_res.patch_image(image(), 'u1', 3840, 2160)
         self.assertEqual(render, (2880, 1620))

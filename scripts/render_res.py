@@ -61,7 +61,10 @@ def resolution_patch(data, width, height, move=True):
     keep = {int(v, 16) for v in os.environ.get("BB_RES_KEEP", "").replace(",", " ").split()}
     stores = [store for store in stores if store[0] not in keep]
     changed = 0
-    for base in (0x47, 0x40):  # [rdi+disp] and [rax+disp]
+    # movl $imm32, disp8(%reg) with any base register but rsp (0x44 needs a SIB byte); r8-r15 add a
+    # REX prefix before the C7. CUSA02320 uses %rdi (1.00) and %rax (1.02); other dumps (CUSA02344)
+    # other registers (as scripts/render_720p.py found).
+    for base in (0x47, 0x40, 0x41, 0x42, 0x43, 0x45, 0x46):
         for disp, old, new in stores:
             old_bytes = bytes([0xc7, base, disp]) + old.to_bytes(4, "little")
             new_bytes = bytes([0xc7, base, disp]) + new.to_bytes(4, "little")
