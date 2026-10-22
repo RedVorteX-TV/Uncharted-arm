@@ -481,6 +481,8 @@ def apply_arm_defaults(ns):
         ns[name][:] = [(value, text) for value, text in ns[name] if value not in ARM_UNAVAILABLE[key]]
     ns['FRAME_GEN_MULTIPLIERS'][:] = [(value, text) for value, text in ns['FRAME_GEN_MULTIPLIERS'] if value == '2']
     ROW_HINTS['Frame rate'] = 'A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.'
+    ROW_HINTS['Window size'] = ('Only for windowed mode: in fullscreen the game fills the screen. The resolution the '
+                                'games render at is "Render at 1280 × 720" above.')
 
 
 def arm_ini_values(settings):

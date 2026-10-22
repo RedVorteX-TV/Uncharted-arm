@@ -14,6 +14,7 @@ The in-game "Apply and restart" runs this script again through BB_RESTART_COMMAN
 """
 import ctypes
 import os
+import platform
 from pathlib import Path
 import shlex
 import subprocess
@@ -285,11 +286,13 @@ def main():
             env['BB_SKIP_COLLECTION_MENU'] = '0'
         guest_argv = out_root / 'guest-argv.txt'
         guest_argv.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-        # ARM port: at 1280x720, Uncharted 2 started by the collection menu (as part of the
-        # collection: no logos, straight to its menu) stays on a grey screen, while the same game
-        # started on its own (logos first) runs. Until that is understood, a game the menu starts
-        # at 720p starts on its own; BB_KEEP_COLLECTION_FLAG=1 keeps the menu's arguments.
-        if (target != 'eboot.bin' and 'ispartofuccollection' in lines[1:] and render_720p(env)
+        # ARM port: Uncharted 2 started by the collection menu (as part of the collection: no
+        # logos, straight to its menu) stayed on a grey or white screen on the Odin 3 at 1280x720,
+        # and from the AppImage at 1080p too, while the same game started on its own (logos first)
+        # runs. Until that is understood, a game the menu starts at 720p, or on an ARM host, starts
+        # on its own; BB_KEEP_COLLECTION_FLAG=1 keeps the menu's arguments.
+        if (target != 'eboot.bin' and 'ispartofuccollection' in lines[1:]
+                and (render_720p(env) or platform.machine().lower() in ('aarch64', 'arm64'))
                 and env.get('BB_KEEP_COLLECTION_FLAG') != '1'):
             print(f'Render 720p: starting {target} on its own (intro logos first), not as part of the collection')
             guest_argv = None
