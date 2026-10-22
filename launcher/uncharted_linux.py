@@ -1615,7 +1615,9 @@ def launcher_class(base, ns):
                 else:
                     self.app[key] = value
             self.save_changes()
-            self.messagebox.showinfo(NAME, _('Recommended settings applied and saved.'))
+            # A notice in the corner, as for Save changes: a dialog box needs the touch screen
+            # or a mouse (and Tk's is large on a handheld).
+            self.show_version(_('Recommended settings applied and saved.'), GOLD)
 
         def restart_launcher(self):
             """The launcher again, in the language just chosen (its texts are made when it starts)."""
@@ -1631,6 +1633,25 @@ def launcher_class(base, ns):
             Through SDL3 (bin/lib), as the update prompt: silently off without it."""
             self.pad = Gamepads(PORT_DIR)
             self.nav_focus = None
+            # Dialog boxes (questions, errors) answer the controller too: the launcher's messagebox
+            # is wrapped to know when one is open (Tk keeps running the controller timer meanwhile).
+            self.dialog_open = 0
+            # Tk's dialog text in the launcher's own font (it was larger than the window's text).
+            self.root.option_add('*Dialog.msg.font', self.font_ui)
+            self.root.option_add('*Dialog.dtl.font', self.font_ui)
+            boxes = self.messagebox
+
+            def counted(show):
+                def shown(*args, **kwargs):
+                    self.dialog_open += 1
+                    try:
+                        return show(*args, **kwargs)
+                    finally:
+                        self.dialog_open -= 1
+                return shown
+            self.messagebox = SimpleNamespace(**{
+                name: counted(getattr(boxes, name)) if name.startswith(('show', 'ask')) else getattr(boxes, name)
+                for name in dir(boxes) if not name.startswith('_')})
             self.nav_frame = [self.tk.Frame(self.root, bg=GOLD, bd=0, highlightthickness=0) for _i in range(4)]
             if self.pad.sdl:
                 self.root.after(100, self.pad_nav_tick)
@@ -1641,10 +1662,25 @@ def launcher_class(base, ns):
                 # While a game runs the controller is the game's: the presses are read and dropped,
                 # so none reaches the launcher behind it.
                 for event in ([] if self.process else events):
-                    self.pad_nav(event)
+                    if self.dialog_open:
+                        self.pad_dialog(event)
+                    else:
+                        self.pad_nav(event)
             except Exception as error:  # never let the controller stop the window
                 print(f'Controller navigation: {error}')
             self.root.after(33, self.pad_nav_tick)
+
+        def pad_dialog(self, event):
+            """The open dialog box: A presses its focused button (the default one first), B closes
+            it as Escape does, the D-pad moves between its buttons."""
+            script = {
+                'ok': 'if {[winfo class $w] eq "Button"} {$w invoke} else {event generate $w <Key-Return>}',
+                'back': 'event generate $w <Key-Escape>',
+                'left': 'focus [tk_focusPrev $w]', 'up': 'focus [tk_focusPrev $w]',
+                'right': 'focus [tk_focusNext $w]', 'down': 'focus [tk_focusNext $w]',
+            }.get(event)
+            if script:
+                self.root.tk.eval('set w [focus]; if {$w ne ""} {%s}' % script)
 
         def nav_items(self):
             """The usable controls of the page shown, top to bottom and left to right: registered
