@@ -991,18 +991,6 @@ def launcher_class(base, ns):
             self.show_version(saved, GOLD)
             self.root.after(2500, lambda: label.cget('text') == saved and self.show_version(*self.corner_before))
 
-        def collect(self):
-            super().collect()
-            if ARM:  # 720p, FSR 1 and the frame rate limit: bbport.ini, shared with the in-game menu
-                try:
-                    for key, value in arm_ini_values(self.app).items():
-                        ns['set_ini'](key, value)
-                except OSError:
-                    pass
-            if hasattr(self, 'saved_settings'):
-                self.saved_settings = self.settings_now()
-                self.after_setting_change()
-
         def choice(self, parent, key, options, width=36):
             """The launcher's drop-down, with the choices the Steam Deck cannot run greyed out
             (and not selectable) while Steam Deck mode is on."""
@@ -1503,6 +1491,17 @@ def launcher_class(base, ns):
             if self.app.get('user_dir') != before and 'user_dir' in self.vars:
                 self.vars['user_dir'].set(self.app['user_dir'])  # the Game page shows it
             super().collect()
+            # (This class had a second collect() above this one, which this one replaced: the ARM
+            # settings and the Save button's state went unsaved. They are here now.)
+            if ARM:  # 720p, FSR 1 and the frame rate limit: bbport.ini, shared with the in-game menu
+                try:
+                    for key, value in arm_ini_values(self.app).items():
+                        ns['set_ini'](key, value)
+                except OSError:
+                    pass
+            if hasattr(self, 'saved_settings'):
+                self.saved_settings = self.settings_now()
+                self.after_setting_change()
 
         def refresh(self):
             super().refresh()
