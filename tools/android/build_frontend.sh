@@ -1,92 +1,90 @@
 #!/usr/bin/env bash
-# Build the Bloodborne Android app (Java UI + libbbpresent.so, the frame path of the Bionic game process).
-# With BB_RUNTIME_ARCHIVE (build_release_runtime.py) the runtime archive goes inside the APK as an asset.
+# The Uncharted Android APK (adapted from ducvd89's Bloodborne-Android build_frontend.sh): the Java app,
+# libbbpresent.so (the frame path), the bundled GPU drivers and the runtime archive (out/bionic from
+# build_bionic.sh and build_prepare.sh, with run-uncharted.sh) as assets. No Gradle: javac, d8, aapt.
+#
+#   bash tools/android/build_frontend.sh           -> out/android/Uncharted-<version>.apk
+#
+# BB_KEYSTORE: the signing key (default ~/.android/uncharted-test.keystore, made when missing; never in
+# the repository). BB_SKIP_DRIVERS=1: no bundled drivers (the app then uses the phone's own driver).
 set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
 sdk=${BB_ANDROID_SDK:-"$PWD/.local-deps/android/sdk"}
 build_tools="$sdk/build-tools/35.0.0"
 android_jar="$sdk/platforms/android-35/android.jar"
-local_jdk="$PWD/.local-deps/android/jdk/usr/lib/jvm/java-27-openjdk"
-if [[ -x $local_jdk/bin/javac ]]; then
-    export JAVA_HOME="$local_jdk" PATH="$local_jdk/bin:$PATH"
+ndk=${BB_NDK:-$sdk/ndk/29.0.14206865}
+llvm=$ndk/toolchains/llvm/prebuilt/linux-x86_64
+app=tools/android/frontend
+out="$PWD/out/android/app"
+version=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' "$app/AndroidManifest.xml")
+rm -rf "$out"
+mkdir -p "$out/classes" "$out/dex" "$out/res" "$out/assets" "$out/lib/arm64-v8a" "$out/runtime/bbport"
+
+# ---- The runtime archive: everything the app installs into files/bbport (RuntimeInstaller) ----
+stage="$out/runtime/bbport"
+mkdir -p "$stage/bionic/bin" "$stage/bionic/lib" "$stage/data" "$stage/logs" "$stage/user" "$stage/licenses"
+for program in bb-probe bb-prepare kgsl-chip-id; do
+    [[ -x out/bionic/bin/$program ]] || { echo "Missing out/bionic/bin/$program: build_bionic.sh / build_prepare.sh android" >&2; exit 1; }
+    cp out/bionic/bin/$program "$stage/bionic/bin/"
+done
+for library in libbbgpu.so libbbcpu.so libSDL3.so libc++_shared.so; do
+    [[ -f out/bionic/lib/$library ]] || { echo "Missing out/bionic/lib/$library: build_bionic.sh" >&2; exit 1; }
+    cp out/bionic/lib/$library "$stage/bionic/lib/"
+done
+"$llvm/bin/llvm-strip" --strip-debug "$stage"/bionic/bin/* "$stage"/bionic/lib/*
+chmod 755 "$stage"/bionic/bin/* "$stage"/bionic/lib/*
+cp tools/android/run-uncharted.sh "$stage/run-uncharted.sh"
+chmod 755 "$stage/run-uncharted.sh"
+build=$(git describe --always --dirty 2>/dev/null || echo source)
+echo "android-$build" > "$stage/BUILD"
+cp "$app/THIRD_PARTY_LICENSES.txt" "$stage/licenses/"
+# Words that must not appear in the archive: game-derived files.
+if (cd "$out/runtime" && find . | grep -E 'eboot|boot-linked|\.elf$|\.prx$|sce_sys'); then
+    echo "Game files in the runtime archive" >&2; exit 1
 fi
-out="$PWD/out/thor/frontend"
-rm -rf "$out/classes" "$out/dex" "$out/res" "$out/assets" "$out/lib"
-mkdir -p "$out/classes" "$out/dex" "$out/res/drawable" "$out/assets"
-cp -r tools/android/frontend/res/. "$out/res/"
-if [[ -n ${BB_RUNTIME_ARCHIVE:-} ]]; then
-    cp "$BB_RUNTIME_ARCHIVE" "$out/assets/runtime.payload"
-    cp "${BB_RUNTIME_ARCHIVE%.tar.gz}.sha256" "$out/assets/runtime.sha256"
-fi
-# Use the user's own Bloodborne icon locally; game art is not committed to this repository.
-python3 - "$out" <<'PY'
-import os, sys
-from pathlib import Path
-from PIL import Image
-out = Path(sys.argv[1])
-icon = Path('game/CUSA03173/sce_sys/icon0.dds')
-if os.environ.get('BB_RUNTIME_ARCHIVE') and not icon.exists():
-    raise SystemExit('Release build needs the user-owned game icon at game/CUSA03173/sce_sys/icon0.dds')
-if icon.exists():
-    (out/'res/drawable/icon.xml').unlink(missing_ok=True)
-    Image.open(icon).save(out/'res/drawable/icon.png')
-PY
-# The GPU drivers inside the APK (assets/drivers/, installed by the app's Automatic GPU driver choice:
-# AutoDriver.java, BundledDrivers.java) with their licence notices appended to THIRD_PARTY_LICENSES.txt.
-# fetch_bundled_drivers.sh downloads and checks the pinned zips (BB_SKIP_DRIVERS=1: a development build
-# without them, which uses the phone's own driver when Automatic cannot install one).
+(cd "$out/runtime" && tar --owner=0 --group=0 --numeric-owner -czf "$out/assets/runtime.payload" bbport)
+sha256sum "$out/assets/runtime.payload" | cut -d' ' -f1 > "$out/assets/runtime.sha256"
+
+# ---- The GPU drivers inside the APK (AutoDriver.java, BundledDrivers.java) ----
+cp -r "$app/res/." "$out/res/"
 drivers=$PWD/.local-deps/android/drivers
 if [[ ${BB_SKIP_DRIVERS:-} != 1 ]]; then
     bash tools/android/fetch_bundled_drivers.sh >/dev/null \
-        || { echo "The bundled GPU drivers are missing or do not match their sha256: bash tools/android/fetch_bundled_drivers.sh (BB_SKIP_DRIVERS=1 builds without them)" >&2; exit 1; }
+        || { echo "The bundled GPU drivers are missing or do not match their sha256 (BB_SKIP_DRIVERS=1 builds without them)" >&2; exit 1; }
     mkdir -p "$out/assets/drivers"
     cp "$drivers"/Turnip_Gen8_V37.zip "$drivers"/PanVK-android-v3.2-universal-2a9358a.zip "$out/assets/drivers/"
-    # Our Turnip 26.3.0 zip is not packed (V37 is the Adreno driver); it gives the Mesa license text.
-    { cat tools/android/frontend/THIRD_PARTY_LICENSES.txt tools/android/frontend/DRIVERS_NOTICE.txt
+    { cat "$app/THIRD_PARTY_LICENSES.txt" "$app/DRIVERS_NOTICE.txt"
       unzip -p "$drivers/Turnip-android-main-26.3.0-35b085c.zip" LICENSE-mesa.txt
       printf '\n--------------------------------------------------------------------------------\nGNU General Public License, version 3 (StevenMXZ/Adreno-Tools-Drivers)\n--------------------------------------------------------------------------------\n\n'
       cat "$drivers/GPL-3.0.txt"
     } > "$out/assets/THIRD_PARTY_LICENSES.txt"
 else
-    cp tools/android/frontend/THIRD_PARTY_LICENSES.txt "$out/assets/"
+    cp "$app/THIRD_PARTY_LICENSES.txt" "$out/assets/"
 fi
-# The libraries of the Steam sign-in that downloads Lossless.dll (SteamDllDialog.java: JavaSteam and its
-# dependencies, ZXing, zstd-jni) and of the Mods menu (ModArchive.java: Commons Compress and xz).
-steam_libs=$PWD/.local-deps/android/steam-libs
-[[ -f $steam_libs/jars.txt ]] || bash tools/android/fetch_steam_libs.sh
-mapfile -t lib_jars < <(sed "s|^|$steam_libs/jars/|" "$steam_libs/jars.txt")
-mkdir -p "$out/lib/arm64-v8a" && cp "$steam_libs"/jni/*.so "$out/lib/arm64-v8a/"
-# libbbpresent.so: the Bionic game's frame path (AHardwareBuffers -> ASurfaceControl), built with the
-# NDK at minSdk 28 (the API 29 calls are looked up at run time). NEEDED: libandroid, liblog,
-# libnativewindow and libc/libm/libdl only.
-ndk=${BB_NDK:-$PWD/.local-deps/android/sdk/ndk/29.0.14206865}
-[[ -x $ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang ]] \
-    || { echo "No NDK: $ndk (tools/android/build_bionic_deps.sh)" >&2; exit 1; }
-"$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang" -fuse-ld=lld -std=c11 -O2 -g \
+
+# ---- libbbpresent.so: the game's frame path (AHardwareBuffers -> ASurfaceControl) ----
+"$llvm/bin/aarch64-linux-android28-clang" -fuse-ld=lld -std=c11 -O2 -g \
     -Wall -Wextra -Werror -fPIC -shared -Wl,-soname,libbbpresent.so -Wl,-z,max-page-size=16384 \
-    -Itools/android/present tools/android/frontend/jni/bbpresent/bbpresent.c \
+    -Itools/android/present "$app/jni/bbpresent/bbpresent.c" \
     -landroid -llog -lnativewindow -o "$out/lib/arm64-v8a/libbbpresent.so"
-mapfile -t sources < <(rg --files tools/android/frontend/src -g '*.java')
-javac --release 8 -classpath "$android_jar:$(IFS=:; echo "${lib_jars[*]}")" -d "$out/classes" "${sources[@]}"
-mapfile -t classes < <(rg --files "$out/classes" -g '*.class')
-"$build_tools/d8" --release --min-api 28 --lib "$android_jar" --output "$out/dex" "${classes[@]}" "${lib_jars[@]}"
-"$build_tools/aapt" package -f -M tools/android/frontend/AndroidManifest.xml \
+
+# ---- Java -> dex, resources, the APK ----
+mapfile -t sources < <(find "$app/src" -name '*.java' | sort)
+javac -encoding UTF-8 --release 8 -Xlint:-options -classpath "$android_jar" -d "$out/classes" "${sources[@]}"
+mapfile -t classes < <(find "$out/classes" -name '*.class' | sort)
+"$build_tools/d8" --release --min-api 28 --lib "$android_jar" --output "$out/dex" "${classes[@]}"
+"$build_tools/aapt" package -f -M "$app/AndroidManifest.xml" \
     -S "$out/res" -A "$out/assets" -I "$android_jar" -0 payload -0 zip -F "$out/unsigned.apk"
-python3 - "$out" <<'PY'
-import sys, zipfile
-from pathlib import Path
-out = Path(sys.argv[1])
-with zipfile.ZipFile(out/'unsigned.apk','a',compression=zipfile.ZIP_DEFLATED) as z:
-    for p in sorted((out/'dex').glob('*.dex')): z.write(p,p.name)
-    for p in sorted((out/'lib').rglob('*.so')): z.write(p,str(p.relative_to(out)))
-PY
-"$build_tools/zipalign" -f 4 "$out/unsigned.apk" "$out/aligned.apk"
-key="$PWD/.local-deps/android/bloodborne-thor.keystore"
+(cd "$out/dex" && zip -q "$out/unsigned.apk" ./*.dex)
+(cd "$out" && zip -q -r unsigned.apk lib)
+"$build_tools/zipalign" -f -p 16 "$out/unsigned.apk" "$out/aligned.apk"
+key=${BB_KEYSTORE:-$HOME/.android/uncharted-test.keystore}
 if [[ ! -f $key ]]; then
+    mkdir -p "$(dirname "$key")"
     keytool -genkeypair -keystore "$key" -storepass android -keypass android \
-        -alias thor -dname 'CN=Bloodborne Thor local build' -keyalg RSA -keysize 2048 -validity 10000
+        -alias uncharted -dname 'CN=Uncharted ARM port test build' -keyalg RSA -keysize 2048 -validity 10000
 fi
-"$build_tools/apksigner" sign --ks "$key" --ks-pass pass:android --key-pass pass:android \
-    --out "$out/Bloodborne-Thor.apk" "$out/aligned.apk"
-"$build_tools/apksigner" verify --verbose "$out/Bloodborne-Thor.apk"
-echo "Built $out/Bloodborne-Thor.apk"
+apk="$PWD/out/android/Uncharted-$version.apk"
+"$build_tools/apksigner" sign --ks "$key" --ks-pass pass:android --key-pass pass:android --out "$apk" "$out/aligned.apk"
+"$build_tools/apksigner" verify "$apk"
+echo "Built $apk"

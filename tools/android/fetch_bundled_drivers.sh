@@ -29,6 +29,10 @@ for entry in "${files[@]}"; do
         continue
     fi
     rm -f "$file"
+    # The GPL-3.0 text is in the tree already (the same bytes as gnu.org's): no download.
+    if [[ $name == GPL-3.0.txt ]] && echo "$sha  tools/android/mesa-patches/v37/LICENSE.GPL-3.0" | sha256sum -c --quiet - 2>/dev/null; then
+        cp tools/android/mesa-patches/v37/LICENSE.GPL-3.0 "$file"; echo "local   $name"; continue
+    fi
     echo "fetch   $name"
     curl -sfL --retry 3 -o "$file.part" "$url" || { rm -f "$file.part"; echo "Cannot download $url" >&2; exit 1; }
     if ! echo "$sha  $file.part" | sha256sum -c --quiet - 2>/dev/null; then

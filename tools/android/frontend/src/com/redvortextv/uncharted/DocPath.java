@@ -1,4 +1,4 @@
-package ro.cobrabm.fexdroid;
+package com.redvortextv.uncharted;
 
 import java.io.File;
 
