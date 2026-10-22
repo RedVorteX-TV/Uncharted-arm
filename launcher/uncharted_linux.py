@@ -465,7 +465,25 @@ def apply_defaults(ns):
 # the frame rate limit are shared with the in-game menu through bbport.ini (ARM_INI).
 # Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
 ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
-                'render_720p': True, 'scaler': 'fsr1', 'check_updates': False}
+                'render_720p': True, 'scaler': 'fsr1', 'check_updates': False,
+                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True}
+# Advanced > Compatibility (ARM): the ARM port's performance fixes, each one off with its variable
+# when a scene misbehaves (the Environment field and the player's own variables still win).
+ARM_COMPATIBILITY = (
+    ('arm_uma_readback', 'BB_UMA_READBACK',
+     'Fast GPU memory reads (Uncharted 2 and 3)',
+     'Reads the GPU results the game needs from the shared memory as soon as they are ready. Turn off '
+     'if physics or effects look wrong (floating characters, explosions without effect): slower, as before.'),
+    ('arm_flush_draws', 'BB_FLUSH_DRAWS',
+     'Send GPU work in small batches (Uncharted 2 and 3)',
+     'Hands the GPU its work every 100 draws so those reads wait less. Turn off if a scene hangs.'),
+    ('arm_job_spin', 'BB_JOB_SPIN',
+     'Let idle game threads sleep',
+     'The game\'s worker threads sleep instead of spinning while they wait: about half the CPU use. '
+     'Turn off if a scene stutters or stalls.'),
+)
+# The sidebar's credit line for this port (the Linux fork's own stays above it).
+ARM_CREDIT = 'ARM port by RedVorteX-TV'
 ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
                    ('60', '60 FPS'), ('0', 'No limit')]
 ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
@@ -519,6 +537,9 @@ def arm_environment(settings, env):
     env['BB_VBLANK_HZ'] = '60'
     for name in ('BB_FPS_LIMIT', 'BB_RENDER_720P', 'BB_FSR1'):
         env.pop(name, None)
+    for key, name, _title, _hint in ARM_COMPATIBILITY:
+        if not settings.get(key, True):
+            env[name] = '0'
     for key, name in (('anti_aliasing', 'BB_UPSCALER'), ('frame_generation', 'BB_FRAME_GEN')):
         if str(settings.get(key) or 'off') in ARM_UNAVAILABLE[key]:
             env[name] = 'off'
@@ -1089,6 +1110,9 @@ def launcher_class(base, ns):
             tk.Label(port, image=self._tux, bg=bg, bd=0).pack(side='left', padx=(self.px(6), 0))
             version.configure(text=_('Linux port by spacepepperoni'), fg=TEXT, font=self.font_ui_md)
             author.pack_configure(pady=(self.px(12), 0))
+            if ARM:
+                tk.Label(self.side, text=_(ARM_CREDIT), bg=bg, fg=TEXT, font=self.font_ui_md,
+                         anchor='w').pack(anchor='w', padx=18, after=version)
 
         def folder(self, parent, key, title, prompt, hint=None, on_change=None):
             """A folder row whose field shrinks to the window: Browse and Open stay on screen and a
@@ -1220,6 +1244,12 @@ def launcher_class(base, ns):
             self.check(f, 'close_on_play', _('Close the launcher when the game starts'))
             extra = self.ttk.Entry(f, textvariable=self.var('extra_env'), width=60)
             self.row(f, _('Environment'), extra, _('Extra variables for the game, NAME=value separated by spaces.'))
+            if ARM:
+                self.section(f, _('Compatibility (ARM)'))
+                self.note(f, _('The ARM port\'s performance fixes. All on is the fastest; if a scene misbehaves, '
+                               'turn the one that fits off and tell us where it happened.'), top=2)
+                for key, _name, title, hint in ARM_COMPATIBILITY:
+                    self.check(f, key, _(title), _(hint))
             self.section(f, _('Logs and bug reports'))
             self.note(f, _('Logs of the last 5 launcher and game runs. Create bug report saves them with your '
                            'system details and settings as one zip file in Downloads, without your home folder or '

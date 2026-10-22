@@ -40,6 +40,13 @@ class ArmLauncher(unittest.TestCase):
         linux.arm_environment({'anti_aliasing': 'dlss'}, env)
         self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_UPSCALER': 'off', 'BB_FRAME_GEN': 'off'})
 
+    def test_compatibility_switches(self):
+        env = {}
+        linux.arm_environment({'arm_uma_readback': False, 'arm_flush_draws': True, 'arm_job_spin': False}, env)
+        self.assertEqual(env.get('BB_UMA_READBACK'), '0')
+        self.assertNotIn('BB_FLUSH_DRAWS', env)
+        self.assertEqual(env.get('BB_JOB_SPIN'), '0')
+
 
 if __name__ == '__main__':
     unittest.main()
