@@ -320,6 +320,10 @@ public final class MainActivity extends Activity {
         section(Strings.get("system"));
         actionRow(Strings.get("gpu_driver"), driverSummary(), this::showDrivers).setTag("driver");
         actionRow(Strings.get("game_folder"), gameDir == null ? Strings.get("not_chosen") : gameDir, () -> askGameFolder()).setTag("folder");
+        actionRow(Strings.get("logs"), Strings.get("logs_hint") + "\n" + sharedLogDir().getPath(), () -> {
+            File log = new File(sharedLogDir(), "android-game.log");
+            toast(log.isFile() ? log.getPath() : Strings.get("no_log"));
+        });
         switchRow(launcher, "touch_controls", false, Strings.get("touch_controls"), Strings.get("touch_controls_hint"));
         actionRow(Strings.get("edit_layout"), null, () -> {
             launcher.set("touch_controls", true);
@@ -558,12 +562,22 @@ public final class MainActivity extends Activity {
             main.post(this::applyPause);
             Thread reader = new Thread(() -> {
                 boolean driverTrouble = false;
+                // A copy in Download/Uncharted, where the player can open it and send it (the app's own
+                // folder is private).
+                PrintWriter shared = null;
+                try {
+                    File dir = sharedLogDir(); dir.mkdirs();
+                    File copy = new File(dir, "android-game.log"), prev = new File(dir, "android-game.prev.log");
+                    if (copy.length() > 0) { prev.delete(); copy.renameTo(prev); }
+                    shared = new PrintWriter(copy);
+                } catch (Exception ex) { android.util.Log.w("Uncharted", "shared log: " + ex); }
                 try (BufferedReader r = new BufferedReader(new InputStreamReader(launched.getInputStream()));
                      PrintWriter out = new PrintWriter(gameLog)) {
-                    for (String line : log) out.println(line);
-                    out.flush();
+                    for (String line : log) { out.println(line); if (shared != null) shared.println(line); }
+                    out.flush(); if (shared != null) shared.flush();
                     for (String line; (line = r.readLine()) != null; ) {
                         out.println(line); out.flush();
+                        if (shared != null) { shared.println(line); shared.flush(); }
                         if (!driverTrouble && driverTrouble(line)) driverTrouble = true;
                         if (line.startsWith("Preparing ") || line.startsWith("Game image: preparing"))
                             main.post(() -> status.setText(Strings.get("preparing")));
@@ -577,10 +591,18 @@ public final class MainActivity extends Activity {
                     }
                 } catch (Exception ex) {
                     if (!destroyed && game == launched) error(ex.toString());
+                } finally {
+                    if (shared != null) shared.close();
                 }
             }, "Uncharted-log");
             reader.setDaemon(true); reader.start();
         } catch (Exception ex) { error(ex.toString()); }
+    }
+
+    /** Download/Uncharted in shared storage: copies of the game's log for the player. */
+    static File sharedLogDir() {
+        return new File(android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOWNLOADS), "Uncharted");
     }
 
     static boolean driverTrouble(String line) {

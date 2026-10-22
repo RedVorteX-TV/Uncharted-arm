@@ -16,6 +16,10 @@ final class Strings {
         put("subtitle", "The Nathan Drake Collection", "The Nathan Drake Collection");
         put("credit", "ARM port by RedVorteX-TV", "Port ARM por RedVorteX-TV");
         put("game", "Game", "Juego");
+        put("logs", "Game log", "Registro del juego");
+        put("logs_hint", "Every game run writes its log here (send it when something goes wrong):",
+            "Cada partida guarda su registro aquí (envíalo si algo falla):");
+        put("no_log", "No log yet: start a game first.", "Aún no hay registro: inicia un juego primero.");
         put("collection", "Collection menu", "Menú de la colección");
         put("collection_detail", "Uncharted 1, 2 and 3", "Uncharted 1, 2 y 3");
         put("u2", "Uncharted 2", "Uncharted 2");
