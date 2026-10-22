@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.ducvd89.bloodborne" android:versionCode="34" android:versionName="1.2.0">
+    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="28" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Hunter's Atlas: the map pack updates by itself at the game's start on a network that is not metered. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Hunter's Atlas on a display without presentation windows (AtlasActivity): the game's task is brought back to the top. -->
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <!-- The menu's "Check for updates" installs the new APK through a PackageInstaller session. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The game folder in shared storage (targetSdk 28: file paths, as the game process reads them). -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- allowAudioPlaybackCapture: screen recorders may record the game's sound (targetSdk 28 apps
+         are not capturable by default on Android 10+). -->
+    <application android:label="Bloodborne" android:icon="@drawable/icon"
+        android:theme="@style/GameTheme" android:debuggable="true"
+        android:allowBackup="false" android:extractNativeLibs="true" android:isGame="true" android:appCategory="game"
+        android:requestLegacyExternalStorage="true"
+        android:allowAudioPlaybackCapture="true"
+        android:networkSecurityConfig="@xml/network_security_config">
+        <!-- A game for the OS: Game Mode (performance/battery) for game dashboards and boosters, see game_mode_config. -->
+        <meta-data android:name="android.game_mode_config" android:resource="@xml/game_mode_config" />
+        <!-- Classes keep their package: the present bridge (libbbpresent.so) is bound to it (JNI names). -->
+        <activity android:name="ro.cobrabm.fexdroid.MainActivity" android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|density">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- Hunter's Atlas' map on a second display that refuses a Presentation: its own task on that display, never in
+             recents, not focusable (AtlasActivity). No orientation lock: it follows the display. -->
+        <activity android:name="ro.cobrabm.fexdroid.AtlasActivity" android:exported="false"
+            android:theme="@style/AtlasTheme" android:taskAffinity="com.ducvd89.bloodborne.atlas"
+            android:launchMode="singleInstance" android:excludeFromRecents="true" android:resizeableActivity="true"
+            android:noHistory="false" android:label="Hunter's Atlas"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboard|keyboardHidden|navigation|uiMode" />
+        <!-- Serves the problem report's zip (files/reports) to the share sheet; see ReportProvider. -->
+        <provider android:name="ro.cobrabm.fexdroid.ReportProvider" android:authorities="com.ducvd89.bloodborne.reports"
+            android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

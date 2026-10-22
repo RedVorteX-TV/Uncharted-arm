@@ -1,5 +1,10 @@
 #ifndef BB_RUNTIME_H
 #define BB_RUNTIME_H
+/* Android (Bionic): no SDL audio device in the game process: audio goes to the FIFO the app plays
+ * (BB_AUDIO_FIFO, from ducvd89's Android port). The pad comes from BB_PAD_FILE (runtime_pad.c). */
+#if defined(__ANDROID__) && !defined(BB_NO_SDL_AUDIO)
+#define BB_NO_SDL_AUDIO 1
+#endif
 #include <stdint.h>
 #include <stddef.h>
 #ifdef _WIN32

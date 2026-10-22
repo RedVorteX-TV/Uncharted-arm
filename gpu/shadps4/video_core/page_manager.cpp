@@ -35,9 +35,9 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
-#else
-#include "common/spin_lock.h"
 #endif
+// Windows, and Bionic (no PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP): LockType below.
+#include "common/spin_lock.h"
 
 namespace VideoCore {
 

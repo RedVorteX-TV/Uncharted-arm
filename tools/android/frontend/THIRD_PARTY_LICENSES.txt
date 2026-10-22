@@ -1,0 +1,225 @@
+fexdroid: https://github.com/cobrabm12/fexdroid (MIT License, below). The app's
+Java package name comes from it; the display and input bridge libraries of earlier
+releases (libfxdisplay, libfxio) are no longer included.
+
+GPU drivers: the app carries three, unchanged, as assets/drivers/*.zip, and installs
+the one for the phone's GPU when "Automatic" is the GPU driver setting; the notices for
+them are at the end of this file (GPU drivers bundled in the app). Other Turnip for
+Android builds the player installs or downloads from this project's GitHub releases are
+Mesa (MIT, https://gitlab.freedesktop.org/mesa/mesa; the Adreno 8xx variant from
+https://github.com/whitebelyash/mesa-unified, turnip/gen8, MIT), with this
+project's patches (tools/android/mesa-patches in the source).
+
+Lossless Scaling frame generation, Bloodframe (bbport/bionic/lib/libbloodframe.so):
+based on lsfg-vk 1.0 by PancakeTAS via GameNative's Android fork of it; the framegen
+backend and Lossless.dll shader extraction of that fork,
+https://github.com/Ragnarok93/lsfg-vk-android (branch release, commit
+0802cd33319c101e4c41f6828153d3331d8a3258; lsfg-vk by PancakeTAS), MIT License,
+Copyright (c) 2025 lsfg-vk (bbport/licenses/bloodframe-lsfg-vk.LICENSE.md), with this
+port's changes (tools/android/bloodframe-patches, tools/android/lsfg). It includes dxbc from DXVK
+(zlib/libpng license; Copyright (c) 2017 Philip Rebohle, 2019 Joshua Ashton, 2019
+Robin Kertels, 2023 Jeffrey Ellison), pe-parse (MIT, Copyright (c) 2013 Andrew Ruef)
+and volk (MIT, Copyright (c) 2018-2025 Arseny Kapoulkine); the licenses are in
+bbport/licenses/. Lossless Scaling and its Lossless.dll are not included: the app
+downloads the player's own copy from Steam, or the player copies it.
+
+Online play (bbport/bionic/lib/libbbnet20.so): the network, NP and shadNet code of
+shadPS4 v0.20.0 (GPL-2.0-or-later, https://github.com/shadps4-emu/shadPS4) as ported by
+bloodborne_pc 0.6 (GPL-2.0-or-later, https://github.com/deadinside28/bloodborne_pc),
+BBSC seamless co-op (GPL-2.0-or-later, https://github.com/CLSAMG22/BBSC) and The
+Hunter's Dream backend adapted from droogie/bbhost (GPL-3.0-or-later,
+https://github.com/droogie/bbhost), so the module as a whole is GPL-3.0-or-later, with
+this port's changes (gpu/bbnet20/android-changes.diff in the source). It links OpenSSL
+3.5 (Apache-2.0), Protocol Buffers 3.21 (BSD-3-Clause), miniupnpc (BSD-3-Clause),
+nlohmann/json (MIT) and cpp-httplib (MIT); their licenses are in bbport/licenses/. The
+CA certificates (bbport/bionic/share/cacert.pem) are Mozilla's bundle as published by
+curl.se (MPL-2.0; bbport/licenses/cacert-source.txt).
+
+Steam sign-in (downloads Lossless.dll from the player's own Lossless Scaling):
+JavaSteam 1.8.0 (MIT, https://github.com/Longi94/JavaSteam), with Kotlin and
+kotlinx.coroutines/io/serialization (Apache-2.0, JetBrains), Ktor (Apache-2.0,
+JetBrains), OkHttp and Okio (Apache-2.0, Square), Protocol Buffers for Java
+(BSD-3-Clause, Google), Apache Commons Lang 3 (Apache-2.0), SLF4J API (MIT),
+JetBrains annotations (Apache-2.0), XZ for Java (0BSD, Lasse Collin) and
+zstd-jni (BSD-2-Clause, Luben Karavelov; bundles Zstandard, BSD). The QR code
+is drawn with ZXing core 3.5.4 (Apache-2.0).
+
+Menu icons: Material Design icons (Apache-2.0, Google).
+
+Mods (unpacking .zip and .7z mod archives): Apache Commons Compress 1.26.1, Apache
+Commons IO 2.15.1, Apache Commons Codec 1.16.1 and Apache Commons Lang 3 3.20.0 (all
+Apache-2.0), with XZ for Java 1.12 (0BSD, Lasse Collin). Their notices:
+
+Apache Commons Compress
+Copyright 2002-2024 The Apache Software Foundation
+
+Apache Commons IO
+Copyright 2002-2023 The Apache Software Foundation
+
+Apache Commons Codec
+Copyright 2002-2024 The Apache Software Foundation
+
+These products include software developed at
+The Apache Software Foundation (https://www.apache.org/).
+
+FSR 3.1: AMD FidelityFX (MIT) through
+FireBurn/FSR-Vulkan.
+
+MIT License
+
+Copyright (c) 2026 Marius
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+PS4 PKG unpacking (mods, game and update PKGs): ps4-pkg-tool
+https://github.com/xXJSONDeruloXx/ps4-pkg-tools (shadPS4's PKG/PFS code), GPL-2.0-or-later,
+with Crypto++ (Boost Software License 1.0) and zlib. It is a separate program in the app's
+runtime; its full notice, source revision and this project's patches are in
+bbport/licenses/ps4-pkg-tool.NOTICE and tools/android/ps4-pkg-tool.NOTICE in the source.
+
+Snapdragon Game Super Resolution 2 (GSR 2): Qualcomm Snapdragon Studios
+https://github.com/SnapdragonStudios/snapdragon-gsr (commit d926f074), BSD-3-Clause;
+its shaders are modified and compiled into libbbgpu.so.
+
+Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+SPDX-License-Identifier: BSD-3-Clause
+
+Menu title font (res/font/im_fell_english.ttf): IM Fell English Roman by Igino Marini,
+from https://github.com/google/fonts (ofl/imfellenglish), SIL Open Font License 1.1, unchanged:
+
+Copyright (c) 2010, Igino Marini (mail@iginomarini.com)
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded, 
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.

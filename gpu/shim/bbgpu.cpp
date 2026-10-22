@@ -22,7 +22,9 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#ifndef __ANDROID__
 #include <SDL3/SDL.h>
+#endif
 #include "../bbgpu.h"
 #include "common/elf_info.h"
 #include "common/logging/log.h"
@@ -191,8 +193,14 @@ bool g_window_ready;
 
 u32 BbDisplayRefreshHz() {
     static const u32 hz = [] {
+#ifdef __ANDROID__
+        // Android: no SDL display; the app passes the screen's rate (BB_DISPLAY_HZ), 60 otherwise.
+        const char* env = std::getenv("BB_DISPLAY_HZ");
+        const u32 rate = env && std::atoi(env) > 0 ? u32(std::atoi(env)) : 60;
+#else
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
         const u32 rate = mode && mode->refresh_rate > 0 ? u32(mode->refresh_rate + 0.5f) : 60;
+#endif
         std::printf("GPU: vblank follows the display refresh rate, %u Hz\n", rate);
         return std::max<u32>(rate, 60);
     }();
@@ -251,7 +259,11 @@ extern "C" int bbgpu_init(const BbGpuConfig* config) {
         }
         g_window_cv.notify_all();
         while (window->PollEvents()) {
+#ifdef __ANDROID__
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+#else
             SDL_Delay(2);
+#endif
         }
         std::printf("Window closed (close button, Alt+F4 or system quit request)\n");
         std::fflush(stdout);
@@ -386,6 +398,14 @@ u32 ConsumeGameOnlyScreenshotRequests() { return 0; }
 u32 ConsumeWithOverlaysScreenshotRequests() { return 0; }
 ScreenshotRequests ConsumeScreenshotRequests() { return {}; }
 } // namespace VideoCore
+
+extern "C" void bbgpu_overlay_pad(uint32_t buttons) {
+#ifdef __ANDROID__
+    BbOverlay::HandlePad(buttons);
+#else
+    (void)buttons; // the desktop's menu takes the pad from SDL events (window.cpp)
+#endif
+}
 
 extern "C" int bbgpu_overlay_captures_input(void) {
     return BbOverlay::CapturesInput() ? 1 : 0;

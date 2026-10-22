@@ -47,7 +47,16 @@ elseif (BB_PGO STREQUAL "use")
                         -fprofile-correction -Wno-missing-profile -Wno-coverage-mismatch)
 endif()
 
+if (ANDROID)
+    # Android (from ducvd89's port): no libvulkan is linked (shim/vk_driver_loader.cpp dlopens the
+    # driver); only the headers are needed. The NDK's are too old for vulkan-hpp, so the
+    # Vulkan-Headers from tools/android/build_bionic_deps.sh come first.
+    find_package(VulkanHeaders CONFIG REQUIRED)
+    add_library(Vulkan::Vulkan INTERFACE IMPORTED)
+    target_link_libraries(Vulkan::Vulkan INTERFACE Vulkan::Headers)
+else()
 find_package(Vulkan REQUIRED)
+endif()
 # ARM port: the Vulkan headers build.sh passes (third_party/Vulkan-Headers) ahead of the system's,
 # which other packages' include paths (/usr/include) would otherwise put first (Fedora 44).
 if (Vulkan_INCLUDE_DIR)
@@ -84,9 +93,16 @@ if (NOT VulkanMemoryAllocator_FOUND)
 endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(XXHASH REQUIRED IMPORTED_TARGET libxxhash)
+if (ANDROID)
+    # Android: libbbgpu uses neither SDL (frames go to the app through the AHB swapchain,
+    # shim/bb_present_client.cpp; input and audio are the runtime's) nor X11.
+    add_library(bb_sdl3 INTERFACE)
+    add_library(PkgConfig::SDL3 ALIAS bb_sdl3)
+else()
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 if (NOT WIN32)
     pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+endif()
 endif()
 find_package(miniz QUIET)
 if (NOT miniz_FOUND)
@@ -179,14 +195,19 @@ set(COMMON
     shim/common/logging/log.cpp)
 file(GLOB AVPLAYER CONFIGURE_DEPENDS shadps4/core/libraries/avplayer/*.cpp)
 # ARM port: BB_FFMPEG_STATIC links the static FFmpeg found through PKG_CONFIG_PATH
-# (packaging/armada/build_ffmpeg.sh) with its private libraries.
+# (packaging/armada/build_ffmpeg.sh) with its private libraries; Android's is always static
+# (tools/android/build_bionic_deps.sh).
 option(BB_FFMPEG_STATIC "Link a static FFmpeg (pkg-config --static)" OFF)
-if (BB_FFMPEG_STATIC)
+if (BB_FFMPEG_STATIC OR ANDROID)
     set(PKG_CONFIG_ARGN --static)
 endif()
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswscale libswresample)
 unset(PKG_CONFIG_ARGN)
 file(GLOB SHIM_SOURCES CONFIGURE_DEPENDS shim/*.cpp shim/*/*.cpp)
+if (NOT ANDROID)
+    # Android only: the driver loader and the vk* forwarders (no libvulkan linked there).
+    list(FILTER SHIM_SOURCES EXCLUDE REGEX "(vk_forwarders|vk_driver_loader)\\.cpp$")
+endif()
 # Windows: a DLL cannot leave the runtime_* symbols for bb-probe.exe to resolve, so the
 # library is static there and linked into the executable.
 if (WIN32)
@@ -201,6 +222,10 @@ add_library(bbgpu ${BBGPU_KIND} ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOU
     shadps4/core/libraries/videodec/video_utils.cpp
     shadps4/core/libraries/videodec/videodec2.cpp shadps4/core/libraries/videodec/videodec2_impl.cpp)
 add_dependencies(bbgpu host_shaders)
+# Online play (Bloodborne co-op) is never used under FEXCore (runtime_services.c plays offline there):
+# BB_NET=OFF leaves the module and its OpenSSL/protobuf/miniupnpc dependencies out (Android build).
+option(BB_NET "Build the network and PSN libraries (online play)" ON)
+if (BB_NET)
 # bbport co-op: PS4 network and PSN libraries with the shadNet client, from shadp2p
 # (github.com/Wozzardman/shadp2p, GPL-2.0), for private Bloodborne co-op servers.
 find_package(Protobuf CONFIG QUIET)
@@ -258,6 +283,9 @@ if (WIN32)
     target_link_libraries(bbnet PUBLIC ws2_32 iphlpapi bcrypt crypt32)
 endif()
 target_link_libraries(bbgpu PUBLIC bbnet)
+else()
+    target_sources(bbgpu PRIVATE bbnet/bbnet_stub.cpp)
+endif()
 # In-game settings menu: Dear ImGui (third_party/imgui, MIT) with its Vulkan backend, and an
 # embedded Cyrillic font (third_party/fonts).
 target_sources(bbgpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
@@ -275,7 +303,7 @@ target_compile_options(bbgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-f
 if (NOT WIN32)
     target_link_options(bbgpu PRIVATE -Wl,--allow-shlib-undefined)
 endif()
-if (BB_FFMPEG_STATIC)
+if (BB_FFMPEG_STATIC OR ANDROID)
     # FFmpeg's arm64 assembly addresses its tables with adrp/add: its symbols must not be
     # preemptible inside the shared object (and stay out of the global scope).
     target_link_options(bbgpu PRIVATE
@@ -292,6 +320,17 @@ if (WIN32)
     target_compile_options(bbgpu PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/bb_win_compat.h)
     target_include_directories(bbgpu PRIVATE third_party/xbyak)
     target_link_libraries(bbgpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm)
+elseif (ANDROID)
+    target_include_directories(bbgpu PRIVATE third_party/xbyak)
+    # Android (from ducvd89's port): the AHB swapchain (AHardwareBuffer_*, libnativewindow), the
+    # Vulkan Android platform types and the wire format shared with the app (tools/android/present).
+    # Every vulkan.hpp user must see the same platform defines (the dispatcher's layout).
+    target_compile_definitions(bbgpu PRIVATE VK_USE_PLATFORM_ANDROID_KHR)
+    target_include_directories(bbgpu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../tools/android/present)
+    target_link_libraries(bbgpu PRIVATE nativewindow log)
+    # The runtime_* functions come from bb-probe; the NDK's --no-undefined would refuse them
+    # (tools/android/check_bionic_symbols.sh checks them).
+    target_link_options(bbgpu PRIVATE -Wl,-z,undefs)
 else()
     # Linux fork: the xbyak submodule, as on Windows (no system package needed).
     target_include_directories(bbgpu PRIVATE third_party/xbyak)

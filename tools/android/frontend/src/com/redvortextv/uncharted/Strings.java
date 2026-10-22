@@ -1,0 +1,151 @@
+package com.redvortextv.uncharted;
+
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
+/** The app's texts in English and Spanish (the Linux launcher's translations, launcher/uncharted_i18n.py).
+ *  The language is "auto" (the system's), "en" or "es". */
+final class Strings {
+    private static final Map<String, String[]> TEXT = new HashMap<>();
+    private static boolean spanish;
+
+    private static void put(String key, String en, String es) { TEXT.put(key, new String[]{en, es}); }
+
+    static {
+        put("subtitle", "The Nathan Drake Collection", "The Nathan Drake Collection");
+        put("credit", "ARM port by RedVorteX-TV", "Port ARM por RedVorteX-TV");
+        put("game", "Game", "Juego");
+        put("collection", "Collection menu", "Menú de la colección");
+        put("collection_detail", "Uncharted 1, 2 and 3", "Uncharted 1, 2 y 3");
+        put("u2", "Uncharted 2", "Uncharted 2");
+        put("u2_detail", "Among Thieves", "El reino de los ladrones");
+        put("u3", "Uncharted 3", "Uncharted 3");
+        put("u3_detail", "Drake's Deception", "La traición de Drake");
+        put("play", "Play", "Jugar");
+        put("graphics", "Graphics", "Gráficos");
+        put("render_720p", "Render at 1280 × 720", "Renderizar a 1280 × 720");
+        put("render_720p_hint", "The games render at 720p and the picture is scaled to the screen: much faster on "
+                + "these GPUs. Also in the in-game menu (L3 + R3).",
+            "Los juegos se renderizan a 720p y la imagen se escala a la pantalla: mucho más rápido en estas GPU. "
+                + "También en el menú del juego (L3 + R3).");
+        put("fsr1", "FSR 1 (AMD FidelityFX, sharp)", "FSR 1 (AMD FidelityFX, nítido)");
+        put("fsr1_hint", "FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.",
+            "FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.");
+        put("frame_rate", "Frame rate", "Fotogramas por segundo");
+        put("frame_rate_hint", "A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.",
+            "Un límite de fotogramas: 40 FPS va fluido en pantallas de 120 Hz. También en el menú del juego.");
+        put("fps_30", "30 FPS", "30 FPS");
+        put("fps_40", "40 FPS (recommended)", "40 FPS (recomendado)");
+        put("fps_45", "45 FPS", "45 FPS");
+        put("fps_60", "60 FPS", "60 FPS");
+        put("fps_0", "No limit", "Sin límite");
+        put("compatibility", "Compatibility (ARM)", "Compatibilidad (ARM)");
+        put("arm_uma_readback", "Fast GPU memory reads (Uncharted 2 and 3)",
+            "Lecturas rápidas de la memoria de la GPU (Uncharted 2 y 3)");
+        put("arm_uma_readback_hint", "Turn off if, in Uncharted 2 or 3, characters float or slide over the ground, "
+                + "explosions or vehicle damage do not behave as they should, or surfaces flash in flat colours (cyan, "
+                + "white). With it off the game waits for the GPU at those reads: slower, as in the original port.",
+            "Desactívalo si, en Uncharted 2 o 3, los personajes flotan o se deslizan por el suelo, las explosiones o los "
+                + "daños de los vehículos no se comportan como deberían, o algunas superficies parpadean con colores "
+                + "planos (cian, blanco). Desactivado, el juego espera a la GPU en esas lecturas: más lento, como en el "
+                + "port original.");
+        put("arm_flush_draws", "Send GPU work in small batches (Uncharted 2 and 3)",
+            "Enviar el trabajo a la GPU en tandas pequeñas (Uncharted 2 y 3)");
+        put("arm_flush_draws_hint", "Turn off if a scene freezes (the picture stops while the sound goes on) or the "
+                + "game hangs at the same spot every time. With it off Uncharted 2 and 3 run at a somewhat lower frame rate.",
+            "Desactívalo si una escena se congela (la imagen se para mientras el sonido sigue) o el juego se cuelga "
+                + "siempre en el mismo sitio. Desactivado, Uncharted 2 y 3 van con algo menos de FPS.");
+        put("arm_job_spin", "Let idle game threads sleep", "Dejar que los hilos inactivos del juego duerman");
+        put("arm_job_spin_hint", "Turn off if the game stutters or pauses for a moment again and again in one place, "
+                + "or loading screens take much longer than usual. With it off the game uses about twice the CPU: more "
+                + "battery and heat.",
+            "Desactívalo si el juego da tirones o se detiene un momento una y otra vez en un mismo sitio, o si las "
+                + "pantallas de carga tardan mucho más de lo normal. Desactivado, el juego usa más o menos el doble de "
+                + "CPU: más batería y más calor.");
+        put("recommended", "Recommended for ARM handhelds", "Recomendado para portátiles ARM");
+        put("recommended_hint", "720p with FSR 1, a 40 FPS limit and all the compatibility fixes on.",
+            "720p con FSR 1, límite de 40 FPS y todos los arreglos de compatibilidad activados.");
+        put("recommended_done", "Recommended settings applied and saved.", "Ajustes recomendados aplicados y guardados.");
+        put("system", "System", "Sistema");
+        put("gpu_driver", "GPU driver", "Driver gráfico");
+        put("driver_auto", "Automatic (recommended)", "Automático (recomendado)");
+        put("driver_system", "Phone's own driver", "Driver propio del dispositivo");
+        put("driver_add", "Add driver…", "Añadir driver…");
+        put("driver_use", "Use", "Usar");
+        put("driver_delete", "Delete", "Borrar");
+        put("game_folder", "Game folder", "Carpeta del juego");
+        put("not_chosen", "Not chosen", "Sin elegir");
+        put("folder_title", "Uncharted game folder", "Carpeta del juego Uncharted");
+        put("folder_message", "Select the extracted game folder (e.g. CUSA02344, the folder with eboot.bin and "
+                + "big2-ps4_Shipping.elf) in your device's storage.",
+            "Elige la carpeta del juego extraído (por ejemplo CUSA02344, la que tiene eboot.bin y "
+                + "big2-ps4_Shipping.elf) en el almacenamiento del dispositivo.");
+        put("choose_folder", "Choose folder", "Elegir carpeta");
+        put("not_a_game", "That folder has no eboot.bin.", "Esa carpeta no tiene eboot.bin.");
+        put("choose_again", "Choose again", "Elegir otra");
+        put("cancel", "Cancel", "Cancelar");
+        put("storage_needed", "Uncharted needs storage access to read the game folder.",
+            "Uncharted necesita acceso al almacenamiento para leer la carpeta del juego.");
+        put("touch_controls", "On-screen controller", "Mando en pantalla");
+        put("touch_controls_hint", "Touch buttons over the game, for playing without a controller.",
+            "Botones táctiles sobre el juego, para jugar sin mando.");
+        put("edit_layout", "Edit controller layout", "Editar el mando en pantalla");
+        put("language", "Language", "Idioma");
+        put("lang_auto", "Automatic (system language)", "Automático (idioma del sistema)");
+        put("controls_hint", "Controller: D-pad to move, A to choose, left/right to change a value, B to go back. "
+                + "In the game, L3 + R3 opens its menu and the Back/Select button with Start opens this app's menu.",
+            "Mando: cruceta para moverte, A para elegir, izquierda/derecha para cambiar un valor y B para volver. "
+                + "En el juego, L3 + R3 abre su menú y Back/Select con Start abre el menú de la app.");
+        put("installing_runtime", "Installing the runtime…", "Instalando el runtime…");
+        put("starting", "Starting Uncharted…", "Iniciando Uncharted…");
+        put("preparing", "Preparing the game (the first start takes a while)…",
+            "Preparando el juego (la primera vez tarda un poco)…");
+        put("game_stopped", "The game stopped (%s).", "El juego se ha cerrado (%s).");
+        put("driver_trouble", " It looks like a GPU driver problem: try another driver in System → GPU driver.",
+            " Parece un problema del driver gráfico: prueba otro en Sistema → Driver gráfico.");
+        put("back_to_game", "Back to game", "Volver al juego");
+        put("pause", "Pause game", "Pausar el juego");
+        put("resume", "Play game", "Reanudar el juego");
+        put("paused_chip", "Paused · tap to play", "En pausa · toca para seguir");
+        put("restart", "Restart game", "Reiniciar el juego");
+        put("restart_question", "Restart the game? Unsaved progress is lost.",
+            "¿Reiniciar el juego? Se pierde el progreso no guardado.");
+        put("quit_to_launcher", "Quit to launcher", "Salir al launcher");
+        put("quit_question", "Quit the game? Unsaved progress is lost.",
+            "¿Salir del juego? Se pierde el progreso no guardado.");
+        put("yes", "Yes", "Sí");
+        put("no", "No", "No");
+        put("menu_hint", "Swipe left or press B to return", "Desliza a la izquierda o pulsa B para volver");
+        put("controls", "Controls", "Controles");
+        put("on", "On", "Sí");
+        put("off", "Off", "No");
+        put("credits", "Credits", "Créditos");
+        put("credits_text", "Android runtime: ducvd89 (Bloodborne-Android). Linux port: spacepepperoni (uncharted_Linux), "
+                + "Supermedo (uncharted_pc), bloodborne_pc. ARM layer: MaSieS4Fun (FEXCore). Drivers: Mesa Turnip.",
+            "Runtime de Android: ducvd89 (Bloodborne-Android). Port de Linux: spacepepperoni (uncharted_Linux), "
+                + "Supermedo (uncharted_pc), bloodborne_pc. Capa ARM: MaSieS4Fun (FEXCore). Drivers: Mesa Turnip.");
+        put("restart_driver", "The game uses %s after a restart. Restart now?",
+            "El juego usará %s al reiniciar. ¿Reiniciar ahora?");
+        put("driver_installed", "%s is installed. Use it now?", "%s está instalado. ¿Usarlo ahora?");
+        put("driver_not_installed", "Driver not installed", "Driver no instalado");
+        put("driver_download", "Download from GitHub", "Descargar de GitHub");
+        put("driver_zip", "Install a zip from this device", "Instalar un zip de este dispositivo");
+    }
+
+    static void setLanguage(String language) {
+        if ("es".equals(language)) spanish = true;
+        else if ("en".equals(language)) spanish = false;
+        else spanish = "es".equals(Locale.getDefault().getLanguage());
+    }
+
+    static String get(String key) {
+        String[] t = TEXT.get(key);
+        if (t == null) return key;
+        return spanish ? t[1] : t[0];
+    }
+
+    static String format(String key, Object... args) { return String.format(get(key), args); }
+
+    private Strings() {}
+}

@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Include the vulkan platform specific header
-#if defined(ANDROID)
+#if defined(ANDROID) || defined(__ANDROID__)
+// bbport: Android has no surface; the platform define (the AHB types of vulkan.hpp) comes from the
+// build (gpu/CMakeLists.txt), the same for every translation unit.
+#ifndef VK_USE_PLATFORM_ANDROID_KHR
 #define VK_USE_PLATFORM_ANDROID_KHR
+#endif
 #elif defined(_WIN64)
 #define VK_USE_PLATFORM_WIN32_KHR
 #elif defined(__APPLE__)
@@ -16,6 +20,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
+#ifdef __ANDROID__
+#include "vk_driver_loader.h"
+#endif
 #include <vector>
 #include <fmt/ranges.h>
 
@@ -63,6 +70,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsCallback(
     return VK_FALSE;
 }
 
+#ifndef __ANDROID__
 vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& emu_window) {
     const auto& window_info = emu_window.GetWindowInfo();
     vk::SurfaceKHR surface{};
@@ -127,6 +135,7 @@ vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& e
 
     return surface;
 }
+#endif // !__ANDROID__
 
 static auto GetLayerExtensions(std::vector<const char*>&& extensions,
                                const std::vector<const char*>& layers) {
@@ -161,6 +170,11 @@ static auto GetLayerExtensions(std::vector<const char*>&& extensions,
 
 std::vector<const char*> GetInstanceExtensions(Frontend::WindowSystemType window_type,
                                                bool enable_debug_utils) {
+    // bbport: a directly loaded driver (ICD or Android HAL) may not export every global entry point.
+    if (!VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceExtensionProperties) {
+        LOG_ERROR(Render_Vulkan, "The Vulkan driver has no vkEnumerateInstanceExtensionProperties");
+        return {};
+    }
     const auto [properties_result, properties] = vk::enumerateInstanceExtensionProperties();
     if (properties_result != vk::Result::eSuccess || properties.empty()) {
         LOG_ERROR(Render_Vulkan, "Failed to query extension properties: {}",
@@ -175,7 +189,9 @@ std::vector<const char*> GetInstanceExtensions(Frontend::WindowSystemType window
     switch (window_type) {
     case Frontend::WindowSystemType::Headless:
         break;
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+    // bbport: no surface extension on Android (the AHB swapchain).
+#elif defined(VK_USE_PLATFORM_WIN32_KHR)
     case Frontend::WindowSystemType::Windows:
         extensions.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
         break;
@@ -274,14 +290,31 @@ vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool e
     setenv("VK_DRIVER_FILES", icd_path.c_str(), true);
 #endif
 
+#ifdef __ANDROID__
+    // bbport (Android): the driver comes from vk_driver_loader (system loader or BB_VULKAN_DRIVER).
+    const auto get_instance_proc_addr =
+        reinterpret_cast<PFN_vkGetInstanceProcAddr>(bb_vk_get_instance_proc_addr());
+    ASSERT_MSG(get_instance_proc_addr, "No Vulkan driver (see BB_VULKAN_DRIVER)");
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(get_instance_proc_addr);
+#else
     static vk::detail::DynamicLoader dl;
     VULKAN_HPP_DEFAULT_DISPATCHER.init(
         dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr"));
+#endif
 
+    // bbport: a driver without vkEnumerateInstanceVersion (an Android HAL, whose loader answers it
+    // in the platform) cannot report an instance version: ask for the target one and let the
+    // physical device's apiVersion check in vk_instance.cpp decide.
+    if (!VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceVersion) {
+        LOG_WARNING(Render_Vulkan,
+                    "The Vulkan driver has no vkEnumerateInstanceVersion; assuming {}.{}",
+                    VK_VERSION_MAJOR(TargetVulkanApiVersion),
+                    VK_VERSION_MINOR(TargetVulkanApiVersion));
+    }
     const auto [available_version_result, available_version] =
         VULKAN_HPP_DEFAULT_DISPATCHER.vkEnumerateInstanceVersion
             ? vk::enumerateInstanceVersion()
-            : vk::ResultValue(vk::Result::eSuccess, VK_API_VERSION_1_0);
+            : vk::ResultValue<u32>(vk::Result::eSuccess, u32{TargetVulkanApiVersion});
     ASSERT_MSG(available_version_result == vk::Result::eSuccess,
                "Failed to query Vulkan API version: {}", vk::to_string(available_version_result));
     ASSERT_MSG(available_version >= TargetVulkanApiVersion,

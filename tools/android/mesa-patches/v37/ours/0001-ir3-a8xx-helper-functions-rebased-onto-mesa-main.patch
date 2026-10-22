@@ -1,0 +1,67 @@
+Subject: [PATCH] ir3: rebase the A8XX helper functions hunk of v37/a8xx_gen8.patch onto Mesa main
+
+Hunk 2 of v37/a8xx_gen8.patch's first src/freedreno/ir3/ir3_compiler.h diff
+(the "A8XX HELPER FUNCTIONS" block) no longer applies to Mesa main: its context
+ends in an old "#endif /* IR3_COMPILER_H_ */" include guard, and ir3_compiler.h
+now ends in a "#ifdef __cplusplus" section after "ENDC;". The block itself is
+copied verbatim from a8xx_gen8.patch (prototypes of ir3_get_gpu_profile and
+ir3_effective_reg_size, which ir3_compiler.c defines, plus four static inline
+helpers); only its position is rebased: after ir3_shader_bisect_disasm_select().
+Applied by build_turnip.sh right after a8xx_gen8.patch.
+---
+diff --git a/src/freedreno/ir3/ir3_compiler.h b/src/freedreno/ir3/ir3_compiler.h
+--- a/src/freedreno/ir3/ir3_compiler.h
++++ b/src/freedreno/ir3/ir3_compiler.h
+@@ -398,6 +398,52 @@
+ bool ir3_shader_bisect_select(struct ir3_shader_variant *v);
+ bool ir3_shader_bisect_disasm_select(struct ir3_shader_variant *v);
+ 
++/* ========== A8XX HELPER FUNCTIONS ========== */
++
++struct ir3_gpu_profile;
++struct ir3_gpu_profile ir3_get_gpu_profile(uint32_t chip_id);
++uint32_t ir3_effective_reg_size(struct ir3_compiler *compiler);
++
++static inline bool
++ir3_force_double_threadsize(struct ir3_compiler *compiler)
++{
++   if (compiler->gen >= 8) {
++      struct ir3_gpu_profile profile = ir3_get_gpu_profile(compiler->dev_id->chip_id);
++      return profile.force_double_threadsize;
++   }
++   return compiler->info->props.supports_double_threadsize;
++}
++
++/* Helper function to check if A8XX should use aggressive const limits */
++static inline bool
++ir3_use_aggressive_const_limits(struct ir3_compiler *compiler)
++{
++   return compiler->gen >= 8;
++}
++
++/* Helper function to get optimal delay slots for current gen */
++static inline unsigned
++ir3_get_alu_to_alu_delay(struct ir3_compiler *compiler)
++{
++   if (compiler->gen >= 8)
++      return 1;
++   if (compiler->gen >= 7)
++      return 2;
++   return 3;
++}
++
++static inline unsigned
++ir3_get_non_alu_delay(struct ir3_compiler *compiler)
++{
++   if (compiler->gen >= 8)
++      return 4;
++   if (compiler->gen >= 7)
++      return 5;
++   return 6;
++}
++
++/* ========== END A8XX HELPER FUNCTIONS ========== */
++
+ ENDC;
+ 
+ #ifdef __cplusplus

@@ -26,9 +26,31 @@
 #include <ucontext.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#ifdef __ANDROID__
+#include <unwind.h> /* Bionic has no backtrace() */
+#else
 #include <execinfo.h>
+#endif
 #include <sys/syscall.h>
 #include <sys/uio.h>
+#endif
+
+#if defined(__ANDROID__) && !defined(_WIN32)
+/* backtrace() for Bionic through the unwinder (from ducvd89's Android port). */
+typedef struct { void **frames; int count, max; } UnwindState;
+static _Unwind_Reason_Code unwind_step(struct _Unwind_Context *context, void *argument) {
+    UnwindState *state = argument;
+    uintptr_t pc = _Unwind_GetIP(context);
+    if (!pc) return _URC_END_OF_STACK;
+    if (state->count >= state->max) return _URC_END_OF_STACK;
+    state->frames[state->count++] = (void *)pc;
+    return _URC_NO_REASON;
+}
+static int backtrace(void **frames, int max) {
+    UnwindState state = {frames, 0, max};
+    _Unwind_Backtrace(unwind_step, &state);
+    return state.count;
+}
 #endif
 
 typedef struct { uint64_t address, size, flags; } Segment;
@@ -989,12 +1011,21 @@ void runtime_restart(void) {
     /* The new launch waits for this process's GPU device to go away (run.py --after). */
     TerminateProcess(GetCurrentProcess(),0);
 #else
+#ifdef __ANDROID__
+    /* Android's app seccomp filter may kill close_range (SIGSYS): close the fds one by one. */
+    { long max = sysconf(_SC_OPEN_MAX); if (max < 0 || max > 65536) max = 65536; for (int fd = 3; fd < max; ++fd) close(fd); }
+#else
     syscall(SYS_close_range, 3u, ~0u, 0u);
+#endif
     /* Linux fork: run.py's command line when it started the game, else run.sh. */
     const char *command=getenv("BB_RESTART_COMMAND");
     if (command && *command) {
         puts("Runtime: restarting through run.py");
+#ifdef __ANDROID__
+        execl("/system/bin/sh", "sh", "-c", command, (char *)NULL);
+#else
         execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+#endif
     }
     puts("Runtime: restarting through run.sh");
     execlp("bash", "bash", "run.sh", (char *)NULL);
@@ -1008,8 +1039,14 @@ int main(int argc, char **argv) {
 #ifndef _WIN32
     /* Keep host heap objects handed to the guest (thread handles, TLS) in the
        non-PIE brk heap, i.e. below 1 TiB: the guest packs pointers into 40 bits. */
+#ifdef __ANDROID__
+    /* Bionic (Scudo) has neither knob and no brk heap; heap pointer tagging (top byte) would break
+       the guest's 40-bit pointer packing (ducvd89's Android port). */
+    mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL,M_HEAP_TAGGING_LEVEL_NONE);
+#else
     mallopt(M_ARENA_MAX,1);
     mallopt(M_MMAP_THRESHOLD,32*1024*1024);
+#endif
     guest_cpu_init(runtime_low_map);
 #endif
     if (argc == 2 && !strcmp(argv[1], "--vulkan-only")) return vulkan_smoke();

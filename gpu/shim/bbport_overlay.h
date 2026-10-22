@@ -7,6 +7,7 @@
 
 #include <string>
 #include "common/types.h"
+#include "../bbgpu.h"
 #include "video_core/renderer_vulkan/vk_common.h"
 
 union SDL_Event;
@@ -21,10 +22,16 @@ namespace BbOverlay {
 /// Present thread, once: the ImGui context and its Vulkan backend.
 void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count);
 
+#ifndef __ANDROID__
 /// Window thread, for every SDL event: true when the menu consumed it.
 bool HandleEvent(const SDL_Event& event);
 /// Turns SDL text input on while the menu edits a value (window thread, once per poll).
 void UpdateTextInput(SDL_Window* window);
+#else
+/// Android: the pad's buttons (BB_OVERLAY_PAD_* bits, bbgpu.h), every input poll; true while the
+/// menu has the input.
+bool HandlePad(u32 buttons);
+#endif
 
 /// Whether anything is drawn this frame (menu open or FPS counter on).
 bool Visible();

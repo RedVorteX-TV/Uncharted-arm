@@ -1,0 +1,142 @@
+From: bbport
+Subject: [PATCH] vulkan: in-process opaque FD export/import for emulated timelines
+
+Lets a Vulkan layer share a timeline semaphore between the application's device and its
+own in the same process (lsfg-vk on Turnip/KGSL, which has no exportable timeline otherwise:
+VK_ERROR_INVALID_EXTERNAL_HANDLE). The FD is a memfd token naming the exporter's refcounted
+timeline state; importing it shares that state. KGSL devices of one physical device submit
+through the same kernel FD, so their timeline points can wait on each other.
+---
+diff --git a/src/vulkan/runtime/vk_sync_timeline.c b/src/vulkan/runtime/vk_sync_timeline.c
+index 4df11d8..e8a9062 100644
+--- a/src/vulkan/runtime/vk_sync_timeline.c
++++ b/src/vulkan/runtime/vk_sync_timeline.c
+@@ -24,7 +24,12 @@
+ #include "vk_sync_timeline.h"
+ 
+ #include <inttypes.h>
++#include <stdlib.h>
++#include <sys/mman.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
++#include "util/list.h"
+ #include "util/os_time.h"
+ #include "util/timespec.h"
+ 
+@@ -575,6 +580,106 @@ vk_sync_timeline_wait(struct vk_device *device,
+    return result;
+ }
+ 
++/* Opaque FD export/import of an emulated timeline within one process.
++ *
++ * The FD is a token (a memfd) naming the exporter's timeline state; importing it makes the
++ * importing timeline share that state (it is reference counted).  This is only meaningful between
++ * devices of one process whose points can be waited on by each other: Turnip's KGSL backend, where
++ * every device of a physical device submits through the same kernel FD.  It lets a Vulkan layer
++ * share a timeline semaphore between the application's device and its own (lsfg-vk).
++ */
++struct vk_sync_timeline_export {
++   struct list_head link;
++   dev_t dev;
++   ino_t ino;
++   struct vk_sync_timeline_state *state; /* holds a reference */
++};
++
++static mtx_t vk_sync_timeline_exports_mutex;
++static struct list_head vk_sync_timeline_exports;
++static once_flag vk_sync_timeline_exports_once = ONCE_FLAG_INIT;
++
++static void
++vk_sync_timeline_exports_init(void)
++{
++   mtx_init(&vk_sync_timeline_exports_mutex, mtx_plain);
++   list_inithead(&vk_sync_timeline_exports);
++}
++
++static VkResult
++vk_sync_timeline_export_opaque_fd(struct vk_device *device,
++                                  struct vk_sync *sync,
++                                  int *fd_out)
++{
++   struct vk_sync_timeline_state *state = to_vk_sync_timeline_state(sync);
++   struct stat st;
++
++   int fd = memfd_create("vk-sync-timeline", MFD_CLOEXEC);
++   if (fd < 0)
++      return vk_errorf(device, VK_ERROR_TOO_MANY_OBJECTS, "memfd_create failed");
++   if (fstat(fd, &st) != 0) {
++      close(fd);
++      return vk_errorf(device, VK_ERROR_UNKNOWN, "fstat failed");
++   }
++
++   struct vk_sync_timeline_export *export = malloc(sizeof(*export));
++   if (!export) {
++      close(fd);
++      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
++   }
++   export->dev = st.st_dev;
++   export->ino = st.st_ino;
++   export->state = state;
++   vk_sync_timeline_state_ref(state);
++
++   call_once(&vk_sync_timeline_exports_once, vk_sync_timeline_exports_init);
++   mtx_lock(&vk_sync_timeline_exports_mutex);
++   list_addtail(&export->link, &vk_sync_timeline_exports);
++   mtx_unlock(&vk_sync_timeline_exports_mutex);
++
++   *fd_out = fd;
++   return VK_SUCCESS;
++}
++
++static VkResult
++vk_sync_timeline_import_opaque_fd(struct vk_device *device,
++                                  struct vk_sync *sync,
++                                  int fd)
++{
++   struct vk_sync_timeline *timeline = to_vk_sync_timeline(sync);
++   struct vk_sync_timeline_export *found = NULL;
++   struct stat st;
++
++   if (fstat(fd, &st) != 0)
++      return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
++
++   call_once(&vk_sync_timeline_exports_once, vk_sync_timeline_exports_init);
++   mtx_lock(&vk_sync_timeline_exports_mutex);
++   list_for_each_entry(struct vk_sync_timeline_export, export,
++                       &vk_sync_timeline_exports, link) {
++      if (export->dev == st.st_dev && export->ino == st.st_ino) {
++         list_del(&export->link);
++         found = export;
++         break;
++      }
++   }
++   mtx_unlock(&vk_sync_timeline_exports_mutex);
++
++   /* Only tokens of this process: a real opaque FD from elsewhere is not one. */
++   if (!found)
++      return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
++
++   /* The export's reference moves to this timeline; its own state goes. */
++   struct vk_sync_timeline_state *old = timeline->state;
++   timeline->state = found->state;
++   free(found);
++   vk_sync_timeline_state_unref(device, old);
++
++   /* Importing an FD transfers its ownership. */
++   close(fd);
++   return VK_SUCCESS;
++}
++
+ struct vk_sync_timeline_type
+ vk_sync_timeline_get_type(const struct vk_sync_type *point_sync_type)
+ {
+@@ -592,6 +697,8 @@ vk_sync_timeline_get_type(const struct vk_sync_type *point_sync_type)
+          .signal = vk_sync_timeline_signal,
+          .get_value = vk_sync_timeline_get_value,
+          .wait = vk_sync_timeline_wait,
++         .import_opaque_fd = vk_sync_timeline_import_opaque_fd,
++         .export_opaque_fd = vk_sync_timeline_export_opaque_fd,
+       },
+       .point_sync_type = point_sync_type,
+    };

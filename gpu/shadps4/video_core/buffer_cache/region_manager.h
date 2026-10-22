@@ -18,6 +18,7 @@
 #include "common/spin_lock.h"
 #endif
 #include "common/debug.h"
+#include "common/spin_lock.h" // Bionic (no adaptive mutex): LockType below
 #include "common/types.h"
 #include "video_core/buffer_cache/region_definitions.h"
 #include "video_core/page_manager.h"

@@ -32,6 +32,16 @@ int bbgpu_text_input_begin(const char *initial_utf8, const char *prompt_utf8);
 int bbgpu_text_input_poll(char *out_utf8, uint64_t size);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int bbgpu_overlay_captures_input(void);
+/* Android (no SDL window): the pad's buttons for the in-game menu, every input poll (runtime_pad.c,
+ * BB_PAD_FILE). L3+R3 opens it as on the desktop. */
+enum {
+    BB_OVERLAY_PAD_SOUTH = 1u << 0, BB_OVERLAY_PAD_EAST = 1u << 1, BB_OVERLAY_PAD_WEST = 1u << 2,
+    BB_OVERLAY_PAD_NORTH = 1u << 3, BB_OVERLAY_PAD_UP = 1u << 4, BB_OVERLAY_PAD_DOWN = 1u << 5,
+    BB_OVERLAY_PAD_LEFT = 1u << 6, BB_OVERLAY_PAD_RIGHT = 1u << 7, BB_OVERLAY_PAD_L1 = 1u << 8,
+    BB_OVERLAY_PAD_R1 = 1u << 9, BB_OVERLAY_PAD_START = 1u << 10, BB_OVERLAY_PAD_BACK = 1u << 11,
+    BB_OVERLAY_PAD_L3 = 1u << 12, BB_OVERLAY_PAD_R3 = 1u << 13,
+};
+void bbgpu_overlay_pad(uint32_t buttons);
 /* Mouse controls: look=1 captures the cursor while the game window has the focus (relative
  * mode). sample returns the motion (pixels) and wheel steps since the last call and the held
  * buttons (1 left, 2 right, 4 middle, 8 X1, 16 X2); 1 while the cursor is captured. */

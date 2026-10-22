@@ -813,6 +813,10 @@ bool Presenter::PresentImage(Frame* frame, vk::Image image, bool last) {
     {
         const vk::Extent2D extent = swapchain.GetExtent();
         SetExpectedGameSize(s32(extent.width), s32(extent.height));
+        // bbport: on Android the image comes back from the app and goes to it (queue family
+        // FOREIGN, layout General: vk_swapchain_ahb.h); on the desktop these are the plain values.
+        const auto acquire_queues = swapchain.AcquireQueues();
+        const auto release_queues = swapchain.ReleaseQueues();
         const vk::ImageSubresourceRange color_range{
             .aspectMask = vk::ImageAspectFlagBits::eColor,
             .baseMipLevel = 0,
@@ -826,8 +830,8 @@ bool Presenter::PresentImage(Frame* frame, vk::Image image, bool last) {
                 .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
                 .oldLayout = vk::ImageLayout::eUndefined,
                 .newLayout = vk::ImageLayout::eTransferDstOptimal,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .srcQueueFamilyIndex = acquire_queues.first,
+                .dstQueueFamilyIndex = acquire_queues.second,
                 .image = swapchain_image,
                 .subresourceRange = color_range,
             },
@@ -869,9 +873,9 @@ bool Presenter::PresentImage(Frame* frame, vk::Image image, bool last) {
                                          : vk::AccessFlagBits::eNone,
                 .oldLayout = vk::ImageLayout::eTransferDstOptimal,
                 .newLayout = overlay ? vk::ImageLayout::eColorAttachmentOptimal
-                                     : vk::ImageLayout::ePresentSrcKHR,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                     : swapchain.PresentLayout(),
+                .srcQueueFamilyIndex = overlay ? VK_QUEUE_FAMILY_IGNORED : release_queues.first,
+                .dstQueueFamilyIndex = overlay ? VK_QUEUE_FAMILY_IGNORED : release_queues.second,
                 .image = swapchain_image,
                 .subresourceRange = color_range,
             },
@@ -895,9 +899,9 @@ bool Presenter::PresentImage(Frame* frame, vk::Image image, bool last) {
                 .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
                 .dstAccessMask = vk::AccessFlagBits::eNone,
                 .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
-                .newLayout = vk::ImageLayout::ePresentSrcKHR,
-                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .newLayout = swapchain.PresentLayout(),
+                .srcQueueFamilyIndex = release_queues.first,
+                .dstQueueFamilyIndex = release_queues.second,
                 .image = swapchain_image,
                 .subresourceRange = color_range,
             };
@@ -913,7 +917,9 @@ bool Presenter::PresentImage(Frame* frame, vk::Image image, bool last) {
     // Flush vulkan commands.
 
     SubmitInfo info{};
-    info.AddWait(swapchain.GetImageAcquiredSemaphore());
+    if (const vk::Semaphore acquired = swapchain.GetImageAcquiredSemaphore()) {
+        info.AddWait(acquired);
+    }
     info.AddWait(frame->ready_semaphore, frame->ready_tick);
     info.AddSignal(swapchain.GetPresentReadySemaphore());
     if (last) {

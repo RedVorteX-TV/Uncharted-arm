@@ -1,0 +1,20 @@
+Subject: [PATCH] freedreno/common: drop the removed magic_regs argument from the A825 entry of v37/a8xx_gen8.patch
+
+The "enable A825" commit of v37/a8xx_gen8.patch passes `magic_regs = dict()` next to
+`raw_magic_regs`. Mesa main removed the magic_regs parameter of A6xxGPUInfo (everything is
+raw_magic_regs now), so freedreno_devices.py fails with "TypeError: A6xxGPUInfo.__init__() got
+an unexpected keyword argument 'magic_regs'" and the device table is not generated. The
+dict was empty, so dropping the line changes nothing else. Applied by build_turnip.sh right
+after v37/ours/0001, before a8xx_shared_mem.py.
+---
+diff --git a/src/freedreno/common/freedreno_devices.py b/src/freedreno/common/freedreno_devices.py
+--- a/src/freedreno/common/freedreno_devices.py
++++ b/src/freedreno/common/freedreno_devices.py
+@@ -1579,7 +1579,6 @@
+         cs_shared_mem_size = 32 * 1024,
+         wave_granularity = 2,
+         fibers_per_sp = 128 * 2 * 16,
+-        magic_regs = dict(),
+         raw_magic_regs = a8xx_base_raw_magic_regs,
+     ))
+ 

@@ -3,7 +3,13 @@
 
 #pragma once
 
+#ifdef __ANDROID__
+// Bionic: no VkSwapchainKHR (see vk_swapchain_ahb.h); the same Swapchain interface over AHardwareBuffers.
+#include "video_core/renderer_vulkan/vk_swapchain_ahb.h"
+#else
+
 #include <mutex>
+#include <utility>
 #include <vector>
 #include "common/types.h"
 #include "video_core/renderer_vulkan/vk_common.h"
@@ -88,6 +94,18 @@ public:
 
     void SetHDR(bool hdr);
 
+    /// The layout and queue-family ownership of the image when it is presented (the Bionic
+    /// swapchain, vk_swapchain_ahb.h, differs: an AHardwareBuffer is handed to another process).
+    vk::ImageLayout PresentLayout() const {
+        return vk::ImageLayout::ePresentSrcKHR;
+    }
+    std::pair<u32, u32> AcquireQueues() const {
+        return {VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED};
+    }
+    std::pair<u32, u32> ReleaseQueues() const {
+        return {VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED};
+    }
+
     bool GetHDR() const {
         return needs_hdr;
     }
@@ -137,3 +155,5 @@ private:
 };
 
 } // namespace Vulkan
+
+#endif // !__ANDROID__

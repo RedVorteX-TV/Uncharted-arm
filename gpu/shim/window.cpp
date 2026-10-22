@@ -1,4 +1,5 @@
 // bbport: SDL3 window for the Vulkan swapchain (X11 or Wayland).
+#ifndef __ANDROID__ // Android: window_android.cpp
 #include <cstdlib>
 #include <cstring>
 #include <SDL3/SDL.h>
@@ -229,3 +230,5 @@ bool WindowSDL::PollEvents() {
 }
 
 } // namespace Frontend
+
+#endif // !__ANDROID__

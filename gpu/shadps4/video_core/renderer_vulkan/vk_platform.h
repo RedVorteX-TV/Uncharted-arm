@@ -20,7 +20,9 @@ namespace Vulkan {
 
 constexpr u32 TargetVulkanApiVersion = VK_API_VERSION_1_3;
 
+#ifndef __ANDROID__ // Bionic has no surface: vk_swapchain_ahb.h
 vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& emu_window);
+#endif
 
 vk::UniqueInstance CreateInstance(Frontend::WindowSystemType window_type, bool enable_validation,
                                   bool enable_crash_diagnostic);

@@ -1,0 +1,24 @@
+From: bbport
+Subject: [PATCH] vulkan: export the ICD entry points in the Android version script
+
+An Android build exports only HMI (the hwvulkan HAL module). A process that dlopens the driver
+directly calls vk_icdGetInstanceProcAddr and vk_icdNegotiateLoaderICDInterfaceVersion, which
+the driver contains but the version script made local.
+---
+diff --git a/src/vulkan/vulkan-android.sym b/src/vulkan/vulkan-android.sym
+index 7148e09..3f97261 100644
+--- a/src/vulkan/vulkan-android.sym
++++ b/src/vulkan/vulkan-android.sym
+@@ -5,6 +5,12 @@
+ 		# instance of struct hwvulkan_module_t.
+ 		HMI;
+ 
++		# The ICD entry points too: a process that dlopens the driver directly (no hwvulkan
++		# loader in between) reaches the driver through these.
++		vk_icdGetInstanceProcAddr;
++		vk_icdGetPhysicalDeviceProcAddr;
++		vk_icdNegotiateLoaderICDInterfaceVersion;
++
+ 	local:
+ 		# When static linking LLVM, all its symbols are public API.
+ 		# That may cause symbol collision, so explicitly demote everything.

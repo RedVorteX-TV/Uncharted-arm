@@ -9,3 +9,12 @@ set_target_properties(bbcpu PROPERTIES
   C_VISIBILITY_PRESET hidden
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN TRUE)
+
+if(ANDROID)
+  # libc++ (Bionic's only C++ library) does not satisfy fextl::move_only_function's noexcept
+  # std::function assignment, which FEXServerClient.cpp needs. This library runs no FEXServer, so
+  # that file stays out of FEX's Common; the link tells if anything still needs it.
+  get_target_property(bb_common_sources Common SOURCES)
+  list(FILTER bb_common_sources EXCLUDE REGEX "FEXServerClient\\.cpp$")
+  set_target_properties(Common PROPERTIES SOURCES "${bb_common_sources}")
+endif()

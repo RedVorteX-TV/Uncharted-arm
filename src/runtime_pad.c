@@ -83,6 +83,10 @@ static void touch_click(PadData *d, int right) {
 
 /* Opens the first gamepad SDL knows about; called under lock. */
 static SDL_Gamepad *current_gamepad(void) {
+#ifdef __ANDROID__
+    /* Android: the app hands over its pads through BB_PAD_FILE; SDL has no JNI in this process. */
+    return NULL;
+#endif
     if (!sdl_ready) sdl_ready = SDL_WasInit(SDL_INIT_GAMEPAD) ? 1 : SDL_InitSubSystem(SDL_INIT_GAMEPAD) ? 1 : -1;
     if (sdl_ready<0) return NULL;
     if (gamepad && !SDL_GamepadConnected(gamepad)) { SDL_CloseGamepad(gamepad); gamepad=NULL; }
@@ -626,8 +630,8 @@ static void sample_host(PadData *d) {
  * tokens, re-read when it changes: button names (cross circle square triangle l1 r1 l2 r2 l3 r3
  * options touchpad touchpad_left touchpad_right up down left right) are held while listed;
  * touchpad defaults to a left-side click; lx= ly= rx= ry= (0..255) override
- * the sticks. An empty file releases everything. */
-static struct { uint32_t buttons; int stick[4]; int touch_side; float mouse[2]; } injected={0,{-1,-1,-1,-1},-1,{0,0}};
+ * the sticks, l2= r2= (0..255) the analog triggers (the Android app's pads). BB_PAD_QUIET=1: no log line per change. An empty file releases everything. */
+static struct { uint32_t buttons; int stick[4]; int touch_side; float mouse[2]; int triggers[2]; } injected={0,{-1,-1,-1,-1},-1,{0,0},{-1,-1}};
 static int replay_armed;      /* 1 while a BB_PAD_REPLAY recording plays, 2 once it ended */
 static uint64_t replay_start; /* 0: (re)start at the next sample */
 static void read_inject(void) {
@@ -660,6 +664,7 @@ static void read_inject(void) {
     injected.touch_side=-1;
     for (int i=0;i<4;++i) injected.stick[i]=-1;
     injected.mouse[0]=injected.mouse[1]=0.0f;
+    injected.triggers[0]=injected.triggers[1]=-1;
     char token[64];
     while (fscanf(f,"%63s",token)==1) {
         if (!strcmp(token,"replay") && replay_armed!=1) { replay_armed=1; replay_start=0; } /* BB_PAD_REPLAY */
@@ -671,9 +676,12 @@ static void read_inject(void) {
         for (int i=0;i<4;++i) if (!strncmp(token,sticks[i],3)) { int v=atoi(token+3); injected.stick[i]=v<0 ? 0 : v>255 ? 255 : v; }
         if (!strncmp(token,"mx=",3)) injected.mouse[0]=(float)atof(token+3); /* mouse motion, pixels/s */
         if (!strncmp(token,"my=",3)) injected.mouse[1]=(float)atof(token+3);
+        for (int i=0;i<2;++i) if (!strncmp(token,i ? "r2=" : "l2=",3)) {
+            int v=atoi(token+3); injected.triggers[i]=v<0 ? 0 : v>255 ? 255 : v;
+        }
     }
     fclose(f);
-    printf("Runtime: pad file: buttons 0x%x sticks %d %d %d %d mouse %g %g (t=%.4f)\n",injected.buttons,
+    if (!getenv("BB_PAD_QUIET")) printf("Runtime: pad file: buttons 0x%x sticks %d %d %d %d mouse %g %g (t=%.4f)\n",injected.buttons,
            injected.stick[0],injected.stick[1],injected.stick[2],injected.stick[3],injected.mouse[0],
            injected.mouse[1],now*1e-6);
 }
@@ -748,8 +756,27 @@ static void replay_sample(PadData *d) {
 /* After the menu or the text dialog closes, buttons still held (the Cross that accepted a
  * name) stay hidden until released: the game would take them as a new press. */
 static int hold_after_capture;
+#ifdef __ANDROID__
+/* Android: the in-game menu (L3+R3) gets the app's pad here, as the desktop's gets SDL events. */
+static void overlay_pad(uint32_t ps) {
+    static const struct { uint32_t ps, menu; } map[]={
+        {BTN_CROSS,BB_OVERLAY_PAD_SOUTH}, {BTN_CIRCLE,BB_OVERLAY_PAD_EAST}, {BTN_SQUARE,BB_OVERLAY_PAD_WEST},
+        {BTN_TRIANGLE,BB_OVERLAY_PAD_NORTH}, {BTN_UP,BB_OVERLAY_PAD_UP}, {BTN_DOWN,BB_OVERLAY_PAD_DOWN},
+        {BTN_LEFT,BB_OVERLAY_PAD_LEFT}, {BTN_RIGHT,BB_OVERLAY_PAD_RIGHT}, {BTN_L1,BB_OVERLAY_PAD_L1},
+        {BTN_R1,BB_OVERLAY_PAD_R1}, {BTN_OPTIONS,BB_OVERLAY_PAD_START}, {BTN_TOUCHPAD,BB_OVERLAY_PAD_BACK},
+        {BTN_L3,BB_OVERLAY_PAD_L3}, {BTN_R3,BB_OVERLAY_PAD_R3},
+    };
+    uint32_t menu=0;
+    for (size_t i=0;i<sizeof(map)/sizeof(*map);++i) if (ps & map[i].ps) menu|=map[i].menu;
+    bbgpu_overlay_pad(menu);
+}
+#endif
 static void sample(PadData *d) {
     sample_host(d);
+#ifdef __ANDROID__
+    read_inject();
+    overlay_pad(injected.buttons);
+#endif
     if (bbgpu_overlay_captures_input()) { hold_after_capture=1; return; }
     record_sample(d);
     read_inject();
@@ -771,6 +798,15 @@ static void sample(PadData *d) {
     else if ((d->buttons & BTN_TOUCHPAD) && !d->touch_count) touch_click(d,0);
     if (injected.buttons & BTN_L2) d->l2=255;
     if (injected.buttons & BTN_R2) d->r2=255;
+    if (injected.triggers[0]>=0 && !(injected.buttons & BTN_L2)) {
+        d->l2=(uint8_t)injected.triggers[0];
+        if (d->l2>30) d->buttons|=BTN_L2;
+    }
+    if (injected.triggers[1]>=0 && !(injected.buttons & BTN_R2)) {
+        d->r2=(uint8_t)injected.triggers[1];
+        if (d->r2>30) d->buttons|=BTN_R2;
+    }
+    aim_held=(d->buttons & BTN_L2)!=0;
     uint8_t *axes[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
     for (int i=0;i<4;++i) if (injected.stick[i]>=0) *axes[i]=(uint8_t)injected.stick[i];
     /* U2, U3 (no joypad callback): the right stick held a little while the mouse turns the follow

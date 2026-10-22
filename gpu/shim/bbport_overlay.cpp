@@ -11,7 +11,9 @@
 #include <cstring>
 #include <mutex>
 
+#ifndef __ANDROID__ // Android: no SDL; the pad comes through HandlePad (runtime_pad.c)
 #include <SDL3/SDL.h>
+#endif
 #include "bbport_settings.h"
 
 extern "C" void runtime_restart(void); // bb-probe (probe.c): restarts through BB_RESTART_COMMAND
@@ -74,6 +76,7 @@ void SetOpen(bool value) {
     }
 }
 
+#ifndef __ANDROID__
 ImGuiKey KeyFromSdl(SDL_Keycode key) {
     switch (key) {
     case SDLK_TAB: return ImGuiKey_Tab;
@@ -124,6 +127,8 @@ float PixelDensity(SDL_WindowID id) {
     const float density = window ? SDL_GetWindowPixelDensity(window) : 1.0f;
     return density > 0.0f ? density : 1.0f;
 }
+
+#endif // !__ANDROID__
 
 // Marks the settings dirty when a widget changed them.
 template <typename T>
@@ -498,6 +503,7 @@ void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count) 
     std::printf("Overlay: menu ready (Insert or L3+R3)\n");
 }
 
+#ifndef __ANDROID__
 void UpdateTextInput(SDL_Window* window) {
     bool want = false;
     {
@@ -602,6 +608,42 @@ bool HandleEvent(const SDL_Event& event) {
         return false;
     }
 }
+#else
+// Android: the pad state the runtime reads from the app (BB_PAD_FILE), once per poll. The same
+// controls as the SDL path: L3+R3 opens/closes the menu, then the D-pad, face buttons, L1/R1,
+// Start and Back drive it.
+bool HandlePad(u32 buttons) {
+    static constexpr ImGuiKey keys[] = {
+        ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight, ImGuiKey_GamepadFaceLeft,
+        ImGuiKey_GamepadFaceUp,   ImGuiKey_GamepadDpadUp,    ImGuiKey_GamepadDpadDown,
+        ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadDpadRight, ImGuiKey_GamepadL1,
+        ImGuiKey_GamepadR1,       ImGuiKey_GamepadStart,     ImGuiKey_GamepadBack,
+    };
+    static u32 previous = 0;
+    std::scoped_lock lock{imgui_mutex};
+    if (!initialized) {
+        previous = buttons;
+        return false;
+    }
+    const u32 changed = buttons ^ previous;
+    previous = buttons;
+    const u32 sticks = BB_OVERLAY_PAD_L3 | BB_OVERLAY_PAD_R3;
+    if ((changed & sticks) && (buttons & sticks) == sticks) {
+        SetOpen(!menu_open);
+        return true;
+    }
+    if (!menu_open) {
+        return false;
+    }
+    ImGuiIO& io = ImGui::GetIO();
+    for (u32 i = 0; i < sizeof(keys) / sizeof(*keys); ++i) {
+        if (changed & (1u << i)) {
+            io.AddKeyEvent(keys[i], (buttons >> i) & 1);
+        }
+    }
+    return true;
+}
+#endif // !__ANDROID__
 
 bool Visible() {
     return initialized && (menu_open || text_entry_active || BbSettings::Get().show_fps);

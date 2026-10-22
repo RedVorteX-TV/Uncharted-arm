@@ -1,0 +1,137 @@
+From: bbport
+Subject: [PATCH] tu/kgsl: wake pending syncobj waits on any device's submission
+
+A device waiting on a not yet submitted point of a timeline shared with another device of the
+process (0008: lsfg-vk's own device and the game's) slept on its own timeline_cond, which
+only its own submissions broadcast: a deadlock at the first present. Pending waits now sleep
+on a process-wide condition that every submission broadcasts.
+---
+--- a/src/freedreno/vulkan/tu_knl.h
++++ b/src/freedreno/vulkan/tu_knl.h
+@@ -11,6 +11,7 @@
+ #define TU_DRM_H
+ 
+ #include <stddef.h>
++#include <pthread.h>
+ #include <stdint.h>
+ 
+ #include "util/u_atomic.h"
+@@ -339,4 +340,9 @@
+ tu_queue_wait_fence(struct tu_queue *queue, uint32_t fence,
+                     uint64_t timeout_ns);
+ 
++/* Process-wide wakeup for sync objects resolved by any device's submission (tu_knl.cc). */
++pthread_mutex_t *tu_submit_wakeup_mutex_get(void);
++pthread_cond_t *tu_submit_wakeup_cond_get(void);
++void tu_submit_wakeup_broadcast(void);
++
+ #endif /* TU_DRM_H */
+--- a/src/freedreno/vulkan/tu_knl.cc
++++ b/src/freedreno/vulkan/tu_knl.cc
+@@ -27,6 +27,46 @@
+ #include "tu_queue.h"
+ #include "tu_rmv.h"
+ 
++/* Process-wide wakeup for sync objects resolved by a submission. A device waiting on another
++ * device's not yet submitted point (timelines shared between devices of one process, e.g. a
++ * Vulkan layer's own device: lsfg-vk) is woken by any device's submission, not only its own. */
++static pthread_once_t tu_submit_wakeup_once = PTHREAD_ONCE_INIT;
++static pthread_mutex_t tu_submit_wakeup_mutex;
++static pthread_cond_t tu_submit_wakeup_cond;
++
++static void
++tu_submit_wakeup_init(void)
++{
++   pthread_condattr_t attr;
++   pthread_mutex_init(&tu_submit_wakeup_mutex, NULL);
++   pthread_condattr_init(&attr);
++   pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
++   pthread_cond_init(&tu_submit_wakeup_cond, &attr);
++   pthread_condattr_destroy(&attr);
++}
++
++pthread_mutex_t *
++tu_submit_wakeup_mutex_get(void)
++{
++   pthread_once(&tu_submit_wakeup_once, tu_submit_wakeup_init);
++   return &tu_submit_wakeup_mutex;
++}
++
++pthread_cond_t *
++tu_submit_wakeup_cond_get(void)
++{
++   pthread_once(&tu_submit_wakeup_once, tu_submit_wakeup_init);
++   return &tu_submit_wakeup_cond;
++}
++
++void
++tu_submit_wakeup_broadcast(void)
++{
++   pthread_mutex_lock(tu_submit_wakeup_mutex_get());
++   pthread_cond_broadcast(&tu_submit_wakeup_cond);
++   pthread_mutex_unlock(&tu_submit_wakeup_mutex);
++}
++
+ VkResult
+ tu_bo_init_new_explicit_iova(struct tu_device *dev,
+                              struct vk_object_base *base,
+--- a/src/freedreno/vulkan/tu_knl_kgsl.cc
++++ b/src/freedreno/vulkan/tu_knl_kgsl.cc
+@@ -964,21 +964,23 @@
+       if (abs_timeout_ns == 0)
+          return VK_TIMEOUT; // If this is a simple poll then we can return early
+ 
+-      pthread_mutex_lock(&device->submit_mutex);
++      /* Woken by any device's submission: the syncobj may belong to another device of this
++       * process sharing a timeline (tu_submit_wakeup_broadcast). */
++      pthread_mutex_t *wakeup_mutex = tu_submit_wakeup_mutex_get();
++      pthread_cond_t *wakeup_cond = tu_submit_wakeup_cond_get();
++      pthread_mutex_lock(wakeup_mutex);
+       struct timespec abstime;
+       timespec_from_nsec(&abstime, abs_timeout_ns);
+ 
+-      while (s->state == KGSL_SYNCOBJ_STATE_UNSIGNALED) {
++      while (p_atomic_read(&s->state) == KGSL_SYNCOBJ_STATE_UNSIGNALED) {
+          int ret;
+          if (abs_timeout_ns == UINT64_MAX) {
+-            ret = pthread_cond_wait(&device->timeline_cond,
+-                                    &device->submit_mutex);
++            ret = pthread_cond_wait(wakeup_cond, wakeup_mutex);
+          } else {
+-            ret = pthread_cond_timedwait(&device->timeline_cond,
+-                                         &device->submit_mutex, &abstime);
++            ret = pthread_cond_timedwait(wakeup_cond, wakeup_mutex, &abstime);
+          }
+          if (ret != 0) {
+-            pthread_mutex_unlock(&device->submit_mutex);
++            pthread_mutex_unlock(wakeup_mutex);
+             if (ret == ETIMEDOUT)
+                return VK_TIMEOUT;
+ 
+@@ -986,7 +988,7 @@
+          }
+       }
+ 
+-      pthread_mutex_unlock(&device->submit_mutex);
++      pthread_mutex_unlock(wakeup_mutex);
+    }
+ 
+    switch (s->state) {
+--- a/src/freedreno/vulkan/tu_queue.cc
++++ b/src/freedreno/vulkan/tu_queue.cc
+@@ -405,6 +405,7 @@
+ 
+    pthread_mutex_unlock(&device->submit_mutex);
+    pthread_cond_broadcast(&queue->device->timeline_cond);
++   tu_submit_wakeup_broadcast();
+ 
+ out:
+    tu_submit_finish(device, submit);
+@@ -597,6 +598,7 @@
+ 
+    pthread_mutex_unlock(&device->submit_mutex);
+    pthread_cond_broadcast(&queue->device->timeline_cond);
++   tu_submit_wakeup_broadcast();
+ 
+    u_trace_context_process(&device->trace_context, false);
+ 

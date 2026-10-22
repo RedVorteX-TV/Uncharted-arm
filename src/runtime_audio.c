@@ -5,7 +5,11 @@
  * play stale halves - a click every 10.7 ms. The lowest SDL queue level of
  * each window is steered to two buffers (silence prefill on underrun, ±3%
  * cadence corrections), which also absorbs device clock drift. Without an audio device (headless runs, BB_AUDIO=none)
- * ports only follow the clock. */
+ * ports only follow the clock.
+ * Android (BB_NO_SDL_AUDIO, runtime.h): no SDL. Each port queues its samples in a ring; a mixer thread
+ * mixes the rings into s16 stereo 48 kHz in 512-frame periods and writes them to the FIFO the app
+ * plays (BB_AUDIO_FIFO, AudioBridge.java), exactly what SDL's disk driver produced there. The
+ * blocking write into the small pipe is the device clock, as the disk driver's was. */
 #define _GNU_SOURCE
 #include "runtime.h"
 #include <stdio.h>
@@ -13,7 +17,12 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#ifndef BB_NO_SDL_AUDIO
 #include <SDL3/SDL.h>
+#endif
 
 #define PORTS 25
 #define ERR_NOT_OPENED ((int32_t)0x80260001)
@@ -34,7 +43,12 @@ typedef struct {
     int surround; /* device has 6+ channels: the game is told it is surround and gets 8 channels */
     int fold_stereo; /* 8 channels folded to stereo here for a device with fewer channels */
     int32_t volume[8];
+#ifndef BB_NO_SDL_AUDIO
     SDL_AudioStream *stream;
+#else
+    unsigned char *ring; size_t ring_cap, ring_head, ring_len; pthread_mutex_t ring_lock;
+#endif
+    int sink;                       /* the port feeds the audio backend */
     uint64_t next_deadline_ns; /* next return of sceAudioOutOutput */
     int64_t adjust_ns; int window_min, window_count; /* queue level control */
     uint64_t last_output_us;
@@ -62,7 +76,8 @@ static void sleep_until(uint64_t deadline) {
     while (clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&t,NULL)) {}
 #endif
 }
-static int sdl_audio(void) {
+#ifndef BB_NO_SDL_AUDIO
+static int audio_backend(void) {
     if (sdl_ready<0) {
         const char *mode=getenv("BB_AUDIO");
         sdl_ready = (!mode || strcmp(mode,"none")) && SDL_InitSubSystem(SDL_INIT_AUDIO);
@@ -70,6 +85,113 @@ static int sdl_audio(void) {
     }
     return sdl_ready;
 }
+static int sink_open(Port *p) {
+    SDL_AudioSpec spec={p->is_float ? SDL_AUDIO_F32 : SDL_AUDIO_S16, p->fold_stereo ? 2 : p->channels, 48000};
+    p->stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,NULL,NULL);
+    if (p->stream) SDL_ResumeAudioStreamDevice(p->stream);
+    else fprintf(stderr,"Runtime: SDL audio stream failed (%s)\n",SDL_GetError());
+    return p->stream!=NULL;
+}
+static void sink_close(Port *p) { if (p->stream) SDL_DestroyAudioStream(p->stream); p->stream=NULL; }
+static int sink_queued(Port *p) { return SDL_GetAudioStreamQueued(p->stream); }
+static void sink_put(Port *p, const void *data, int bytes) { SDL_PutAudioStreamData(p->stream,data,bytes); }
+#else
+#define MIX_FRAMES 512
+static int fifo_fd=-1;
+static int audio_backend(void) {
+    if (sdl_ready<0) {
+        const char *mode=getenv("BB_AUDIO"), *path=getenv("BB_AUDIO_FIFO");
+        sdl_ready=0;
+        if ((!mode || strcmp(mode,"none")) && path && *path) {
+            /* Read-write like the app's own open: never blocks, whoever came first. */
+            fifo_fd=open(path,O_RDWR|O_CLOEXEC);
+            if (fifo_fd<0) fprintf(stderr,"Runtime: audio FIFO %s failed (%s)\n",path,strerror(errno));
+            else sdl_ready=1;
+        }
+        printf("Runtime: audio backend %s\n",sdl_ready ? "fifo (s16 stereo 48 kHz)" : "timer (silent)");
+    }
+    return sdl_ready;
+}
+/* Source samples (SDL channel order: FL FR FC LFE BL BR SL SR) of one frame to stereo. */
+static void frame_to_stereo(const Port *p, int channels, const unsigned char *in, int *l, int *r) {
+    float v[8];
+    for (int c=0;c<channels;++c) {
+        if (p->is_float) { float x; memcpy(&x,in+c*4,4); v[c]=x*32768.0f; }
+        else { int16_t x; memcpy(&x,in+c*2,2); v[c]=x; }
+    }
+    float fl, fr;
+    if (channels==1) fl=fr=v[0];
+    else if (channels==2) { fl=v[0]; fr=v[1]; }
+    else {
+        /* 7.1 down to stereo: centre and surrounds at -3 / -6 dB, normalised so the sum cannot clip. */
+        const float n=1.0f/2.7071f;
+        fl=(v[0]+0.7071f*v[2]+0.5f*v[4]+0.5f*v[6])*n; fr=(v[1]+0.7071f*v[2]+0.5f*v[5]+0.5f*v[7])*n;
+    }
+    *l=(int)fl; *r=(int)fr;
+}
+static void *mixer_thread(void *arg) {
+    (void)arg;
+    int16_t out[MIX_FRAMES*2];
+    static int32_t acc[MIX_FRAMES*2];
+    unsigned char frame[8*4];
+    for (;;) {
+        memset(acc,0,sizeof acc);
+        pthread_mutex_lock(&table_lock);
+        for (int id=0;id<PORTS;++id) {
+            Port *p=&ports[id];
+            if (!p->used || !p->sink) continue;
+            const int channels=p->fold_stereo ? 2 : p->channels; /* what output_port queued */
+            const size_t fb=(size_t)channels*(size_t)p->sample_bytes;
+            pthread_mutex_lock(&p->ring_lock);
+            for (int f=0;f<MIX_FRAMES && p->ring_len>=fb;++f) {
+                for (size_t i=0;i<fb;++i) frame[i]=p->ring[(p->ring_head+i)%p->ring_cap];
+                p->ring_head=(p->ring_head+fb)%p->ring_cap; p->ring_len-=fb;
+                int l, r; frame_to_stereo(p,channels,frame,&l,&r);
+                acc[2*f]+=l; acc[2*f+1]+=r;
+            }
+            pthread_mutex_unlock(&p->ring_lock);
+        }
+        pthread_mutex_unlock(&table_lock);
+        for (int i=0;i<MIX_FRAMES*2;++i) out[i]=(int16_t)(acc[i]>32767 ? 32767 : acc[i]<-32768 ? -32768 : acc[i]);
+        const unsigned char *at=(const unsigned char *)out; size_t left=sizeof out;
+        while (left) {
+            ssize_t n=write(fifo_fd,at,left);
+            if (n<0 && errno==EINTR) continue;
+            if (n<0) { usleep(5000); continue; }
+            at+=n; left-=(size_t)n;
+        }
+    }
+    return NULL;
+}
+static int sink_open(Port *p) {
+    p->ring_cap=(size_t)p->frames*(size_t)(p->fold_stereo ? 2 : p->channels)*(size_t)p->sample_bytes*16;
+    p->ring=malloc(p->ring_cap); p->ring_head=p->ring_len=0;
+    if (!p->ring) return 0;
+    pthread_mutex_init(&p->ring_lock,NULL);
+    static int started;
+    if (!started) {
+        pthread_t t; pthread_attr_t a; pthread_attr_init(&a); pthread_attr_setdetachstate(&a,PTHREAD_CREATE_DETACHED);
+        started=pthread_create(&t,&a,mixer_thread,NULL)==0;
+        pthread_attr_destroy(&a);
+        if (!started) { free(p->ring); p->ring=NULL; return 0; }
+    }
+    return 1;
+}
+static void sink_close(Port *p) {
+    /* Under table_lock (audio_close), like the mixer's walk: it never touches the ring after this. */
+    p->sink=0; free(p->ring); p->ring=NULL;
+}
+static int sink_queued(Port *p) { pthread_mutex_lock(&p->ring_lock); int n=(int)p->ring_len; pthread_mutex_unlock(&p->ring_lock); return n; }
+static void sink_put(Port *p, const void *data, int bytes) {
+    pthread_mutex_lock(&p->ring_lock);
+    if (p->ring_len+(size_t)bytes<=p->ring_cap) { /* overflow (the app is not reading): drop */
+        size_t tail=(p->ring_head+p->ring_len)%p->ring_cap;
+        for (int i=0;i<bytes;++i) p->ring[(tail+(size_t)i)%p->ring_cap]=((const unsigned char *)data)[i];
+        p->ring_len+=(size_t)bytes;
+    }
+    pthread_mutex_unlock(&p->ring_lock);
+}
+#endif
 static int port_range(int type, int *first, int *last) {
     switch (type) {
     case 0: *first=0; *last=7; return 1;      /* main */
@@ -116,7 +238,8 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
     p->used=1; p->type=type; p->channels=channels[format]; p->is_float=format>=3 && format!=6;
     p->sample_bytes=p->is_float ? 4 : 2; p->frames=(int)length; p->std_layout=format>=6;
     for (int c=0;c<8;++c) p->volume[c]=VOLUME_0DB;
-    if (sdl_audio()) {
+    if (audio_backend()) {
+#ifndef BB_NO_SDL_AUDIO
         /* With a device of fewer than 6 channels the games are told the output is stereo
            (sceAudioOutGetPortState) and fill only the front pair of 8-channel buffers. SDL's
            7.1 to stereo downmix scales that pair by about 0.3: on a stereo device everything
@@ -127,10 +250,13 @@ static ABI int32_t audio_open(int32_t user, int32_t type, int32_t index, uint32_
         int have_device = SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&device,NULL);
         p->surround = p->channels==8 && have_device && device.channels>=6 && !getenv("BB_AUDIO_STEREO");
         p->fold_stereo = p->channels==8 && have_device && !p->surround;
-        SDL_AudioSpec spec={p->is_float ? SDL_AUDIO_F32 : SDL_AUDIO_S16, p->fold_stereo ? 2 : p->channels, 48000};
-        p->stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,NULL,NULL);
-        if (p->stream) SDL_ResumeAudioStreamDevice(p->stream);
-        else fprintf(stderr,"Runtime: SDL audio stream failed (%s); port %d uses the timer sink\n",SDL_GetError(),id);
+#else
+        /* Android: the app plays stereo; 8-channel ports are folded here as for a stereo device. */
+        p->surround = 0;
+        p->fold_stereo = p->channels==8;
+#endif
+        p->sink=sink_open(p);
+        if (!p->sink) fprintf(stderr,"Runtime: port %d uses the timer sink\n",id);
     }
     p->stats=getenv("BB_AUDIO_STATS")!=NULL;
     const char *dump=getenv("BB_AUDIO_DUMP");
@@ -151,10 +277,10 @@ static ABI int32_t audio_close(int32_t handle) {
     Port *p=port_of(handle,&error);
     if (p) {
         pthread_mutex_lock(&p->lock);
-        if (p->stream) SDL_DestroyAudioStream(p->stream);
+        if (p->sink) sink_close(p);
         if (p->dump) fclose(p->dump);
         p->dump=NULL;
-        p->stream=NULL; p->used=0;
+        p->sink=0; p->used=0;
         pthread_mutex_unlock(&p->lock);
     }
     pthread_mutex_unlock(&table_lock);
@@ -208,8 +334,8 @@ static int32_t output_port(int32_t handle, const void *data, int pace) {
             if (!p->stat_start_ns) { p->stat_start_ns=now; p->stat_min_queued=1<<30; }
             else if (now-p->stat_last_ns>p->stat_max_gap_ns) p->stat_max_gap_ns=now-p->stat_last_ns;
             p->stat_last_ns=now; ++p->stat_buffers;
-            if (p->stream) {
-                int queued=SDL_GetAudioStreamQueued(p->stream);
+            if (p->sink) {
+                int queued=sink_queued(p);
                 if (queued<p->stat_min_queued) p->stat_min_queued=queued;
                 if (queued==0) ++p->stat_starved;
             }
@@ -226,13 +352,13 @@ static int32_t output_port(int32_t handle, const void *data, int pace) {
             else sleep_until(p->next_deadline_ns);
             p->next_deadline_ns+=period;
         }
-        if (p->stream) {
+        if (p->sink) {
             /* The device drains the queue in quanta (21 ms on PipeWire), so the level
                is a sawtooth: its minimum over ~32 buffers is what gets controlled. */
-            int qb=(int)queue_bytes, low=2*qb, queued=SDL_GetAudioStreamQueued(p->stream);
+            int qb=(int)queue_bytes, low=2*qb, queued=sink_queued(p);
             if (queued<qb) {
                 static const unsigned char silence[2048*8*4];
-                SDL_PutAudioStreamData(p->stream,silence,low-queued<qb ? low-queued : qb);
+                sink_put(p,silence,low-queued<qb ? low-queued : qb);
                 queued=low;
             }
             if (!p->window_count || queued<p->window_min) p->window_min=queued;
@@ -241,7 +367,7 @@ static int32_t output_port(int32_t handle, const void *data, int pace) {
                 p->window_count=0;
             }
             p->next_deadline_ns+=(uint64_t)p->adjust_ns;
-            SDL_PutAudioStreamData(p->stream,queue_data,qb);
+            sink_put(p,queue_data,qb);
         }
         ++buffers_out;
     }

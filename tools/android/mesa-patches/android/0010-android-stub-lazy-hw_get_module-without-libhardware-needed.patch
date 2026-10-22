@@ -1,0 +1,57 @@
+From: bbport
+Subject: [PATCH] android_stub: resolve hw_get_module at run time instead of linking libhardware
+
+libhardware.so is not an NDK public library: a NEEDED entry for it can make dlopen of the
+driver fail in an app's linker namespace. Replace the libhardware stub with a small static
+hw_get_module that dlopens libhardware.so lazily and returns -ENOENT when it is unreachable.
+---
+diff --git a/src/android_stub/hardware_lazy.cpp b/src/android_stub/hardware_lazy.cpp
+new file mode 100644
+index 0000000..7b7bc9f
+--- /dev/null
++++ b/src/android_stub/hardware_lazy.cpp
+@@ -0,0 +1,16 @@
++// hw_get_module() from libhardware.so, found at run time (dlopen) instead of linked: libhardware
++// is not in the NDK's public library list, so a NEEDED entry for it can make the driver fail to
++// load in an app's linker namespace. Where libhardware is not reachable this fails with -ENOENT,
++// like a device without that module, and the gralloc helpers of u_gralloc then fall back.
++#include <dlfcn.h>
++#include <errno.h>
++#include <hardware/hardware.h>
++
++extern "C" int hw_get_module(const char *id, const struct hw_module_t **module)
++{
++   typedef int (*hw_get_module_fn)(const char *, const struct hw_module_t **);
++   static void *lib = dlopen("libhardware.so", RTLD_LAZY | RTLD_LOCAL);
++   static hw_get_module_fn fn =
++      lib ? reinterpret_cast<hw_get_module_fn>(dlsym(lib, "hw_get_module")) : nullptr;
++   return fn ? fn(id, module) : -ENOENT;
++}
+diff --git a/src/android_stub/meson.build b/src/android_stub/meson.build
+index 0e3f27b..29d0d24 100644
+--- a/src/android_stub/meson.build
++++ b/src/android_stub/meson.build
+@@ -1,6 +1,6 @@
+ if with_android_stub
+   stub_libs = []
+-  lib_names = ['hardware', 'log', 'nativewindow', 'sync']
++  lib_names = ['log', 'nativewindow', 'sync']
+ 
+   if with_libbacktrace
+     lib_names += ['backtrace']
+@@ -15,6 +15,15 @@ if with_android_stub
+     )
+   endforeach
+ 
++  # libhardware.so is not an NDK public library, so a stub of it would become a NEEDED entry that
++  # an app-namespace dlopen of the driver rejects. hw_get_module is resolved lazily instead.
++  stub_libs += static_library(
++    'hardware_lazy',
++    files('hardware_lazy.cpp'),
++    include_directories : inc_include,
++    install : false,
++  )
++
+   dep_android = declare_dependency(
+     link_with : stub_libs,
+   )
