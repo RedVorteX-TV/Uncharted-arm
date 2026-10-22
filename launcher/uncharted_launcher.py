@@ -27,6 +27,9 @@ import urllib.request
 import webbrowser
 import zipfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import uncharted_i18n  # ARM port: the launcher's languages (English, Spanish)
+
 FROZEN = getattr(sys, 'frozen', False)
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
@@ -150,12 +153,14 @@ APP_DEFAULTS = {'game_dir': '', 'game_dir_u1': '', 'game_dir_u2': '', 'game_dir_
                 'anti_aliasing': 'off', 'aa_sharpness': '0.2', 'frame_generation': 'off',
                 'frame_gen_multiplier': '2', 'extra_env': '', 'close_on_play': False,
                 'mouse_look': True, 'mouse_sensitivity': '1.0', 'mouse_invert_y': False,
-                'pad_invert_y': False, 'key_bindings': {}, 'pad_bindings': {}, 'check_updates': True}
+                'pad_invert_y': False, 'key_bindings': {}, 'pad_bindings': {}, 'check_updates': True,
+                'ui_language': 'auto'}
 
 
 def _(text):
-    """Translations come later; every text goes through here."""
-    return text
+    """Every text goes through here: in the launcher language (uncharted_i18n; English when a
+    text has no translation)."""
+    return uncharted_i18n.tr(text)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1739,6 +1744,7 @@ def main():
             except OSError:
                 pass
     settings = {**APP_DEFAULTS, **load_json(CONFIG_FILE, {})}
+    uncharted_i18n.set_language(uncharted_i18n.resolve(settings.get('ui_language', 'auto')))
     if not WINDOWS:  # Linux fork: an empty saves folder is <game folder>/Saves
         uncharted_linux.default_saves(settings, DATA_DIR)
     if not WINDOWS and '--report' in args:

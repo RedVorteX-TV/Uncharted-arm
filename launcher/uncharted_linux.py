@@ -472,15 +472,18 @@ ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'pr
 ARM_COMPATIBILITY = (
     ('arm_uma_readback', 'BB_UMA_READBACK',
      'Fast GPU memory reads (Uncharted 2 and 3)',
-     'Reads the GPU results the game needs from the shared memory as soon as they are ready. Turn off '
-     'if physics or effects look wrong (floating characters, explosions without effect): slower, as before.'),
+     'Turn off if, in Uncharted 2 or 3, characters float or slide over the ground, explosions or vehicle '
+     'damage do not behave as they should, or surfaces flash in flat colours (cyan, white). With it off the '
+     'game waits for the GPU at those reads: slower, as in the original port.'),
     ('arm_flush_draws', 'BB_FLUSH_DRAWS',
      'Send GPU work in small batches (Uncharted 2 and 3)',
-     'Hands the GPU its work every 100 draws so those reads wait less. Turn off if a scene hangs.'),
+     'Turn off if a scene freezes (the picture stops while the sound goes on) or the game hangs at the '
+     'same spot every time. With it off Uncharted 2 and 3 run at a somewhat lower frame rate.'),
     ('arm_job_spin', 'BB_JOB_SPIN',
      'Let idle game threads sleep',
-     'The game\'s worker threads sleep instead of spinning while they wait: about half the CPU use. '
-     'Turn off if a scene stutters or stalls.'),
+     'Turn off if the game stutters or pauses for a moment again and again in one place, or loading '
+     'screens take much longer than usual. With it off the game uses about twice the CPU: more battery '
+     'and heat.'),
 )
 # The sidebar's credit line for this port (the Linux fork's own stays above it).
 ARM_CREDIT = 'ARM port by RedVorteX-TV'
@@ -721,6 +724,46 @@ class Gamepads:
         if ids:
             self.sdl.SDL_free(ids)
 
+    WEST, NORTH, LEFT_SHOULDER, RIGHT_SHOULDER = 2, 3, 9, 10
+
+    def nav_events(self):
+        """The launcher's controller navigation: 'up', 'down', 'left', 'right' (D-pad or left
+        stick, repeating while held), 'ok' (A), 'back' (B), 'prev'/'next' (LB/RB), newly pressed
+        since the last call."""
+        if not self.sdl:
+            return []
+        self.scan()
+        self.sdl.SDL_UpdateGamepads()
+        now = set()
+        get = self.sdl.SDL_GetGamepadButton
+        for pad in self.pads:
+            x = self.sdl.SDL_GetGamepadAxis(pad, 0)
+            y = self.sdl.SDL_GetGamepadAxis(pad, 1)
+            for name, button, stick in (('up', self.DPAD_UP, y < -20000), ('down', self.DPAD_DOWN, y > 20000),
+                                        ('left', self.DPAD_LEFT, x < -20000), ('right', self.DPAD_RIGHT, x > 20000)):
+                if get(pad, button) or stick:
+                    now.add(name)
+            for name, button in (('ok', self.SOUTH), ('back', self.EAST), ('prev', self.LEFT_SHOULDER),
+                                 ('next', self.RIGHT_SHOULDER)):
+                if get(pad, button):
+                    now.add(name)
+        return self.repeat(now)
+
+    def repeat(self, now):
+        """Newly held names, and the directions again every 0.12 s after 0.4 s of holding."""
+        t = time.monotonic()
+        held = getattr(self, 'nav_held', {})
+        events = []
+        for name in now:
+            if name not in held:
+                held[name] = t + 0.4
+                events.append(name)
+            elif name in ('up', 'down', 'left', 'right') and t >= held[name]:
+                held[name] = t + 0.12
+                events.append(name)
+        self.nav_held = {name: when for name, when in held.items() if name in now}
+        return events
+
     def pressed(self):
         """Buttons newly pressed since the last call: 'left', 'right', 'ok', 'back'."""
         if not self.sdl:
@@ -908,6 +951,18 @@ def launcher_class(base, ns):
     GAMES, SURFACE, TEXT, MUTED, CARD = ns['GAMES'], ns['SURFACE'], ns['TEXT'], ns['MUTED'], ns['CARD']
     NAME, PORT_DIR, game_info, GOLD = ns['NAME'], ns['PORT_DIR'], ns['game_info'], ns['GOLD']
     from uncharted_widgets import PillButton, rounded_image
+    import uncharted_widgets
+    import uncharted_i18n
+    # Controller navigation finds the page's buttons, switches, sliders and lists through this
+    # registry (the widgets are Canvas-drawn objects Tk does not know as buttons).
+    nav_widgets = []
+    for widget_class in (uncharted_widgets.PillButton, uncharted_widgets.Toggle, uncharted_widgets.Slider):
+        if not getattr(widget_class, 'nav_registered', False):
+            def registering(self, *args, _init=widget_class.__init__, **kwargs):
+                _init(self, *args, **kwargs)
+                nav_widgets.append(self)
+            widget_class.__init__ = registering
+            widget_class.nav_registered = True
 
     class IconButton(PillButton):
         """A pill button with an icon (launcher/icons) before its text."""
@@ -961,6 +1016,7 @@ def launcher_class(base, ns):
             self.var('steam_deck').trace_add('write', lambda *_a: self.steam_deck_changed())
             self.steam_deck_changed(startup=True)
             self.build_save_button()
+            self.pad_nav_start()
 
         def arm_sync_from_ini(self):
             try:
@@ -1006,6 +1062,8 @@ def launcher_class(base, ns):
 
         def save_changes(self):
             self.collect()
+            if uncharted_i18n.resolve(self.app.get('ui_language', 'auto')) != uncharted_i18n.current():
+                self.root.after(300, self.restart_launcher)  # the texts are built in one language
             label, saved = self.version_label, _('Settings saved')
             if label.cget('text') != saved:  # an update notice comes back afterwards
                 self.corner_before = label.cget('text'), label.cget('fg')
@@ -1399,12 +1457,25 @@ def launcher_class(base, ns):
             if name == 'display':
                 title, subtitle = _('Settings'), _('Display, graphics and the console.')
             f = super().page(name, title, subtitle)
+            if name == 'controls' and ARM:
+                self.page_inner = getattr(self, 'page_inner', {})
+                self.note(f, _('Controller in the launcher: D-pad or left stick to move, A to choose, left/right '
+                               'to change a value, LB/RB to change page, B for the Library.'), top=2)
             if not subtitle:  # the heading's empty second line (page body -> canvas -> body -> shell)
                 head = f.master.master.master.winfo_children()[0]
                 head.winfo_children()[1].pack_forget()
             self.page_inner = getattr(self, 'page_inner', {})
             self.page_inner[name] = f
+            if name == 'display':
+                self.row(f, _('Launcher language'), self.choice(f, 'ui_language', uncharted_i18n.LANGUAGES, 30),
+                         _('The language of this window. The launcher opens again in it when you save.'))
             if name == 'display' and ARM:
+                holder = self.tk.Frame(self.target(f), bg=ns['CARD'])
+                holder.grid(row=self.next_row(self.target(f)), column=0, columnspan=2, sticky='w', pady=(10, 0))
+                self.pill(holder, _('Recommended for ARM handhelds'), self.arm_recommended,
+                          kind='primary').pack(side='left')
+                self.note(f, _('Puts every setting on this page back to what runs best on an ARM handheld: '
+                               '720p with FSR 1, a 40 FPS limit, fullscreen and all the compatibility fixes on.'), top=4)
                 self.check(f, 'render_720p', _('Render at 1280 × 720'),
                            _('The games render at 720p and the upscaling below scales them to the '
                              'screen: much higher FPS on ARM handhelds. Also in the in-game menu (L3+R3).'))
@@ -1425,8 +1496,8 @@ def launcher_class(base, ns):
                 row = tk.Frame(shell, bg=CARD, highlightthickness=0)
                 row.pack(fill='x', pady=(0, self.px(10)))
                 text = tk.Frame(row, bg=CARD)
-                tk.Label(text, text=f'Uncharted: {title}', bg=CARD, fg=TEXT,
-                         font=self.font_brand_md).pack(anchor='w')
+                label = _('Collection menu (Uncharted 1, 2 and 3)') if ARM and key == 'u1' else f'Uncharted: {title}'
+                tk.Label(text, text=label, bg=CARD, fg=TEXT, font=self.font_brand_md).pack(anchor='w')
                 note = tk.Label(text, text='', bg=CARD, fg=MUTED, font=self.font_ui_sm)
                 note.pack(anchor='w')
                 buttons = tk.Frame(row, bg=CARD)
@@ -1533,6 +1604,192 @@ def launcher_class(base, ns):
                 self.saved_settings = self.settings_now()
                 self.after_setting_change()
 
+        # ---- ARM: recommended settings, language restart ----------------------------------------
+        def arm_recommended(self):
+            """The ARM defaults on the Settings page and the Compatibility switches, saved."""
+            values = dict(ARM_DEFAULTS, window_size='1920x1080', anti_aliasing='off', frame_generation='off',
+                          sharpening=ns['APP_DEFAULTS']['sharpening'])
+            for key, value in values.items():
+                if key in self.vars:
+                    self.vars[key].set(value)
+                else:
+                    self.app[key] = value
+            self.save_changes()
+            self.messagebox.showinfo(NAME, _('Recommended settings applied and saved.'))
+
+        def restart_launcher(self):
+            """The launcher again, in the language just chosen (its texts are made when it starts)."""
+            if self.process:
+                return
+            script = [] if getattr(sys, 'frozen', False) else [str(Path(ns['__file__']).resolve())]
+            os.execv(sys.executable, [sys.executable, *script, *sys.argv[1:]])
+
+        # ---- controller navigation --------------------------------------------------------------
+        def pad_nav_start(self):
+            """D-pad / left stick move a gold frame over the page's controls, A uses the one framed,
+            left/right change a list, switch or slider, LB/RB change page, B goes to the Library.
+            Through SDL3 (bin/lib), as the update prompt: silently off without it."""
+            self.pad = Gamepads(PORT_DIR)
+            self.nav_focus = None
+            self.nav_frame = [self.tk.Frame(self.root, bg=GOLD, bd=0, highlightthickness=0) for _i in range(4)]
+            if self.pad.sdl:
+                self.root.after(100, self.pad_nav_tick)
+
+        def pad_nav_tick(self):
+            try:
+                events = self.pad.nav_events()
+                # While a game runs the controller is the game's: the presses are read and dropped,
+                # so none reaches the launcher behind it.
+                for event in ([] if self.process else events):
+                    self.pad_nav(event)
+            except Exception as error:  # never let the controller stop the window
+                print(f'Controller navigation: {error}')
+            self.root.after(33, self.pad_nav_tick)
+
+        def nav_items(self):
+            """The usable controls of the page shown, top to bottom and left to right: registered
+            canvas widgets and the lists (ttk.Combobox), then Save changes."""
+            page = self.pages.get(self.current_page)
+            self.root.update_idletasks()  # a page just shown is mapped once Tk is idle
+            if page is None or not page.winfo_ismapped():
+                return []
+
+            def inside(widget):
+                while widget is not None:
+                    if widget is page:
+                        return True
+                    widget = widget.master
+                return False
+
+            items = []
+            for widget in nav_widgets:
+                canvas = getattr(widget, 'canvas', None)
+                if canvas is None or not canvas.winfo_exists() or not canvas.winfo_ismapped() or not inside(canvas):
+                    continue
+                if getattr(widget, 'state', 'normal') != 'normal':
+                    continue
+                items.append(widget)
+            stack = [page]
+            while stack:
+                w = stack.pop()
+                stack.extend(w.winfo_children())
+                if w.winfo_class() == 'TCombobox' and w.winfo_ismapped() and str(w.cget('state')) != 'disabled':
+                    items.append(w)
+            self.root.update_idletasks()
+            items.sort(key=lambda item: (self.nav_widget(item).winfo_rooty() // max(1, self.px(8)),
+                                         self.nav_widget(item).winfo_rootx()))
+            save = getattr(self, 'save_button', None)
+            if save is not None and save.state == 'normal' and save.canvas.winfo_ismapped():
+                items.append(save)
+            return items
+
+        @staticmethod
+        def nav_widget(item):
+            return getattr(item, 'canvas', item)
+
+        def pad_nav(self, event):
+            if event in ('prev', 'next'):
+                names = [name for name, _t in self.nav_pages()]
+                at = names.index(self.current_page) if self.current_page in names else 0
+                self.show(names[(at + (1 if event == 'next' else -1)) % len(names)])
+                self.root.update()  # the page is mapped (its controls can be found) once Tk ran
+                self.nav_focus = None
+                self.nav_draw()
+                return
+            if event == 'back':
+                self.show('play')
+                self.root.update()
+                self.nav_focus = None
+                self.nav_draw()
+                return
+            items = self.nav_items()
+            if not items:
+                return
+            if self.nav_focus not in items:
+                self.nav_focus = items[0]
+                if event in ('up', 'down', 'left', 'right'):
+                    self.nav_draw()
+                    return
+            at = items.index(self.nav_focus)
+            focus = self.nav_focus
+            adjustable = isinstance(focus, (uncharted_widgets.Toggle, uncharted_widgets.Slider)) or \
+                (not hasattr(focus, 'canvas') and focus.winfo_class() == 'TCombobox')
+            if event == 'down':
+                self.nav_focus = items[min(at + 1, len(items) - 1)]
+            elif event == 'up':
+                self.nav_focus = items[max(at - 1, 0)]
+            elif event in ('left', 'right') and adjustable:
+                self.nav_adjust(focus, 1 if event == 'right' else -1)
+            elif event in ('left', 'right'):  # the neighbour on the same row (the game rows' buttons)
+                step = 1 if event == 'right' else -1
+                near = at + step
+                if 0 <= near < len(items) and abs(self.nav_widget(items[near]).winfo_rooty() -
+                                                  self.nav_widget(focus).winfo_rooty()) < self.px(30):
+                    self.nav_focus = items[near]
+            elif event == 'ok':
+                self.nav_activate(focus)
+            self.nav_draw()
+
+        def nav_adjust(self, item, step):
+            if isinstance(item, uncharted_widgets.Toggle):
+                item.var.set(not item.var.get())
+            elif isinstance(item, uncharted_widgets.Slider):
+                value = item.value()
+                delta = value * 0.1 if item.log else item.step
+                item.var.set(item.fmt.format(min(item.high, max(item.low, round(value + step * delta, 4)))))
+            else:  # a list: the next choice, as picking it with the mouse
+                values = item.cget('values')
+                if values:
+                    item.current((item.current() + step) % len(values))
+                    item.event_generate('<<ComboboxSelected>>')
+
+        def nav_activate(self, item):
+            if isinstance(item, uncharted_widgets.PillButton):
+                if item.state == 'normal' and item.command:
+                    item.command()
+            else:
+                self.nav_adjust(item, 1)
+
+        def nav_draw(self):
+            """The gold frame around the control in focus, scrolled into view."""
+            for edge in self.nav_frame:
+                edge.place_forget()
+            focus = self.nav_focus
+            if focus is None:
+                return
+            widget = self.nav_widget(focus)
+            if not widget.winfo_exists() or not widget.winfo_ismapped():
+                return
+            self.nav_scroll_to(widget)
+            self.root.update_idletasks()
+            x = widget.winfo_rootx() - self.root.winfo_rootx()
+            y = widget.winfo_rooty() - self.root.winfo_rooty()
+            w, h, t, gap = widget.winfo_width(), widget.winfo_height(), max(2, self.px(2)), self.px(4)
+            x, y, w, h = x - gap, y - gap, w + 2 * gap, h + 2 * gap
+            for edge, (ex, ey, ew, eh) in zip(self.nav_frame, ((x, y, w, t), (x, y + h - t, w, t),
+                                                               (x, y, t, h), (x + w - t, y, t, h))):
+                edge.place(x=ex, y=ey, width=ew, height=eh)
+                edge.lift()
+
+        def nav_scroll_to(self, widget):
+            scroller = self.scrollers.get(self.current_page)
+            if not scroller:
+                return
+            canvas, _bar = scroller
+            self.root.update_idletasks()
+            top = canvas.winfo_rooty()
+            bottom = top + canvas.winfo_height()
+            y0, y1 = widget.winfo_rooty(), widget.winfo_rooty() + widget.winfo_height()
+            region = canvas.bbox('all')
+            if not region or region[3] <= canvas.winfo_height():
+                return
+            total = region[3]
+            first = canvas.yview()[0] * total
+            if y0 < top + self.px(20):
+                canvas.yview_moveto(max(0.0, (first - (top + self.px(40) - y0)) / total))
+            elif y1 > bottom - self.px(20):
+                canvas.yview_moveto(min(1.0, (first + (y1 - bottom + self.px(40))) / total))
+
         def refresh(self):
             super().refresh()
             info = self.info
@@ -1543,6 +1800,8 @@ def launcher_class(base, ns):
                     button.configure(state='normal' if present else 'disabled')
                 if not info:
                     note.configure(text=_('Choose the game folder on the Files page'))
+                elif present and ARM and key == 'u1':
+                    note.configure(text=_('Opens the collection menu: choose any of the three games there.'))
                 elif present:
                     note.configure(text=_('Ready'))
                 else:
