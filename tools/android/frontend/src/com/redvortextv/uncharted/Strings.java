@@ -41,6 +41,25 @@ final class Strings {
         put("fsr1", "FSR 1 (AMD FidelityFX, sharp)", "FSR 1 (AMD FidelityFX, nítido)");
         put("fsr1_hint", "FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.",
             "FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.");
+        put("frame_gen", "Frame generation", "Generación de fotogramas");
+        put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
+                + "input latency. LSFG is Lossless Scaling's and needs your own Lossless.dll (below). Also in the "
+                + "in-game menu (L3 + R3).",
+            "Fotogramas creados entre dos del juego, para un movimiento más fluido, con algo más de latencia. LSFG es "
+                + "el de Lossless Scaling y necesita tu propio Lossless.dll (abajo). También en el menú del juego "
+                + "(L3 + R3).");
+        put("frame_gen_off", "Off", "Desactivada");
+        put("frame_gen_multiplier", "Frame generation multiplier", "Multiplicador de la generación");
+        put("frame_gen_multiplier_hint", "Frames shown per game frame. 3× and 4× are LSFG only.",
+            "Fotogramas mostrados por cada fotograma del juego. 3× y 4× solo con LSFG.");
+        put("lsfg_dll", "Lossless.dll (LSFG)", "Lossless.dll (LSFG)");
+        put("lsfg_dll_hint", "Choose Lossless.dll from your own copy of Lossless Scaling. It is not included "
+                + "with the app.",
+            "Elige el Lossless.dll de tu propia copia de Lossless Scaling. No se incluye con la app.");
+        put("lsfg_dll_chosen", "Lossless.dll copied into the app. Choose it again to replace it.",
+            "Lossless.dll copiado en la app. Elígelo otra vez para sustituirlo.");
+        put("lsfg_not_dll", "That file is not a DLL: choose Lossless.dll.",
+            "Ese archivo no es un DLL: elige Lossless.dll.");
         put("frame_rate", "Frame rate", "Fotogramas por segundo");
         put("frame_rate_hint", "A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.",
             "Un límite de fotogramas: 40 FPS va fluido en pantallas de 120 Hz. También en el menú del juego.");

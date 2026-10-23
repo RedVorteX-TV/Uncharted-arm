@@ -55,11 +55,14 @@ if [[ ${BB_SKIP_DRIVERS:-} != 1 ]]; then
     cp "$drivers"/Turnip_Gen8_V37.zip "$drivers"/PanVK-android-v3.2-universal-2a9358a.zip "$out/assets/drivers/"
     { cat "$app/THIRD_PARTY_LICENSES.txt" "$app/DRIVERS_NOTICE.txt"
       unzip -p "$drivers/Turnip-android-main-26.3.0-35b085c.zip" LICENSE-mesa.txt
-      printf '\n--------------------------------------------------------------------------------\nGNU General Public License, version 3 (StevenMXZ/Adreno-Tools-Drivers)\n--------------------------------------------------------------------------------\n\n'
+      printf '\n--------------------------------------------------------------------------------\nGNU General Public License, version 3 (this app'"'"'s runtime; StevenMXZ/Adreno-Tools-Drivers)\n--------------------------------------------------------------------------------\n\n'
       cat "$drivers/GPL-3.0.txt"
     } > "$out/assets/THIRD_PARTY_LICENSES.txt"
 else
-    cp "$app/THIRD_PARTY_LICENSES.txt" "$out/assets/"
+    { cat "$app/THIRD_PARTY_LICENSES.txt"
+      printf '\n--------------------------------------------------------------------------------\nGNU General Public License, version 3 (this app'"'"'s runtime)\n--------------------------------------------------------------------------------\n\n'
+      cat COPYING.GPL-3
+    } > "$out/assets/THIRD_PARTY_LICENSES.txt"
 fi
 
 # ---- libbbpresent.so: the game's frame path (AHardwareBuffers -> ASurfaceControl) ----

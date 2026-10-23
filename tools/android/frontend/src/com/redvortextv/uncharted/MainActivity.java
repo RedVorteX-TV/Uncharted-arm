@@ -48,7 +48,7 @@ public final class MainActivity extends Activity {
     private String FILES, BASE;
     private Ini bbport, launcher;
     private String gameDir;
-    private static final int REQUEST_FOLDER = 1, REQUEST_STORAGE = 2, REQUEST_DRIVER = 3;
+    private static final int REQUEST_FOLDER = 1, REQUEST_STORAGE = 2, REQUEST_DRIVER = 3, REQUEST_LSFG = 4;
     private static final int GOLD = 0xffc6ad76, TEXT = 0xffe8dfc9, MUTED = 0xff8e9097, CARD = 0xff1b1d24, BACK = 0xff0f1014;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -342,6 +342,12 @@ public final class MainActivity extends Activity {
         cyclerRow(bbport, "fps_limit", Strings.get("frame_rate"), Strings.get("frame_rate_hint"),
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
                 Strings.get("fps_45"), Strings.get("fps_60"), Strings.get("fps_0")}, "40");
+        // Frame generation (bbport.ini, like the in-game menu); LSFG with the player's own Lossless.dll
+        cyclerRow(bbport, "frame_gen", Strings.get("frame_gen"), Strings.get("frame_gen_hint"),
+            new String[]{"off", "fsr3", "lsfg"}, new String[]{Strings.get("frame_gen_off"), "FSR 3", "LSFG"}, "off");
+        cyclerRow(bbport, "frame_gen_multiplier", Strings.get("frame_gen_multiplier"), Strings.get("frame_gen_multiplier_hint"),
+            new String[]{"2", "3", "4"}, new String[]{"2×", "3×", "4×"}, "2");
+        actionRow(Strings.get("lsfg_dll"), lsfgSummary(), this::askLsfgDll).setTag("lsfg");
 
         // Compatibility (ARM): launcher.ini (the in-game menu rewrites bbport.ini whole)
         section(Strings.get("compatibility"));
@@ -945,6 +951,10 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
         immersive();
+        if (code == REQUEST_LSFG) {
+            if (result == RESULT_OK && data != null && data.getData() != null) installLsfgDll(data.getData());
+            return;
+        }
         if (code == REQUEST_DRIVER) {
             if (result == RESULT_OK && data != null && data.getData() != null) installDriver(data.getData());
             return;
@@ -965,6 +975,47 @@ public final class MainActivity extends Activity {
         gameDir = dir.getPath();
         getSharedPreferences("uncharted", MODE_PRIVATE).edit().putString("game_dir", gameDir).apply();
         setRowHint("folder", gameDir);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // LSFG: the player's own Lossless.dll, copied into the app (the game cannot read the picker's file)
+    private File lsfgDll() { return new File(BASE, "lsfg/Lossless.dll"); }
+    private String lsfgSummary() {
+        File dll = lsfgDll();
+        return dll.isFile() ? Strings.get("lsfg_dll_chosen") : Strings.get("lsfg_dll_hint");
+    }
+    private void askLsfgDll() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        try { startActivityForResult(pick, REQUEST_LSFG); } catch (Exception ex) { toast("No file picker: " + ex); }
+    }
+    private void installLsfgDll(android.net.Uri uri) {
+        Thread copy = new Thread(() -> {
+            String problem = null;
+            File dll = lsfgDll(), temporary = new File(dll.getPath() + ".tmp");
+            dll.getParentFile().mkdirs();
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+                 java.io.OutputStream out = new java.io.FileOutputStream(temporary)) {
+                if (in == null) throw new java.io.IOException("cannot open the file");
+                byte[] buffer = new byte[1 << 16];
+                byte[] head = new byte[2];
+                long total = 0;
+                for (int n; (n = in.read(buffer)) > 0; ) {
+                    if (total == 0 && n >= 2) { head[0] = buffer[0]; head[1] = buffer[1]; }
+                    out.write(buffer, 0, n); total += n;
+                }
+                if (head[0] != 'M' || head[1] != 'Z') throw new java.io.IOException(Strings.get("lsfg_not_dll"));
+            } catch (Exception ex) { problem = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
+            if (problem == null && !temporary.renameTo(dll)) problem = "cannot write " + dll;
+            if (problem != null) temporary.delete();
+            else bbport.set("lsfg_dll", dll.getPath());
+            String failure = problem;
+            main.post(() -> {
+                if (destroyed) return;
+                toast(failure == null ? Strings.get("lsfg_dll_chosen") : failure);
+                setRowHint("lsfg", lsfgSummary());
+            });
+        }, "Lsfg-copy");
+        copy.setDaemon(true); copy.start();
     }
 
     // ---------------------------------------------------------------------------------------------

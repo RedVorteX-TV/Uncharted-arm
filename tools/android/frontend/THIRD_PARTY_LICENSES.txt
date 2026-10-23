@@ -1,8 +1,11 @@
 Uncharted: The Nathan Drake Collection for Android (ARM port by RedVorteX-TV)
 ==============================================================================
 
-This app and its runtime are free software under the GNU General Public License,
-version 2 or later (GPL-2.0-or-later). Their sources come from:
+This app and its runtime are free software. Their sources are under the GNU General
+Public License, version 2 or later (GPL-2.0-or-later), except the LSFG frame generation
+files, which are GPL-3.0-or-later. The runtime includes those files, so as a whole it is
+distributed under the GNU General Public License, version 3 or later; that license's text
+is at the end of this file. The sources come from:
 
 - ducvd89's Bloodborne-Android (https://github.com/ducvd89/Bloodborne-Android,
   GPL-2.0-or-later): the Android runtime (the Bionic build, the AHardwareBuffer
@@ -19,6 +22,10 @@ version 2 or later (GPL-2.0-or-later). Their sources come from:
 - fexdroid (https://github.com/cobrabm12/fexdroid, MIT): the origin of the
   Android app's first display and input bridges, which Bloodborne-Android grew from.
 - Menu icons: Material Design icons (Apache-2.0, Google).
+- LSFG frame generation (GPL-3.0-or-later): Eden's (https://git.eden-emu.dev/eden-emu/eden,
+  PR #4263), based on lsfg-vk (https://github.com/PancakeTAS/lsfg-vk), as ARMSX2
+  (https://github.com/ARMSX2/ARMSX2) ported it. Its shaders come from the player's own
+  Lossless.dll (Lossless Scaling), which is not included.
 
 GPU drivers: the app carries Turnip builds unchanged (assets/drivers/*.zip) and
 installs the one for the GPU when "Automatic" is the GPU driver setting; their notices
