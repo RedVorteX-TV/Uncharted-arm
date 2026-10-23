@@ -47,6 +47,15 @@ releases.
 choose the game folder and press Play. With "Check for updates" on (Project section) the launcher
 tells you when a newer version is out.
 
+## Frame generation with Lossless Scaling (LSFG)
+
+The port can use Lossless Scaling's frame generation (LSFG) at 2×, 3× or 4×. It needs
+**your own `Lossless.dll`** from a copy of [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)
+that you bought. The DLL is not included and will not be provided. On Linux, choose the file in the
+launcher (Settings > Lossless Scaling (LSFG)), and then pick LSFG as the frame generation, either
+there or in the in-game menu (L3+R3). It works from the finished frames only, so it adds a little
+latency and can show artifacts around fast-moving edges and the UI.
+
 ## Build
 
 - **Linux ARM** (this branch, `main`): on the device, `bash packaging/armada/build.sh` builds inside
@@ -79,6 +88,10 @@ Built on the work of:
 - [Pepin208/uncharted_pc_linux](https://github.com/Pepin208/uncharted_pc_linux): the first ARM
   attempt this port started from.
 - Mevlock's uncharted_pc-dev: the patch that skips the collection menu.
+- [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) and
+  [ARMSX2](https://github.com/ARMSX2/ARMSX2): the LSFG frame generation passes, from
+  [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)'s
+  ([gpu/shadps4/video_core/renderer_vulkan/lsfg](gpu/shadps4/video_core/renderer_vulkan/lsfg/README.md)).
 
 And on [FEX-Emu](https://github.com/FEX-Emu/FEX) (FEXCore), [Mesa](https://mesa3d.org) (Turnip),
 [shadPS4](https://github.com/shadps4-emu/shadPS4), [FFmpeg](https://ffmpeg.org) and the projects
@@ -87,5 +100,7 @@ this repository keeps its author.
 
 ## License
 
-GNU GPL v2 or later ([LICENSE](LICENSE)), like the projects it is built on. Third-party components
-keep their own licenses (their texts ship with the AppImage and the APK).
+The source is under the GNU GPL v2 or later ([LICENSE](LICENSE)), like the projects it is built on.
+The LSFG frame generation files are GPL-3.0-or-later, so the binaries, which include them, are
+distributed under the GNU GPL v3 or later as a whole ([COPYING.GPL-3](COPYING.GPL-3)).
+Third-party components keep their own licenses (their texts ship with the AppImage and the APK).

@@ -47,6 +47,15 @@ de este repositorio.
 almacenamiento, elige la carpeta del juego y pulsa Jugar. Con "Buscar actualizaciones" activado
 (sección Proyecto) el launcher avisa cuando sale una versión nueva.
 
+## Generación de fotogramas con Lossless Scaling (LSFG)
+
+El port puede usar la generación de fotogramas de Lossless Scaling (LSFG) a 2×, 3× o 4×. Necesita
+**tu propio `Lossless.dll`**, de una copia comprada de [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/).
+El DLL no se incluye ni se proporciona. En Linux, elige el archivo en el launcher (Ajustes >
+Lossless Scaling (LSFG)) y después selecciona LSFG como generación de fotogramas, ahí o en el menú
+del juego (L3+R3). Solo trabaja con los fotogramas terminados, así que añade algo de latencia y
+puede mostrar artefactos en bordes que se mueven rápido y en la interfaz.
+
 ## Compilar
 
 - **Linux ARM** (esta rama, `main`): en el propio dispositivo, `bash packaging/armada/build.sh`
@@ -80,6 +89,10 @@ Sobre el trabajo de:
 - [Pepin208/uncharted_pc_linux](https://github.com/Pepin208/uncharted_pc_linux): el primer intento
   en ARM del que partió este port.
 - uncharted_pc-dev de Mevlock: el parche que salta el menú de la colección.
+- [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) y
+  [ARMSX2](https://github.com/ARMSX2/ARMSX2): los pases de generación de fotogramas LSFG, a partir
+  de los de [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)
+  ([gpu/shadps4/video_core/renderer_vulkan/lsfg](gpu/shadps4/video_core/renderer_vulkan/lsfg/README.md)).
 
 Y sobre [FEX-Emu](https://github.com/FEX-Emu/FEX) (FEXCore), [Mesa](https://mesa3d.org) (Turnip),
 [shadPS4](https://github.com/shadps4-emu/shadPS4), [FFmpeg](https://ffmpeg.org) y los proyectos que
@@ -88,5 +101,8 @@ repositorio conserva a su autor.
 
 ## Licencia
 
-GNU GPL v2 o posterior ([LICENSE](LICENSE)), como los proyectos en los que se basa. Los componentes
-de terceros mantienen sus propias licencias (sus textos van con la AppImage y el APK).
+El código fuente está bajo la GNU GPL v2 o posterior ([LICENSE](LICENSE)), como los proyectos en
+los que se basa. Los archivos de la generación de fotogramas LSFG son GPL-3.0 o posterior, así que
+los binarios, que los incluyen, se distribuyen en conjunto bajo la GNU GPL v3 o posterior
+([COPYING.GPL-3](COPYING.GPL-3)). Los componentes de terceros mantienen sus propias licencias (sus
+textos van con la AppImage y el APK).
