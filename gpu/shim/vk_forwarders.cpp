@@ -118,6 +118,9 @@ BB_FWD VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(VkPhysicalDevice
 BB_FWD VkResult VKAPI_CALL vkFlushMappedMemoryRanges(VkDevice device, uint32_t memoryRangeCount, const VkMappedMemoryRange* pMemoryRanges) {
     return VULKAN_HPP_DEFAULT_DISPATCHER.vkFlushMappedMemoryRanges(device, memoryRangeCount, pMemoryRanges);
 }
+BB_FWD VkResult VKAPI_CALL vkFreeDescriptorSets(VkDevice device, VkDescriptorPool descriptorPool, uint32_t descriptorSetCount, const VkDescriptorSet* pDescriptorSets) {
+    return VULKAN_HPP_DEFAULT_DISPATCHER.vkFreeDescriptorSets(device, descriptorPool, descriptorSetCount, pDescriptorSets);
+}
 BB_FWD void VKAPI_CALL vkFreeMemory(VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks* pAllocator) {
     VULKAN_HPP_DEFAULT_DISPATCHER.vkFreeMemory(device, memory, pAllocator);
 }
