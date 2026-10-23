@@ -440,6 +440,19 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
+#if defined(__aarch64__) && defined(__linux__)
+    /* A host fault on ARM: the caller from the link register (a call through a null pointer leaves
+     * nothing else to unwind from). */
+    if (in_guest != GUEST_CPU_IN_GUEST) {
+        const uintptr_t lr = (uintptr_t)((ucontext_t *)context)->uc_mcontext.regs[30];
+        if (dladdr((void *)lr, &where) && where.dli_fname)
+            snprintf(line, sizeof(line), "  return address (x30): %s+0x%lx (%s)\n", where.dli_fname,
+                     (unsigned long)(lr - (uintptr_t)where.dli_fbase), where.dli_sname ? where.dli_sname : "?");
+        else
+            snprintf(line, sizeof(line), "  return address (x30): %p\n", (void *)lr);
+        ssize_t written_=write(2, line, strlen(line)); (void)written_;
+    }
+#endif
     if (in_guest == GUEST_CPU_IN_HOST_CALL && regs.rip - (uintptr_t)image < 0x10000000) {
         snprintf(line, sizeof(line), "  called by the game at guest offset 0x%lx\n", (unsigned long)(regs.rip - (uintptr_t)image));
         ssize_t written_=write(2, line, strlen(line)); (void)written_;
