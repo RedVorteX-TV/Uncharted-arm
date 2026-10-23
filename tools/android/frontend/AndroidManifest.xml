@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <application android:label="Uncharted" android:icon="@drawable/icon"
-        android:theme="@style/GameTheme" android:debuggable="true"
+        android:theme="@style/GameTheme"
         android:allowBackup="false" android:extractNativeLibs="true" android:isGame="true" android:appCategory="game"
         android:requestLegacyExternalStorage="true"
         android:allowAudioPlaybackCapture="true">
