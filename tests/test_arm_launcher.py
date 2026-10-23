@@ -23,8 +23,10 @@ class ArmLauncher(unittest.TestCase):
         self.assertFalse(ns['APP_DEFAULTS']['steam_deck'])
         self.assertTrue(ns['APP_DEFAULTS']['render_720p'])
         self.assertEqual([v for v, _t in ns['ANTI_ALIASING']], ['off', 'fsr3'])
-        self.assertEqual([v for v, _t in ns['FRAME_GENERATION']], ['off', 'fsr3'])
-        self.assertEqual([v for v, _t in ns['FRAME_GEN_MULTIPLIERS']], ['2'])
+        self.assertEqual([v for v, _t in ns['FRAME_GENERATION']], ['off', 'fsr3', 'lsfg'])
+        self.assertEqual([v for v, _t in ns['FRAME_GEN_MULTIPLIERS']], ['2', '3', '4'])
+        linux.apply_arm_defaults(ns)  # once more: LSFG listed once
+        self.assertEqual([v for v, _t in ns['FRAME_GENERATION']], ['off', 'fsr3', 'lsfg'])
         self.assertIn('40', [v for v, _t in ns['FRAME_RATES']])
 
     def test_ini_round_trip(self):
@@ -39,6 +41,15 @@ class ArmLauncher(unittest.TestCase):
         env = {'BB_VBLANK_HZ': '40', 'BB_FSR1': '1', 'BB_UPSCALER': 'dlss', 'BB_FRAME_GEN': 'off'}
         linux.arm_environment({'anti_aliasing': 'dlss'}, env)
         self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_UPSCALER': 'off', 'BB_FRAME_GEN': 'off'})
+
+    def test_lsfg_dll(self):
+        env = {'BB_FRAME_GEN': 'lsfg'}
+        linux.arm_environment({'frame_generation': 'lsfg', 'lsfg_dll': ' /games/Lossless.dll '}, env)
+        self.assertEqual(env['BB_FRAME_GEN'], 'lsfg')
+        self.assertEqual(env['BB_LSFG_DLL'], '/games/Lossless.dll')
+        env = {}
+        linux.arm_environment({'lsfg_dll': ''}, env)
+        self.assertNotIn('BB_LSFG_DLL', env)
 
     def test_compatibility_switches(self):
         env = {}

@@ -471,7 +471,7 @@ def apply_defaults(ns):
 # Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
 ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
                 'render_720p': True, 'scaler': 'fsr1', 'check_updates': False,
-                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True}
+                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True, 'lsfg_dll': ''}
 # Advanced > Compatibility (ARM): the ARM port's performance fixes, each one off with its variable
 # when a scene misbehaves (the Environment field and the player's own variables still win).
 ARM_COMPATIBILITY = (
@@ -496,6 +496,9 @@ ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 
                    ('60', '60 FPS'), ('0', 'No limit')]
 ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
 ARM_INI = ('fps_limit', 'render_720p', 'fsr1')
+# Lossless Scaling's frame generation, with the player's own Lossless.dll (never included).
+ARM_LSFG = ('lsfg', 'Lossless Scaling LSFG (your Lossless.dll)')
+ARM_FRAME_GEN_MULTIPLIERS = [('2', '2× (one generated frame)'), ('3', '3× (LSFG only)'), ('4', '4× (LSFG only)')]
 
 
 def apply_arm_defaults(ns):
@@ -505,7 +508,11 @@ def apply_arm_defaults(ns):
     ns['FRAME_RATES'][:] = ARM_FRAME_RATES
     for name, key in (('ANTI_ALIASING', 'anti_aliasing'), ('FRAME_GENERATION', 'frame_generation')):
         ns[name][:] = [(value, text) for value, text in ns[name] if value not in ARM_UNAVAILABLE[key]]
-    ns['FRAME_GEN_MULTIPLIERS'][:] = [(value, text) for value, text in ns['FRAME_GEN_MULTIPLIERS'] if value == '2']
+    if ARM_LSFG not in ns['FRAME_GENERATION']:
+        ns['FRAME_GENERATION'].append(ARM_LSFG)
+    ns['FRAME_GEN_MULTIPLIERS'][:] = ARM_FRAME_GEN_MULTIPLIERS
+    ROW_HINTS['Frame generation'] = ('FSR 3 or Lossless Scaling\'s LSFG, which uses your own Lossless.dll '
+                                     '(chosen below). Smoother motion, a little more input latency.')
     ROW_HINTS['Frame rate'] = 'A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.'
     ROW_HINTS['Window size'] = ('Only for windowed mode: in fullscreen the game fills the screen. The resolution the '
                                 'games render at is "Render at 1280 × 720" above.')
@@ -551,6 +558,8 @@ def arm_environment(settings, env):
     for key, name in (('anti_aliasing', 'BB_UPSCALER'), ('frame_generation', 'BB_FRAME_GEN')):
         if str(settings.get(key) or 'off') in ARM_UNAVAILABLE[key]:
             env[name] = 'off'
+    if str(settings.get('lsfg_dll') or '').strip():
+        env['BB_LSFG_DLL'] = str(settings['lsfg_dll']).strip()
 
 
 def saves_for(game_dir):
@@ -1360,6 +1369,21 @@ def launcher_class(base, ns):
             self.messagebox.showinfo(NAME, _('Bug report saved as {} in {}.\n\nSend this file with your bug report '
                                              '(Discord or a GitHub issue).').format(path.name, path.parent))
 
+        def dll_file(self, parent, key, title, hint):
+            """A file setting with Browse… (the launcher's folder rows choose folders)."""
+            var = self.var(key)
+            holder = self.tk.Frame(self.target(parent), bg=CARD)
+            self.ttk.Entry(holder, textvariable=var, width=54).pack(side='left')
+
+            def browse():
+                start = Path(var.get()).parent if var.get() else Path.home()
+                chosen = self.filedialog.askopenfilename(
+                    title=title, initialdir=str(start), filetypes=[('Lossless.dll', '*.dll'), (_('All files'), '*')])
+                if chosen:
+                    var.set(str(Path(chosen)))
+            self.pill(holder, _('Browse…'), browse, padding=(14, 6)).pack(side='left', padx=(8, 0))
+            return self.row(parent, title, holder, hint)
+
         def build_game(self):
             """Files: the game folder, the saves folder and each game's saves, the shader cache."""
             f = self.page('game', _('Files'), '')
@@ -1389,6 +1413,12 @@ def launcher_class(base, ns):
             """Settings: display and graphics, and the console (language, player name)."""
             super().build_display()
             f = self.page_inner['display']
+            if ARM:
+                self.section(f, _('Lossless Scaling (LSFG)'))
+                self.dll_file(f, 'lsfg_dll', _('Lossless.dll'),
+                              _('Lossless.dll from your copy of Lossless Scaling (Steam: right-click it, Manage, '
+                                'Browse local files). It is not included with the port. Then choose LSFG as '
+                                'the frame generation, here or in the in-game menu.'))
             self.section(f, _('Console'))
             self.row(f, _('Language'), self.choice(f, 'language', ns['LANGUAGES'], 30))
             name = self.ttk.Entry(f, textvariable=self.var('player_name'), width=30)
