@@ -129,6 +129,20 @@ final class Strings {
         put("controls", "Controls", "Controles");
         put("on", "On", "Sí");
         put("off", "Off", "No");
+        put("project", "Project", "Proyecto");
+        put("youtube", "YouTube channel", "Canal de YouTube");
+        put("youtube_hint", "RedVorteX-TV: videos about this port, handhelds and emulation.",
+            "RedVorteX-TV: vídeos de este port, consolas portátiles y emulación.");
+        put("github", "GitHub", "GitHub");
+        put("github_hint", "The port's code, news and downloads; report problems there.",
+            "El código del port, novedades y descargas; los problemas se reportan allí.");
+        put("update_check", "Check for updates", "Buscar actualizaciones");
+        put("update_check_hint", "When the app opens, asks GitHub whether there is a newer version. Nothing is "
+                + "downloaded or sent.",
+            "Al abrir la app, pregunta a GitHub si hay una versión nueva. No se descarga ni se envía nada.");
+        put("update_available", "Version %s is available", "Versión %s disponible");
+        put("update_available_hint", "You have %s. Tap to open its download page on GitHub.",
+            "Tienes la %s. Toca para abrir su página de descarga en GitHub.");
         put("credits", "Credits", "Créditos");
         put("credits_text", "ARM and Android port: RedVorteX-TV. Android runtime: ducvd89 (Bloodborne-Android). Linux port: "
                 + "spacepepperoni (uncharted_Linux), Supermedo (uncharted_pc), deadinside28 (bloodborne_pc). ARM layer: "

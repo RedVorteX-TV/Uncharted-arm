@@ -107,6 +107,39 @@ public final class MainActivity extends Activity {
         showLauncher(null);
         worker.execute(this::installRuntime);
         if (!storageGranted()) requestStorage();
+        checkForUpdate();
+    }
+
+    /** A newer release on GitHub (UpdateCheck) becomes a row under the status line that opens its page. */
+    private void checkForUpdate() {
+        if (UpdateCheck.REPO.isEmpty() || !launcher.on("update_check", true)) return;
+        String current = versionName();
+        Thread check = new Thread(() -> {
+            UpdateCheck.Release release;
+            try { release = UpdateCheck.newer(current); }
+            catch (Exception e) { android.util.Log.i("Uncharted", "update check: " + DriverCatalog.message(e)); return; }
+            if (release == null) return;
+            main.post(() -> {
+                if (destroyed) return;
+                LinearLayout row = actionRow(Strings.format("update_available", release.version),
+                    Strings.format("update_available_hint", current), () -> openLink(release.page));
+                launcherBody.removeView(row);
+                launcherBody.addView(row, launcherBody.indexOfChild(launcherNotice) + 1);
+            });
+        }, "update check");
+        check.setDaemon(true);
+        check.start();
+    }
+
+    private String versionName() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (Exception e) { return ""; }
+    }
+
+    /** Opens a web page in the browser (the YouTube app takes the channel's link when installed). */
+    private void openLink(String url) {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))); }
+        catch (android.content.ActivityNotFoundException e) { toast(url); }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -337,10 +370,17 @@ public final class MainActivity extends Activity {
             new String[]{Strings.get("lang_auto"), "English", "Español"}, "auto");
         launcherView.setTag(language);
 
+        // The port: its author's channel, its repository and its updates
+        section(Strings.get("project"));
+        actionRow(Strings.get("youtube"), Strings.get("youtube_hint"), () -> openLink(UpdateCheck.YOUTUBE));
+        if (!UpdateCheck.REPO.isEmpty()) {
+            actionRow(Strings.get("github"), Strings.get("github_hint"), () -> openLink(UpdateCheck.repoPage()));
+            switchRow(launcher, "update_check", true, Strings.get("update_check"), Strings.get("update_check_hint"));
+        }
+
         TextView controls = text(Strings.get("controls_hint"), 12, MUTED); controls.setPadding(dp(4), dp(18), 0, 0);
         launcherBody.addView(controls);
-        String version = "";
-        try { version = " " + getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) {}
+        String version = " " + versionName();
         TextView credits = text(Strings.get("credits") + version + ": " + Strings.get("credits_text"), 11, 0xff6f7178);
         credits.setPadding(dp(4), dp(10), 0, 0);
         launcherBody.addView(credits);
