@@ -12,8 +12,8 @@ import org.json.JSONObject;
  *  by default). Only the release's tag and page are read: nothing is downloaded or sent, and the player gets
  *  the APK from the release page. Releases are tagged v<versionName> (v0.1.4). */
 final class UpdateCheck {
-    /** owner/name of the port's repository; empty: no repository yet (no GitHub row, no check). */
-    static final String REPO = "";
+    /** owner/name of the port's repository (empty: no GitHub row, no check). */
+    static final String REPO = "RedVorteX-TV/Uncharted-arm";
     static final String YOUTUBE = "https://youtube.com/@redvortex-tv";
 
     static String repoPage() { return "https://github.com/" + REPO; }
