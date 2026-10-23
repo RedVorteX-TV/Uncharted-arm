@@ -98,8 +98,8 @@ public:
     /// Linux fork: copies up to 64 GPU-written bytes to guest memory once the GPU has run the
     /// commands recorded so far, without waiting for it here (small compute results the game's CPU
     /// code reads, e.g. Uncharted's auto-exposure value). Skipped while the region is not GPU-written
-    /// or every slot is in flight.
-    void ReadMemoryAsync(VAddr device_addr, u32 size);
+    /// or every slot is in flight (false).
+    bool ReadMemoryAsync(VAddr device_addr, u32 size);
 
     /// Finds a buffer for the specified region.
     [[nodiscard]] std::pair<const Buffer*, u64> ObtainBuffer(VAddr device_addr, u32 size,
@@ -209,6 +209,10 @@ private:
     std::unordered_map<VAddr, std::vector<ShadowRange>> shadows;
     std::atomic<u32> shadow_pages{0};
     void ShadowGpuData(VAddr page, u64 length);
+    /// ARM port: a guest write next to a few GPU-written bytes of the page (not on them): those
+    /// bytes reach guest memory once the GPU has written them (ReadMemoryAsync), and the write
+    /// does not wait. False when the page holds more GPU data, or the write lands on it.
+    bool DeliverSmallGpuDataLater(VAddr page, u64 length, VAddr address, u64 size);
 
     /// bbport: GPU data a guest write lands on, written by GPU work that has completed: read
     /// back on a second queue of the graphics family, which waits for nothing queued since

@@ -496,7 +496,7 @@ struct FaultEvent {
     u32 frame;
     u32 gpu_write;
     u32 gpu_use;
-    u32 kind; // 1 dropped, 2 merged, 3 read back
+    u32 kind; // 1 dropped, 2 merged, 3 read back, 4 on the side queue, 5 delivered later
 };
 constexpr u64 FaultHistorySize = 1u << 16;
 std::unique_ptr<FaultEvent[]> fault_history;
@@ -540,7 +540,7 @@ struct WatchedPage {
         active = true;
         std::memcpy(before.data(), std::bit_cast<const void*>(page), before.size());
     }
-    void Report(VAddr address, u64 size, bool read_back) const {
+    void Report(VAddr address, u64 size, const char* resolution) const {
         if (!active) {
             return;
         }
@@ -559,8 +559,7 @@ struct WatchedPage {
         }
         std::printf("Watch: guest write at +%#llx (%llu bytes); %s; GPU data changed:%s\n",
                     static_cast<unsigned long long>(address - page),
-                    static_cast<unsigned long long>(size),
-                    read_back ? "read back first" : "not read back",
+                    static_cast<unsigned long long>(size), resolution,
                     changed.empty() ? " nothing" : changed.c_str());
     }
 };
@@ -608,8 +607,15 @@ void BufferCache::InvalidateMemory(VAddr device_addr, u64 size, bool assume_lock
             const u32 gpu_write = memory_tracker->LatestGpuWriteFrame(page, length);
             const u32 gpu_use = LastGpuUse(page, length);
             const WatchedPage watched{page, length};
+            if (DeliverSmallGpuDataLater(page, length, device_addr, size)) {
+                watched.Report(device_addr, size, "GPU bytes delivered once written");
+                memory_tracker->MarkRegionAsCpuModified(device_addr, size);
+                BbStats::gpu_late_deliveries.fetch_add(1, std::memory_order_relaxed);
+                NoteFault(page, length, frames, gpu_write, gpu_use, 5);
+                return;
+            }
             const bool side = DownloadOnSideQueue(page, length);
-            watched.Report(device_addr, size, side);
+            watched.Report(device_addr, size, side ? "read back first" : "not read back");
             if (side) {
                 memory_tracker->MarkRegionAsCpuModified(device_addr, size);
                 BbStats::gpu_side_downloads.fetch_add(1, std::memory_order_relaxed);
@@ -656,7 +662,8 @@ void PrintFaultHistory(VAddr address, u64 size) {
         return;
     }
     static constexpr const char* kinds[] = {"?", "dropped", "merged", "read back",
-                                            "read back on the side queue"};
+                                            "read back on the side queue",
+                                            "delivered once written"};
     const u64 total = fault_events.load();
     const u64 oldest = total > FaultHistorySize ? total - FaultHistorySize : 0;
     const u32 now = g_guest_frames.load();
@@ -666,7 +673,7 @@ void PrintFaultHistory(VAddr address, u64 size) {
         if (e.page < address + size && address < e.page + e.length) {
             std::printf("GPU crash:       page 0x%llx+0x%x %s %u frames ago (GPU write frame %u, "
                         "last bound %u, fault frame %u)\n",
-                        static_cast<unsigned long long>(e.page), e.length, kinds[std::min<u32>(e.kind, 4)],
+                        static_cast<unsigned long long>(e.page), e.length, kinds[std::min<u32>(e.kind, 5)],
                         now - e.frame, e.gpu_write, e.gpu_use, e.frame);
             ++printed;
         }
@@ -807,11 +814,11 @@ void BufferCache::ReadMemory(VAddr device_addr, u64 size, bool is_write, bool as
     }
 }
 
-void BufferCache::ReadMemoryAsync(VAddr device_addr, u32 size) {
+bool BufferCache::ReadMemoryAsync(VAddr device_addr, u32 size) {
     static constexpr u32 SlotSize = 64;
     static constexpr u32 NumSlots = 4096;
     if (size == 0 || size > SlotSize || !IsRegionGpuModified(device_addr, size)) {
-        return;
+        return false;
     }
     if (!async_readback) {
         async_readback = std::make_unique<Buffer>(instance, 0, u64{SlotSize} * NumSlots,
@@ -820,14 +827,14 @@ void BufferCache::ReadMemoryAsync(VAddr device_addr, u32 size) {
     }
     const u32 slot = async_next_slot++ % NumSlots;
     if (async_slot_busy[slot].load(std::memory_order_acquire)) {
-        return; // the copy before it has not landed yet; the next end-of-pipe event copies again
+        return false; // the copy before it has not landed yet; the next end-of-pipe event copies again
     }
     const u32 first_block = device_addr >> block_shift;
     const u32 last_block = (device_addr + size - 1) >> block_shift;
     const Buffer* arena = GetArena(first_block, last_block);
     if (!arena || device_addr < arena->cpu_addr ||
         device_addr + size > arena->cpu_addr + arena->size_bytes) {
-        return;
+        return false;
     }
     const vk::BufferCopy copy{
         .srcOffset = device_addr - arena->cpu_addr,
@@ -844,6 +851,56 @@ void BufferCache::ReadMemoryAsync(VAddr device_addr, u32 size) {
                                 async_readback->mapped_data.data() + offset, size);
         async_slot_busy[slot].store(false, std::memory_order_release);
     });
+    return true;
+}
+
+bool BufferCache::DeliverSmallGpuDataLater(VAddr page, u64 length, VAddr address, u64 size) {
+    // Uncharted 2 copies a GPU counter (GDS) into a slot of a page where its CPU code writes a
+    // ring of records every frame, never over the slots: each record waited ~9 ms for the GPU
+    // (8 submissions behind), a quarter of the frame (BB_WATCH_GPU_WRITE, BB_READBACK_STATS).
+    // The slot reaches guest memory once the GPU has written it, as small compute results do at
+    // end-of-pipe events (Rasterizer::ReadBackSmallWrittenBuffers). Only a few bytes (64) keep
+    // the rest exact: large GPU results the game reads back (U2's physics) still wait.
+    // BB_LATE_GPU_DATA=0: off (every such write waits).
+    static constexpr u64 MaxBytes = 64;
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_LATE_GPU_DATA");
+        return !(env && env[0] == '0');
+    }();
+    if (!enabled || length != TRACKER_BYTES_PER_PAGE) {
+        return false;
+    }
+    {
+        std::scoped_lock lk{shadow_mutex};
+        if (shadows.contains(page)) {
+            return false;
+        }
+    }
+    boost::container::small_vector<std::pair<VAddr, VAddr>, 8> ranges;
+    u64 total = 0;
+    bool overlaps = false;
+    gpu_modified_ranges.ForEachInRange(page, length, [&](VAddr start, VAddr end) {
+        ranges.emplace_back(start, end);
+        total += end - start;
+        overlaps |= start < address + size && address < end;
+    });
+    // GPU data running on into the next or previous page is part of something larger.
+    const bool isolated = ranges.empty() ||
+                          ((ranges.front().first != page ||
+                            !gpu_modified_ranges.Intersects(page - 1, 1)) &&
+                           (ranges.back().second != page + length ||
+                            !gpu_modified_ranges.Intersects(page + length, 1)));
+    if (ranges.empty() || overlaps || total > MaxBytes || !isolated) {
+        return false;
+    }
+    for (const auto& [start, end] : ranges) {
+        if (!ReadMemoryAsync(start, u32(end - start))) {
+            return false; // copies already recorded only land early: the full path follows
+        }
+    }
+    gpu_modified_ranges.Subtract(page, length);
+    memory_tracker->UnmarkRegionAsGpuModified(page, length);
+    return true;
 }
 
 void BufferCache::DownloadMemory(const Buffer* arena, VAddr device_addr, u64 size) {

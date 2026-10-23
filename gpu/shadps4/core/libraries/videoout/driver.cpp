@@ -499,7 +499,7 @@ void VideoOutDriver::Flip(const Request& req) {
             std::printf("Frame stats: %.1f FPS, worst frame %.1f ms (vblank %u Hz); "
                         "%u shader/pipeline compiles, %.1f ms; %llu recorder syncs; "
                         "%.0f write faults/s (%.0f/s over dead GPU data, %.0f/s merged, "
-                        "%.0f/s read back, %.0f/s on the side queue, %.0f us each), "
+                        "%.0f/s read back, %.0f/s on the side queue, %.0f us each, %.0f/s delivered later), "
                         "%lld hot pages; GPU thread %.2f us/draw, "
                         "%.0f draws/frame, idle %.1f%%; blocked: recorder %.1f%%, host copies "
                         "%.1f%% (%.0f/frame), copy threads %.1f%%, GPU ticks %.1f%%; "
@@ -513,6 +513,7 @@ void VideoOutDriver::Flip(const Request& req) {
                         side_downloads ? BbStats::gpu_side_download_ns.exchange(0) / 1e3 /
                                              side_downloads
                                        : 0.0,
+                        BbStats::gpu_late_deliveries.exchange(0) / window,
                         static_cast<long long>(BbStats::hot_pages.load()),
                         us_per_draw, draws_per_frame,
                         BbStats::gpu_idle_ns.exchange(0) / (window * 1e7),
