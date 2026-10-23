@@ -9,6 +9,9 @@
 #include <algorithm>
 #include <bit>
 #include <cstdlib>
+#include <cstring>
+#include <string>
+#include <fmt/format.h>
 #include <magic_enum/magic_enum.hpp>
 #include "bbport_copy.h"
 #include "bbport_toggles.h"
@@ -508,6 +511,60 @@ void NoteFault(VAddr page, u64 length, u32 frame, u32 gpu_write, u32 gpu_use, u3
                                            gpu_use, kind};
 }
 
+/// bbport diagnosis: BB_WATCH_GPU_WRITE=<address> (with the shaders that write the 4 KiB from there,
+/// vk_rasterizer.cpp): where the guest writes on that page, and which bytes of it the GPU had
+/// really changed when the write waited for the GPU data (first 40 times).
+struct WatchedPage {
+    VAddr page = 0;
+    std::array<u8, TRACKER_BYTES_PER_PAGE> before{};
+    bool active = false;
+    static VAddr Address() {
+        static const VAddr value = [] {
+            const char* env = std::getenv("BB_WATCH_GPU_WRITE");
+            return env ? Common::AlignDown(VAddr(std::strtoull(env, nullptr, 16)),
+                                           TRACKER_BYTES_PER_PAGE)
+                       : VAddr{0};
+        }();
+        return value;
+    }
+    WatchedPage(VAddr fault_page, u64 length) {
+        const VAddr watch = Address();
+        if (!watch || watch < fault_page || watch >= fault_page + length) {
+            return;
+        }
+        static std::atomic<u32> reported{0};
+        if (reported.fetch_add(1, std::memory_order_relaxed) >= 40) {
+            return;
+        }
+        page = watch;
+        active = true;
+        std::memcpy(before.data(), std::bit_cast<const void*>(page), before.size());
+    }
+    void Report(VAddr address, u64 size, bool read_back) const {
+        if (!active) {
+            return;
+        }
+        std::string changed;
+        const auto* after = std::bit_cast<const u8*>(page);
+        for (u32 i = 0; i < before.size();) {
+            if (before[i] == after[i]) {
+                ++i;
+                continue;
+            }
+            const u32 start = i;
+            while (i < before.size() && before[i] != after[i]) {
+                ++i;
+            }
+            changed += fmt::format(" {:#x}-{:#x}", start, i);
+        }
+        std::printf("Watch: guest write at +%#llx (%llu bytes); %s; GPU data changed:%s\n",
+                    static_cast<unsigned long long>(address - page),
+                    static_cast<unsigned long long>(size),
+                    read_back ? "read back first" : "not read back",
+                    changed.empty() ? " nothing" : changed.c_str());
+    }
+};
+
 /// The latest frame the GPU bound a page of the range; outside the window: now (in use).
 u32 LastGpuUse(VAddr address, u64 size) {
     if (address < GpuUseLow || address + size > GpuUseHigh) {
@@ -550,7 +607,10 @@ void BufferCache::InvalidateMemory(VAddr device_addr, u64 size, bool assume_lock
             const u32 frames = g_guest_frames.load(std::memory_order_relaxed);
             const u32 gpu_write = memory_tracker->LatestGpuWriteFrame(page, length);
             const u32 gpu_use = LastGpuUse(page, length);
-            if (DownloadOnSideQueue(page, length)) {
+            const WatchedPage watched{page, length};
+            const bool side = DownloadOnSideQueue(page, length);
+            watched.Report(device_addr, size, side);
+            if (side) {
                 memory_tracker->MarkRegionAsCpuModified(device_addr, size);
                 BbStats::gpu_side_downloads.fetch_add(1, std::memory_order_relaxed);
                 NoteFault(page, length, frames, gpu_write, gpu_use, 4);
