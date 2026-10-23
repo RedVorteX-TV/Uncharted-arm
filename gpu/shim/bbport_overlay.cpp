@@ -337,11 +337,13 @@ void Menu() {
 
     ImGui::SeparatorText(T("Frame generation", "Генерация кадров"));
     const char* frame_gens[] = {T("Off", "Выкл"), T("FSR 3 (any GPU)", "FSR 3 (любая видеокарта)"),
-                                "DLSS (NVIDIA RTX 40/50)"};
+                                "DLSS (NVIDIA RTX 40/50)",
+                                T("LSFG (your Lossless.dll)", "LSFG (ваш Lossless.dll)")};
     const int frame_gen = s.frame_gen;
     if (ImGui::BeginCombo(T("Generation", "Генерация"), frame_gens[frame_gen])) {
         for (int i = 0; i < BbSettings::FrameGenCount; ++i) {
-            const bool supported = i != BbSettings::FrameGenDlss || s.dlssg_max_multiplier > 1;
+            const bool supported = (i != BbSettings::FrameGenDlss || s.dlssg_max_multiplier > 1) &&
+                                   (i != BbSettings::FrameGenLsfg || !s.lsfg_dll.empty());
             ImGui::BeginDisabled(!supported);
             if (ImGui::Selectable(frame_gens[i], i == frame_gen)) {
                 Store(s.frame_gen, i, true);
@@ -349,7 +351,10 @@ void Menu() {
             ImGui::EndDisabled();
             if (!supported) {
                 ImGui::SameLine();
-                ImGui::TextDisabled("%s", unsupported);
+                ImGui::TextDisabled("%s", i == BbSettings::FrameGenLsfg
+                                              ? T("— no Lossless.dll chosen (lsfg_dll)",
+                                                  "— не выбран Lossless.dll (lsfg_dll)")
+                                              : unsupported);
             }
         }
         ImGui::EndCombo();
@@ -360,7 +365,10 @@ void Menu() {
            "Кадры между двумя кадрами игры: 60 FPS на экране становятся 120. Нужны представление "
            "Mailbox или Immediate и монитор с такой частотой. Немного добавляет задержку ввода. "
            "Меню и видеоролики не генерируются."));
-    const int max_multiplier = s.frame_gen == BbSettings::FrameGenDlss ? s.dlssg_max_multiplier.load() : 2;
+    // LSFG: up to three generated frames, like DLSS on an RTX 50.
+    const int max_multiplier = s.frame_gen == BbSettings::FrameGenDlss ? s.dlssg_max_multiplier.load()
+                               : s.frame_gen == BbSettings::FrameGenLsfg ? 4
+                                                                         : 2;
     ImGui::BeginDisabled(s.frame_gen == BbSettings::FrameGenOff || max_multiplier <= 2);
     int multiplier = std::min(s.frame_gen_multiplier.load(), max_multiplier);
     if (ImGui::SliderInt(T("Multiplier", "Множитель"), &multiplier, 2, std::max(max_multiplier, 2), "%dx")) {

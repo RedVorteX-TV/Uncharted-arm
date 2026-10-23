@@ -53,6 +53,11 @@ public:
     bool IsShaderFloat16Enabled() const {
         return vk12_features.shaderFloat16;
     }
+    /// The Vulkan memory model (LSFG frame generation's shaders declare it), enabled where the
+    /// driver has it.
+    bool IsVulkanMemoryModelEnabled() const {
+        return vk12_features.vulkanMemoryModel;
+    }
     bool IsSubgroupSizeControlEnabled() const {
         return vk13_features.subgroupSizeControl;
     }
