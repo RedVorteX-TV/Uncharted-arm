@@ -222,16 +222,18 @@ add_library(bbgpu ${BBGPU_KIND} ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOU
     shadps4/core/libraries/videodec/video_utils.cpp
     shadps4/core/libraries/videodec/videodec2.cpp shadps4/core/libraries/videodec/videodec2_impl.cpp)
 add_dependencies(bbgpu host_shaders)
-# Online play (Bloodborne co-op) is never used under FEXCore (runtime_services.c plays offline there):
-# BB_NET=OFF leaves the module and its OpenSSL/protobuf/miniupnpc dependencies out (Android build).
-option(BB_NET "Build the network and PSN libraries (online play)" ON)
-if (BB_NET)
 # bbport co-op: PS4 network and PSN libraries with the shadNet client, from shadp2p
 # (github.com/Wozzardman/shadp2p, GPL-2.0), for private Bloodborne co-op servers.
 find_package(Protobuf CONFIG QUIET)
 if (NOT Protobuf_FOUND)
     # Linux fork: distributions with protobuf 3.x (Debian) ship no CMake package.
     find_package(Protobuf REQUIRED)
+endif()
+# Android: the protocol code comes from a protoc built for the build machine, the same version as
+# the library (tools/android/build_bionic_deps.sh); the cross-built package has no protoc.
+if (BB_HOST_PROTOC AND NOT TARGET protobuf::protoc)
+    add_executable(protobuf::protoc IMPORTED)
+    set_property(TARGET protobuf::protoc PROPERTY IMPORTED_LOCATION "${BB_HOST_PROTOC}")
 endif()
 set(SHADNET_PROTO_OUT "${CMAKE_CURRENT_BINARY_DIR}/shadnet_proto_gen")
 file(MAKE_DIRECTORY "${SHADNET_PROTO_OUT}")
@@ -283,9 +285,6 @@ if (WIN32)
     target_link_libraries(bbnet PUBLIC ws2_32 iphlpapi bcrypt crypt32)
 endif()
 target_link_libraries(bbgpu PUBLIC bbnet)
-else()
-    target_sources(bbgpu PRIVATE bbnet/bbnet_stub.cpp)
-endif()
 # In-game settings menu: Dear ImGui (third_party/imgui, MIT) with its Vulkan backend, and an
 # embedded Cyrillic font (third_party/fonts).
 target_sources(bbgpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp

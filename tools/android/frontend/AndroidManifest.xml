@@ -2,7 +2,7 @@
 <!-- Uncharted: The Nathan Drake Collection for Android (ARM port by RedVorteX-TV), on ducvd89's
      Bloodborne-Android runtime. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.redvortextv.uncharted" android:versionCode="2" android:versionName="0.1.1">
+    package="com.redvortextv.uncharted" android:versionCode="3" android:versionName="0.1.2">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="28" />
     <!-- GPU driver downloads (the driver list on GitHub). -->
     <uses-permission android:name="android.permission.INTERNET" />

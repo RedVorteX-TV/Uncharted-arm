@@ -43,21 +43,25 @@ if [[ $what == all || $what == cpu ]]; then
     run ninja -C "$out/fex" -j "$J" bbcpu > "$out/fex-build.log" 2>&1 || { grep -E "error|FAILED" "$out/fex-build.log" | head -40 >&2; exit 1; }
 fi
 
-# GPU library: no libvulkan (gpu/shim/vk_driver_loader.cpp dlopens the driver), no X11, no SDL,
-# no online module (BB_NET=OFF: FEXCore builds always play offline). glslang (host program)
+# GPU library: no libvulkan (gpu/shim/vk_driver_loader.cpp dlopens the driver), no X11, no SDL.
+# The network and PSN libraries are in: the games call them offline too; their protocol
+# code comes from a protoc built for this PC (build_bionic_deps.sh). glslang (host program)
 # compiles the host shaders.
 if [[ $what == all || $what == gpu ]]; then
     export PKG_CONFIG_PATH=$prefix/lib/pkgconfig:$prefix/share/pkgconfig
     export PKG_CONFIG_LIBDIR=$PKG_CONFIG_PATH
     if [[ ! -f $out/gpu/build.ninja ]]; then
         cmake -S gpu -B "$out/gpu" -G Ninja "${ndk_cmake[@]}" \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBB_PGO=off -DBB_LTO=OFF -DBB_NET=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBB_PGO=off -DBB_LTO=OFF \
             "-DCMAKE_FIND_ROOT_PATH=$prefix;$headers" -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
             -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
             -DCMAKE_PREFIX_PATH="$prefix;$headers" \
             -DBoost_INCLUDE_DIR="$headers/include" \
             "-DBB_CPU_LIB=$PWD/$out/fex/libbbcpu.so" >/dev/null
     fi
+    # The host protoc and OpenSSL for the network libraries (also for a build directory made before).
+    cmake -S gpu -B "$out/gpu" "-DBB_HOST_PROTOC=$root/host-tools/bin/protoc" \
+        "-DOPENSSL_ROOT_DIR=$prefix" >/dev/null
     run ninja -C "$out/gpu" -j "$J" bbgpu > "$out/gpu-build.log" 2>&1 || { grep -v '^\[' "$out/gpu-build.log" | grep -B2 -A12 'error' | head -80 >&2; exit 1; }
 fi
 
