@@ -73,6 +73,19 @@ ES = {
     'Linux port by spacepepperoni': 'Port a Linux por spacepepperoni',
     'ARM port by RedVorteX-TV': 'Port a ARM por RedVorteX-TV',
     'YouTube channel: RedVorteX-TV': 'Canal de YouTube: RedVorteX-TV',
+    'Lossless Scaling LSFG (your Lossless.dll)': 'Lossless Scaling LSFG (tu Lossless.dll)',
+    '3× (LSFG only)': '3× (solo LSFG)',
+    '4× (LSFG only)': '4× (solo LSFG)',
+    'FSR 3 or Lossless Scaling\'s LSFG, which uses your own Lossless.dll (chosen below). Smoother motion, a '
+    'little more input latency.':
+        'FSR 3 o LSFG de Lossless Scaling, que usa tu propio Lossless.dll (elígelo abajo). Movimiento más fluido, '
+        'algo más de latencia.',
+    'Lossless Scaling (LSFG)': 'Lossless Scaling (LSFG)',
+    'Lossless.dll from your copy of Lossless Scaling (Steam: right-click it, Manage, Browse local files). It is '
+    'not included with the port. Then choose LSFG as the frame generation, here or in the in-game menu.':
+        'El Lossless.dll de tu copia de Lossless Scaling (Steam: clic derecho, Administrar, Ver archivos locales). '
+        'No se incluye con el port. Después elige LSFG como generación de fotogramas, aquí o en el menú del juego.',
+    'All files': 'Todos los archivos',
     'Double-click a cover to launch': 'Doble clic en una portada para jugar',
     'Press a key…': 'Pulsa una tecla…',
 
