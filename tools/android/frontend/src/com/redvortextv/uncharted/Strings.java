@@ -125,10 +125,12 @@ final class Strings {
         put("on", "On", "Sí");
         put("off", "Off", "No");
         put("credits", "Credits", "Créditos");
-        put("credits_text", "Android runtime: ducvd89 (Bloodborne-Android). Linux port: spacepepperoni (uncharted_Linux), "
-                + "Supermedo (uncharted_pc), bloodborne_pc. ARM layer: MaSieS4Fun (FEXCore). Drivers: Mesa Turnip.",
-            "Runtime de Android: ducvd89 (Bloodborne-Android). Port de Linux: spacepepperoni (uncharted_Linux), "
-                + "Supermedo (uncharted_pc), bloodborne_pc. Capa ARM: MaSieS4Fun (FEXCore). Drivers: Mesa Turnip.");
+        put("credits_text", "ARM and Android port: RedVorteX-TV. Android runtime: ducvd89 (Bloodborne-Android). Linux port: "
+                + "spacepepperoni (uncharted_Linux), Supermedo (uncharted_pc), deadinside28 (bloodborne_pc). ARM layer: "
+                + "MaSieS4Fun (FEXCore). Drivers: Mesa Turnip.",
+            "Port ARM y Android: RedVorteX-TV. Runtime de Android: ducvd89 (Bloodborne-Android). Port de Linux: "
+                + "spacepepperoni (uncharted_Linux), Supermedo (uncharted_pc), deadinside28 (bloodborne_pc). Capa ARM: "
+                + "MaSieS4Fun (FEXCore). Drivers: Mesa Turnip.");
         put("restart_driver", "The game uses %s after a restart. Restart now?",
             "El juego usará %s al reiniciar. ¿Reiniciar ahora?");
         put("driver_installed", "%s is installed. Use it now?", "%s está instalado. ¿Usarlo ahora?");
