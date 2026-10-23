@@ -72,6 +72,7 @@ ES = {
     'by {}': 'por {}',
     'Linux port by spacepepperoni': 'Port a Linux por spacepepperoni',
     'ARM port by RedVorteX-TV': 'Port a ARM por RedVorteX-TV',
+    'YouTube channel: RedVorteX-TV': 'Canal de YouTube: RedVorteX-TV',
     'Double-click a cover to launch': 'Doble clic en una portada para jugar',
     'Press a key…': 'Pulsa una tecla…',
 

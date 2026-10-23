@@ -54,6 +54,9 @@ if not WINDOWS:  # Linux fork: its own releases (the Linux builds), tagged v<ups
         pass
     RELEASES_API = 'https://api.github.com/repos/spacepepperoni/uncharted_Linux/releases/latest'
     RELEASES_PAGE = 'https://github.com/spacepepperoni/uncharted_Linux/releases/latest'
+    if uncharted_linux.ARM and uncharted_linux.ARM_REPO:  # ARM port: its own releases (aarch64 AppImage)
+        RELEASES_API = f'https://api.github.com/repos/{uncharted_linux.ARM_REPO}/releases/latest'
+        RELEASES_PAGE = f'https://github.com/{uncharted_linux.ARM_REPO}/releases/latest'
 UPDATE_DIR = Path(tempfile.gettempdir()) / 'uncharted-update'
 # Never copied over an installation by an update (the package does not hold them either).
 USER_FILES = ('user', 'out', 'art', 'bbport.ini', 'input.ini', 'last_run.log')
