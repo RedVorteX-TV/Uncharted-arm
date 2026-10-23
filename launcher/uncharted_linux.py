@@ -42,6 +42,11 @@ def config_dir():
 # ARM port: an aarch64 host (ARM handhelds such as the AYN Odin 3, phones and boards). The games
 # run through FEXCore there; the Settings page offers what these GPUs run well (ARM_* below).
 ARM = platform.machine().lower() in ('aarch64', 'arm64')
+# ARM port: its author's channel (a link under the sidebar's credit), and owner/name of its
+# repository: the sidebar's GitHub mark and the update check use its releases (tags v<version>,
+# asset Uncharted-aarch64.AppImage). Empty: none yet (upstream's links).
+ARM_YOUTUBE = 'https://youtube.com/@redvortex-tv'
+ARM_REPO = ''
 
 
 def steam_deck():
@@ -308,7 +313,7 @@ def steam_command(steam, launcher_file, game):
     return str(exe), options
 
 
-REPO_URL = 'https://github.com/spacepepperoni/uncharted_Linux'
+REPO_URL = f'https://github.com/{ARM_REPO}' if ARM and ARM_REPO else 'https://github.com/spacepepperoni/uncharted_Linux'
 # Crash reports go to upstream's tracker: the fork has no issues, and most crashes are in the
 # emulation shared with upstream.
 UPSTREAM_ISSUES = 'https://github.com/Supermedo/uncharted_pc/issues'
@@ -1169,8 +1174,16 @@ def launcher_class(base, ns):
             version.configure(text=_('Linux port by spacepepperoni'), fg=TEXT, font=self.font_ui_md)
             author.pack_configure(pady=(self.px(12), 0))
             if ARM:
-                tk.Label(self.side, text=_(ARM_CREDIT), bg=bg, fg=TEXT, font=self.font_ui_md,
-                         anchor='w').pack(anchor='w', padx=18, after=version)
+                credit = tk.Label(self.side, text=_(ARM_CREDIT), bg=bg, fg=TEXT, font=self.font_ui_md,
+                                  anchor='w')
+                credit.pack(anchor='w', padx=18, after=version)
+                # The port author's channel: a link under the credit (opens in the browser).
+                channel = tk.Label(self.side, text=_('YouTube channel: RedVorteX-TV'), bg=bg, fg=GOLD,
+                                   font=self.font_ui_sm, anchor='w', cursor='hand2')
+                channel.pack(anchor='w', padx=18, pady=(self.px(2), 0), after=credit)
+                channel.bind('<Button-1>', lambda _e: open_path(ARM_YOUTUBE))
+                channel.bind('<Enter>', lambda _e: channel.configure(fg=TEXT))
+                channel.bind('<Leave>', lambda _e: channel.configure(fg=GOLD))
 
         def folder(self, parent, key, title, prompt, hint=None, on_change=None):
             """A folder row whose field shrinks to the window: Browse and Open stay on screen and a

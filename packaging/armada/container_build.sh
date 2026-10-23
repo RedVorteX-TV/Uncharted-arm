@@ -91,6 +91,8 @@ if [[ ${BB_APPIMAGE:-0} == 1 ]]; then
     echo "== AppImage"
     for dep in python3-tkinter tk file findutils curl rpm binutils; do install_alternatives "$dep" 1; done
     if (( ${#missing[@]} )); then echo "No se pudieron instalar: ${missing[*]}" >&2; exit 1; fi
-    LINUX_BUILD=${LINUX_BUILD:-arm-$(git rev-parse --short HEAD 2>/dev/null || echo dev)} bash packaging/linux/package.sh
+    # The port's version (packaging/armada/VERSION, the same as the Android app's): the update check
+    # compares it with the release tags (v<version>).
+    LINUX_BUILD=${LINUX_BUILD:-$(cat packaging/armada/VERSION)} bash packaging/linux/package.sh
 fi
 echo "== done"
