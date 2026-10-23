@@ -115,6 +115,11 @@ public:
     void Present(Frame* frame, bool is_reusing_frame = false, bool is_game_frame = true);
     Frame* PrepareLastFrame();
 
+    /// ARM port: the memory statistics (videoout/driver.cpp) read the GPU allocator through it.
+    const Instance& GetInstance() const {
+        return instance;
+    }
+
 private:
     Frame* GetRenderFrame();
 

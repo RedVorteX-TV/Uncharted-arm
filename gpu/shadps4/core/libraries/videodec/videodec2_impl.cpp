@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include "videodec2_impl.h"
 
 #include "common/alignment.h"
@@ -14,6 +18,50 @@
 #include "common/support/avdec.h"
 
 namespace Libraries::Videodec2 {
+
+namespace {
+// BB_FRAME_STATS: where the time of each decoded picture goes, every 5 s (the movies'
+// own frame rate is what the game shows while one plays).
+struct DecodeStats {
+    std::mutex mutex;
+    std::chrono::steady_clock::time_point since = std::chrono::steady_clock::now();
+    u64 frames = 0, empty = 0;
+    double decode = 0, convert = 0, fit = 0, copy = 0, worst = 0;
+};
+DecodeStats g_stats;
+bool StatsWanted() {
+    static const bool wanted = std::getenv("BB_FRAME_STATS") != nullptr;
+    return wanted;
+}
+double Ms(std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
+    return std::chrono::duration<double, std::milli>(b - a).count();
+}
+void NoteDecode(bool picture, double decode, double convert, double fit, double copy) {
+    std::lock_guard lock{g_stats.mutex};
+    auto& s = g_stats;
+    if (picture) {
+        ++s.frames;
+        s.decode += decode; s.convert += convert; s.fit += fit; s.copy += copy;
+        s.worst = std::max(s.worst, decode + convert + fit + copy);
+    } else {
+        ++s.empty;
+        s.decode += decode;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const double seconds = std::chrono::duration<double>(now - s.since).count();
+    if (seconds < 5.0) {
+        return;
+    }
+    const double n = double(std::max<u64>(s.frames, 1));
+    std::printf("Videodec2: %.1f pictures/s (%llu calls without one); per picture %.1f ms decode, "
+                "%.1f NV12, %.1f fit, %.1f copy; worst %.1f ms\n",
+                double(s.frames) / seconds, (unsigned long long)s.empty, s.decode / n,
+                s.convert / n, s.fit / n, s.copy / n, s.worst);
+    s.frames = s.empty = 0;
+    s.decode = s.convert = s.fit = s.copy = s.worst = 0;
+    s.since = now;
+}
+} // namespace
 
 VdecDecoder::VdecDecoder(const OrbisVideodec2DecoderConfigInfo& config_info,
                          const OrbisVideodec2DecoderMemoryInfo& memory_info) {
@@ -30,6 +78,13 @@ VdecDecoder::VdecDecoder(const OrbisVideodec2DecoderConfigInfo& config_info,
     m_max_height = config_info.max_frame_height;
     std::printf("Videodec2: decoder for %ux%u frames (%s)\n", m_max_width, m_max_height, codec->name);
     m_codec_context->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
+    // ARM port: the collection's cinematics are 1080p H.264 at 60 pictures/s, 16.7 ms each. On
+    // one thread, decoding fell behind in busy scenes (13-15 FPS and the sound ahead in Uncharted
+    // 2 on the Odin 3); on four, a picture takes about 6 ms (BB_FRAME_STATS: the 720p fit, not
+    // the decoding). Frame threads hold a few pictures back: the game's flush at the end of a
+    // movie collects them.
+    m_codec_context->thread_count = 4;
+    m_codec_context->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
     avcodec_open2(m_codec_context, codec, nullptr);
 }
@@ -68,6 +123,8 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
     packet->dts = input_data.dts_data;
     packet->opaque = reinterpret_cast<void*>(input_data.attached_data);
 
+    const bool stats = StatsWanted();
+    const auto t_start = stats ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     int ret = avcodec_send_packet(m_codec_context, packet);
     if (ret == AVERROR_EOF) {
         // Attempt to flush buffers and try again.
@@ -88,8 +145,12 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
     }
 
     ret = avcodec_receive_frame(m_codec_context, frame);
+    const auto t_decoded = stats ? std::chrono::steady_clock::now() : t_start;
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
         LOG_TRACE(Lib_Vdec2, "AVERROR_EOF or AVERROR(EAGAIN)");
+        if (stats) {
+            NoteDecode(false, Ms(t_start, t_decoded), 0, 0, 0);
+        }
         av_packet_free(&packet);
         av_frame_free(&frame);
         return ORBIS_OK;
@@ -110,6 +171,7 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
         av_frame_free(&frame);
         frame = nv12_frame;
     }
+    const auto t_converted = stats ? std::chrono::steady_clock::now() : t_start;
     // Linux fork: in the Steam Deck's 720p mode (scripts/render_720p.py) the game asks for
     // 1280x720 decoders and the collection's movies are 1080p: their frames did not fit its
     // 720p buffers (green and pink logo screens). FitToMaxSize makes them fit.
@@ -124,6 +186,7 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
             height_align = 64;
         }
     }
+    const auto t_fitted = stats ? std::chrono::steady_clock::now() : t_start;
 
     const bool is_avc = m_codec_context->codec_id == AV_CODEC_ID_H264;
     const u64 info_size =
@@ -131,6 +194,10 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
     Videodec::CopyNV12Data((u8*)frame_buffer.frame_buffer,
                            frame_buffer.frame_buffer_size - info_size, *frame, height_align);
     frame_buffer.is_accepted = true;
+    if (stats) {
+        NoteDecode(true, Ms(t_start, t_decoded), Ms(t_decoded, t_converted),
+                   Ms(t_converted, t_fitted), Ms(t_fitted, std::chrono::steady_clock::now()));
+    }
 
     const auto width = Common::AlignUp<u32>(frame->width, 16);
     const auto pitch = Common::AlignUp<u32>(frame->width, 64);

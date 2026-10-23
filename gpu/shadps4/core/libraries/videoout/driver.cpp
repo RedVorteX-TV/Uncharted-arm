@@ -9,6 +9,8 @@
 #include <vector>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <time.h>
 #ifndef _WIN32
 #include <sys/resource.h>
@@ -29,8 +31,60 @@
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
+#include <vk_mem_alloc.h>
 
 extern std::unique_ptr<Vulkan::Presenter> presenter;
+
+namespace {
+/// ARM port (BB_FRAME_STATS, every 30 s): where the memory goes, to see whether it grows while
+/// playing. The process's RAM split into the game's memory (shared memory: the guest's direct
+/// and flexible memory), the port's own (FEX, caches, the driver's CPU side) and mapped files;
+/// its peak; the GPU's allocations (VMA, the driver's budget when it reports one); and the RAM
+/// the whole system uses.
+void PrintMemoryStats() {
+#ifdef __linux__
+    const auto field = [](const char* path, const char* name) -> double {
+        FILE* file = std::fopen(path, "r");
+        if (!file) {
+            return 0.0;
+        }
+        char line[256];
+        double value = 0.0;
+        const size_t length = std::strlen(name);
+        while (std::fgets(line, sizeof(line), file)) {
+            if (!std::strncmp(line, name, length) && line[length] == ':') {
+                value = std::strtod(line + length + 1, nullptr) / (1024.0 * 1024.0); // kB -> GB
+                break;
+            }
+        }
+        std::fclose(file);
+        return value;
+    };
+    const double rss = field("/proc/self/status", "VmRSS");
+    const double peak = field("/proc/self/status", "VmHWM");
+    const double anon = field("/proc/self/status", "RssAnon");
+    const double files = field("/proc/self/status", "RssFile");
+    const double shmem = field("/proc/self/status", "RssShmem");
+    const double total = field("/proc/meminfo", "MemTotal");
+    const double available = field("/proc/meminfo", "MemAvailable");
+    double gpu_usage = 0.0, gpu_budget = 0.0;
+    if (presenter) {
+        const VmaAllocator allocator = presenter->GetInstance().GetAllocator();
+        const VkPhysicalDeviceMemoryProperties* properties = nullptr;
+        vmaGetMemoryProperties(allocator, &properties);
+        std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+        vmaGetHeapBudgets(allocator, budgets.data());
+        for (u32 heap = 0; properties && heap < properties->memoryHeapCount; ++heap) {
+            gpu_usage += budgets[heap].usage / (1024.0 * 1024.0 * 1024.0);
+            gpu_budget += budgets[heap].budget / (1024.0 * 1024.0 * 1024.0);
+        }
+    }
+    std::printf("Memory: process %.2f GB (peak %.2f; game memory %.2f, port %.2f, files %.2f), GPU "
+                "allocations %.2f GB of %.2f budget, system %.2f of %.2f GB in use\n",
+                rss, peak, shmem, anon, files, gpu_usage, gpu_budget, total - available, total);
+#endif
+}
+} // namespace
 extern std::unique_ptr<AmdGpu::Liverpool> liverpool;
 
 namespace Vulkan {
@@ -469,6 +523,10 @@ void VideoOutDriver::Flip(const Request& req) {
                         BbStats::tick_wait_ns.exchange(0) / (window * 1e7),
                         frames ? double(BbStats::reduced_draws.exchange(0)) / frames : 0.0,
                         frames ? double(BbStats::scene_draws.exchange(0)) / frames : 0.0);
+            static u32 memory_windows = 0;
+            if (memory_windows++ % 6 == 0) {
+                PrintMemoryStats();
+            }
             // Frame pacing: spread of the guest flip intervals (judder that the mean hides).
             if (intervals.size() > 2) {
                 std::vector<double> sorted = intervals;
