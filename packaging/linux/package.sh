@@ -73,7 +73,7 @@ ldd "${probe_libraries[@]}" | awk '/=> \// {print $1, $3}' | sort -u |
         [[ $name =~ $system ]] || cp -L "$path" "$dest/bin/lib/$name"
     done
 cp scripts/prepare.py scripts/link_modules.py scripts/link_libc.py scripts/content_profile.py scripts/render_720p.py "$dest/scripts/"
-cp run.py LICENSE "$dest/"
+cp run.py LICENSE COPYING.GPL-3 "$dest/"  # GPL v3: the binaries include the LSFG files
 cp launcher/uncharted.png "$dest/launcher/"
 cp README.md "$dest/README.md"
 echo "${LINUX_BUILD:-}" > "$dest/LINUX_BUILD"
