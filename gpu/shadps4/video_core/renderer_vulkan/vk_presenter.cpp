@@ -573,6 +573,8 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
                     vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled,
                 hudless, hudless_view, frame->width, frame->height, outputs);
         }
+        frame_gen_counts.made += frame->generated_count;
+        frame_gen_counts.none += frame->generated_count ? 0 : 1;
     }
     if (frame_dump) {
         // The presented image as the swapchain blit reads it (General after the pass), and
@@ -741,6 +743,7 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
         std::scoped_lock lock{free_mutex};
         return free_queue.empty();
     };
+    const u32 made = generated;
     if (generated && behind()) {
         generated = 0;
     }
@@ -767,6 +770,16 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
     }
     if (shown && !behind()) {
         wait_until(start + step * shown);
+    }
+    frame_gen_counts.shown += shown;
+    frame_gen_counts.dropped += made - shown;
+    if ((made || frame_generator->Wanted()) && start - frame_gen_report > std::chrono::seconds(5)) {
+        frame_gen_report = start;
+        const u32 none = frame_gen_counts.none.exchange(0);
+        std::printf("Frame generation: %u made, %u shown, %u dropped (no free frame); %u game "
+                    "frames without\n",
+                    frame_gen_counts.made.exchange(0), frame_gen_counts.shown.exchange(0),
+                    frame_gen_counts.dropped.exchange(0), none);
     }
     if (!PresentImage(frame, frame->image, true)) {
         free_frame();

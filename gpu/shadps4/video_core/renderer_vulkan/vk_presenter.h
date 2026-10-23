@@ -169,6 +169,12 @@ private:
     Frame hudless_frame{};
     std::chrono::steady_clock::time_point last_game_present{};
     std::atomic<double> game_frame_ms{16.7}; ///< written by the present thread
+    /// What happened to frame generation, logged every few seconds while it is chosen: frames
+    /// made, shown, dropped (no free frame), and game frames with none made.
+    struct FrameGenCounts {
+        std::atomic<u32> made{0}, shown{0}, dropped{0}, none{0};
+    } frame_gen_counts;
+    std::chrono::steady_clock::time_point frame_gen_report{};
 };
 
 } // namespace Vulkan
