@@ -44,9 +44,9 @@ def config_dir():
 ARM = platform.machine().lower() in ('aarch64', 'arm64')
 # ARM port: its author's channel (a link under the sidebar's credit), and owner/name of its
 # repository: the sidebar's GitHub mark and the update check use its releases (tags v<version>,
-# asset Uncharted-aarch64.AppImage). Empty: none yet (upstream's links).
+# asset Uncharted-aarch64.AppImage).
 ARM_YOUTUBE = 'https://youtube.com/@redvortex-tv'
-ARM_REPO = ''
+ARM_REPO = 'RedVorteX-TV/Uncharted-arm'
 
 
 def steam_deck():
