@@ -57,6 +57,8 @@ export BB_UPSCALER=${BB_UPSCALER:-off}
 [ "$(choice arm_uma_readback)" = 0 ] && export BB_UMA_READBACK=0
 [ "$(choice arm_flush_draws)" = 0 ] && export BB_FLUSH_DRAWS=0
 [ "$(choice arm_job_spin)" = 0 ] && export BB_JOB_SPIN=0
+# The launcher's "Performance statistics in the log": frame, thread, GPU wait and memory statistics.
+[ "$(choice perf_stats)" = 1 ] && export BB_FRAME_STATS=1 BB_THREAD_STATS=1
 # Sound: the mixer writes s16 stereo 48 kHz into the FIFO the app plays (AudioBridge.java), only when
 # the app made it (a FIFO nobody reads would fill).
 [ -p "$base/audio.fifo" ] && export BB_AUDIO_FIFO="$base/audio.fifo"

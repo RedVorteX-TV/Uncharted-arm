@@ -320,6 +320,7 @@ public final class MainActivity extends Activity {
         section(Strings.get("system"));
         actionRow(Strings.get("gpu_driver"), driverSummary(), this::showDrivers).setTag("driver");
         actionRow(Strings.get("game_folder"), gameDir == null ? Strings.get("not_chosen") : gameDir, () -> askGameFolder()).setTag("folder");
+        switchRow(launcher, "perf_stats", false, Strings.get("perf_stats"), Strings.get("perf_stats_hint"));
         actionRow(Strings.get("logs"), Strings.get("logs_hint") + "\n" + sharedLogDir().getPath(), () -> {
             File log = new File(sharedLogDir(), "android-game.log");
             toast(log.isFile() ? log.getPath() : Strings.get("no_log"));

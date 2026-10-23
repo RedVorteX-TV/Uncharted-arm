@@ -16,6 +16,11 @@ final class Strings {
         put("subtitle", "The Nathan Drake Collection", "The Nathan Drake Collection");
         put("credit", "ARM port by RedVorteX-TV", "Port ARM por RedVorteX-TV");
         put("game", "Game", "Juego");
+        put("perf_stats", "Performance statistics in the log", "Estadísticas de rendimiento en el registro");
+        put("perf_stats_hint", "Frame rate, threads, GPU waits and memory every few seconds (BB_FRAME_STATS, "
+                + "BB_THREAD_STATS). For reports; leave it off to play.",
+            "FPS, hilos, esperas de la GPU y memoria cada pocos segundos (BB_FRAME_STATS, BB_THREAD_STATS). "
+                + "Para informes; déjalo apagado para jugar.");
         put("logs", "Game log", "Registro del juego");
         put("logs_hint", "Every game run writes its log here (send it when something goes wrong):",
             "Cada partida guarda su registro aquí (envíalo si algo falla):");
