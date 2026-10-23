@@ -56,7 +56,12 @@ read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3 libavcodec libavutil)
 vulkan_headers=$PWD/third_party/Vulkan-Headers/include
 includes=(-I"$vulkan_headers" "${includes[@]}")
 # Linux fork: libavcodec/libavutil for runtime_ajm.c's MP3 decoder (Windows links them through CMake).
-read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil)"
+# BB_FFMPEG_STATIC=1 (packaging/armada): a static FFmpeg from PKG_CONFIG_PATH, with its private libraries.
+if [[ ${BB_FFMPEG_STATIC:-0} == 1 ]]; then
+    read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3) $(pkg-config --static --libs libavcodec libavutil)"
+else
+    read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil)"
+fi
 # GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libbbgpu.so.
 # BB_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
 # Default: use the profile in pgo/ when there is one. BB_LTO=OFF disables link-time optimization.
@@ -77,7 +82,8 @@ for patch in gpu/patches/fsr-vulkan/*.patch; do
     fi
 done
 cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBB_PGO="$pgo" \
-    -DBB_LTO="${BB_LTO:-ON}" -DBB_PGO_DIR="$PWD/pgo" -DVulkan_INCLUDE_DIR="$vulkan_headers" >/dev/null
+    -DBB_LTO="${BB_LTO:-ON}" -DBB_PGO_DIR="$PWD/pgo" -DVulkan_INCLUDE_DIR="$vulkan_headers" \
+    -DBB_FFMPEG_STATIC="$([[ ${BB_FFMPEG_STATIC:-0} == 1 ]] && echo ON || echo OFF)" >/dev/null
 echo "GPU library: PGO $pgo, LTO ${BB_LTO:-ON}"
 # A failed GPU build must stop here: an older libbbgpu.so would otherwise be used silently.
 if ! ninja ${BB_JOBS:+-j"$BB_JOBS"} -C out/gpu bbgpu > out/gpu-build.log 2>&1; then

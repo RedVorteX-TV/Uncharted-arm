@@ -178,7 +178,14 @@ set(COMMON
     shadps4/common/string_util.cpp shadps4/common/thread.cpp shadps4/common/signal_context.cpp
     shim/common/logging/log.cpp)
 file(GLOB AVPLAYER CONFIGURE_DEPENDS shadps4/core/libraries/avplayer/*.cpp)
+# ARM port: BB_FFMPEG_STATIC links the static FFmpeg found through PKG_CONFIG_PATH
+# (packaging/armada/build_ffmpeg.sh) with its private libraries.
+option(BB_FFMPEG_STATIC "Link a static FFmpeg (pkg-config --static)" OFF)
+if (BB_FFMPEG_STATIC)
+    set(PKG_CONFIG_ARGN --static)
+endif()
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswscale libswresample)
+unset(PKG_CONFIG_ARGN)
 file(GLOB SHIM_SOURCES CONFIGURE_DEPENDS shim/*.cpp shim/*/*.cpp)
 # Windows: a DLL cannot leave the runtime_* symbols for bb-probe.exe to resolve, so the
 # library is static there and linked into the executable.
@@ -267,6 +274,12 @@ target_compile_options(bbgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-f
 # Runtime symbols (runtime_memory_*, runtime_process_*) resolve against bb-probe.
 if (NOT WIN32)
     target_link_options(bbgpu PRIVATE -Wl,--allow-shlib-undefined)
+endif()
+if (BB_FFMPEG_STATIC)
+    # FFmpeg's arm64 assembly addresses its tables with adrp/add: its symbols must not be
+    # preemptible inside the shared object (and stay out of the global scope).
+    target_link_options(bbgpu PRIVATE
+        -Wl,--exclude-libs,libavcodec.a:libavformat.a:libavutil.a:libswscale.a:libswresample.a)
 endif()
 target_link_libraries(bbgpu PRIVATE ffx-vulkan::portable ffx-vulkan::fsr4-v07-vulkan
     ffx-vulkan::fsr3-vk-framegeneration-3.1.6)

@@ -15,11 +15,7 @@ deps=(
     'pkgconfig(vulkan)|vulkan-loader-devel' vulkan-headers 'pkgconfig(sdl3)|SDL3-devel'
     'pkgconfig(x11)|libX11-devel' 'pkgconfig(xcb)|libxcb-devel' 'pkgconfig(wayland-client)|wayland-devel'
     'pkgconfig(libxxhash)|xxhash-devel'
-    'pkgconfig(libavformat)|ffmpeg-free-devel|libavformat-free-devel'
-    'pkgconfig(libavcodec)|ffmpeg-free-devel|libavcodec-free-devel'
-    'pkgconfig(libavutil)|ffmpeg-free-devel|libavutil-free-devel'
-    'pkgconfig(libswscale)|ffmpeg-free-devel|libswscale-free-devel'
-    'pkgconfig(libswresample)|ffmpeg-free-devel|libswresample-free-devel'
+    curl tar xz libatomic
     boost-devel 'cmake(fmt)|fmt-devel' 'cmake(magic_enum)|magic_enum-devel'
     'cmake(tsl-robin-map)|robin-map-devel' 'cmake(Zydis)|cmake(zydis)|zydis-devel'
     'cmake(nlohmann_json)|json-devel' 'cmake(protobuf)|protobuf-devel' protobuf-compiler
@@ -50,6 +46,16 @@ fi
 echo "== submodules (gpu/third_party, third_party/FEX and its own)"
 git config --global --add safe.directory '*'
 git submodule update --init --recursive
+
+echo "== FFmpeg (static, out/ffmpeg: Fedora's has no H.264 decoder of its own)"
+bash packaging/armada/build_ffmpeg.sh
+export PKG_CONFIG_PATH=$PWD/out/ffmpeg/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+export BB_FFMPEG_STATIC=1
+# A GPU library configured with Fedora's FFmpeg is configured again (pkg-config results are cached).
+if [[ -f out/gpu/CMakeCache.txt ]] && ! grep -q "$PWD/out/ffmpeg" out/gpu/CMakeCache.txt; then
+    echo "  (reconfiguring the GPU library for this FFmpeg)"
+    rm -rf out/gpu
+fi
 
 echo "== build (FEXCore, GPU library, runtime)"
 # A FEX configuration made before llvm (llvm-ar/llvm-ranlib) was installed is redone.

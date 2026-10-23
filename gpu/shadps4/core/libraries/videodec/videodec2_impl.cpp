@@ -28,7 +28,7 @@ VdecDecoder::VdecDecoder(const OrbisVideodec2DecoderConfigInfo& config_info,
     m_codec_context->height = config_info.max_frame_height;
     m_max_width = config_info.max_frame_width;
     m_max_height = config_info.max_frame_height;
-    std::printf("Videodec2: decoder for %ux%u frames\n", m_max_width, m_max_height);
+    std::printf("Videodec2: decoder for %ux%u frames (%s)\n", m_max_width, m_max_height, codec->name);
     m_codec_context->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
 
     avcodec_open2(m_codec_context, codec, nullptr);
