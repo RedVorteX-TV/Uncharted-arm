@@ -6,6 +6,7 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 
 namespace BbSettings {
 
@@ -17,7 +18,10 @@ inline bool IsFsr4(int upscaler) {
 }
 enum Preset : int { NativeAA = 0, Quality, Balanced, Performance, UltraPerformance, PresetCount };
 /// Frame generation (vk_frame_generation.h): frames generated between two of the game's.
-enum FrameGen : int { FrameGenOff = 0, FrameGenFsr3 = 1, FrameGenDlss = 2, FrameGenCount };
+/// LSFG: Lossless Scaling's frame generation, with the shaders of the player's own Lossless.dll
+/// (lsfg_dll; renderer_vulkan/lsfg).
+enum FrameGen : int { FrameGenOff = 0, FrameGenFsr3 = 1, FrameGenDlss = 2, FrameGenLsfg = 3,
+                      FrameGenCount };
 enum DebugView : int { DebugNone = 0, DebugReactive = 1, DebugMotion = 2, DebugViewCount };
 
 /// Game effects switched by the community patches at start (patches.py EFFECTS): ini key,
@@ -105,6 +109,12 @@ struct Values {
     std::atomic<int> frame_gen_multiplier{2};
     std::atomic<int> dlssg_max_multiplier{1};
     std::atomic<const char*> frame_gen_problem{nullptr};
+    /// LSFG: the player's Lossless.dll (set at start: BB_LSFG_DLL or lsfg_dll), the motion
+    /// resolution in percent (100: automatic, lower: cheaper and blurrier) and the
+    /// half-precision shaders.
+    std::string lsfg_dll;
+    std::atomic<int> lsfg_flow_scale{100};
+    std::atomic<bool> lsfg_fp16{false};
 
     /// Startup settings for the explicit BB_RENDER_RES compatibility patch only.
     int startup_preset = NativeAA;
