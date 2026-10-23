@@ -15,12 +15,13 @@ unofficial fan project, not affiliated with Sony Interactive Entertainment or Na
 | | Linux (Odin 3, Snapdragon 8 Elite) | Android (AYN Thor, Snapdragon 8 Gen 2) |
 |---|---|---|
 | Uncharted 1 | Playable | Playable |
-| Uncharted 2 | Playable | In testing |
-| Uncharted 3 | Playable | In testing |
+| Uncharted 2 | Playable | Playable |
+| Uncharted 3 | Playable | Playable |
 
 - Performance is limited by the translation of every draw to Vulkan on the CPU (about 2,000 per
-  frame) more than by the GPU. Uncharted 2 runs at about 33 FPS in the Odin 3's eco mode at 720p;
-  the target on the Thor is a stable 30 FPS.
+  frame) more than by the GPU. Uncharted 2 runs at about 33 FPS in the Odin 3's eco mode at 720p; on
+  the Thor Uncharted 1 runs a little above 30 FPS and Uncharted 2 and 3 at 25-30, with dips to
+  26-27 in demanding areas. The target on the Thor is a stable 30 FPS.
 - Known problems: characters sometimes clip through scenery in Uncharted 2; a crash at the end of
   one Uncharted 2 cinematic was seen once.
 
