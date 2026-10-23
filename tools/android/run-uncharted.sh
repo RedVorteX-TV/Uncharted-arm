@@ -50,6 +50,9 @@ export BB_VBLANK_HZ=60
 case $(setting fps_limit) in 30|40|45|60|0) ;; *) printf 'fps_limit=40\n' >> "$BB_CONFIG" ;; esac
 case $(setting render_720p) in 0|1) ;; *) printf 'render_720p=1\n' >> "$BB_CONFIG" ;; esac
 case $(setting fsr1) in 0|1) ;; *) printf 'fsr1=1\n' >> "$BB_CONFIG" ;; esac
+# Temporal anti-aliasing / FSR 3.1 off unless asked for, as the Linux launcher sets it (libbbgpu's
+# own default is FSR 3.1 with object motion, costly on these GPUs).
+export BB_UPSCALER=${BB_UPSCALER:-off}
 # Compatibility (the launcher's switches; each one off with its variable when a scene misbehaves).
 [ "$(choice arm_uma_readback)" = 0 ] && export BB_UMA_READBACK=0
 [ "$(choice arm_flush_draws)" = 0 ] && export BB_FLUSH_DRAWS=0

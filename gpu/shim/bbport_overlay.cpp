@@ -10,6 +10,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #ifndef __ANDROID__ // Android: no SDL; the pad comes through HandlePad (runtime_pad.c)
 #include <SDL3/SDL.h>
@@ -50,6 +53,58 @@ extern "C" const unsigned char bb_font_ttf_end[];
 namespace BbOverlay {
 
 namespace {
+
+// From ducvd89's Bloodborne-Android (gpu/shim/bbport_overlay.cpp): a directly loaded Android driver
+// gives no WSI functions (no surface or swapchain extension: frames go to the app). The ImGui backend
+// loads its whole list and stops at the first one missing, leaving the rest null (the Thor's first
+// run: a call to address 0 right after the upscaler's setup). Missing ones get this stub instead;
+// the backend never calls the WSI ones (no platform windows).
+[[noreturn]] void MissingVulkanFunction() {
+    std::fprintf(stderr, "Overlay: a Vulkan function the driver does not provide was called\n");
+    std::abort();
+}
+
+// Also from Bloodborne-Android: the backend copies its vertices into mapped buffers without checking
+// the map, and a failed vkMapMemory crashed there (memcpy to address 0). A failed map gets scratch
+// memory instead (that frame's menu draws stale vertices) and is logged. Under imgui_mutex.
+PFN_vkMapMemory real_map_memory;
+PFN_vkUnmapMemory real_unmap_memory;
+PFN_vkFlushMappedMemoryRanges real_flush_ranges;
+std::unordered_map<VkDeviceMemory, std::vector<std::byte>> scratch_maps;
+
+VKAPI_ATTR VkResult VKAPI_CALL MapMemory(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset,
+                                         VkDeviceSize size, VkMemoryMapFlags flags, void** data) {
+    const VkResult result = real_map_memory(device, memory, offset, size, flags, data);
+    if (result == VK_SUCCESS && *data) {
+        return result;
+    }
+    static std::atomic<int> logged{0};
+    if (logged.fetch_add(1) < 16) {
+        std::printf("Overlay: vkMapMemory failed (%d): scratch memory instead\n", int(result));
+    }
+    auto& scratch = scratch_maps[memory];
+    scratch.resize(size);
+    *data = scratch.data();
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL UnmapMemory(VkDevice device, VkDeviceMemory memory) {
+    if (!scratch_maps.erase(memory)) {
+        real_unmap_memory(device, memory);
+    }
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL FlushMappedMemoryRanges(VkDevice device, uint32_t count,
+                                                       const VkMappedMemoryRange* ranges) {
+    std::vector<VkMappedMemoryRange> mapped;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (!scratch_maps.contains(ranges[i].memory)) {
+            mapped.push_back(ranges[i]);
+        }
+    }
+    return mapped.empty() ? VK_SUCCESS
+                          : real_flush_ranges(device, uint32_t(mapped.size()), mapped.data());
+}
 
 std::mutex imgui_mutex; // the ImGui context: window thread (input) and present thread
 bool initialized = false;
@@ -471,9 +526,24 @@ void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count) 
     const vk::Instance vk_instance = instance.GetInstance();
     ImGui_ImplVulkan_LoadFunctions(
         instance.ApiVersion(),
-        [](const char* name, void* user) {
-            return VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr(
+        [](const char* name, void* user) -> PFN_vkVoidFunction {
+            const PFN_vkVoidFunction function = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr(
                 *static_cast<const vk::Instance*>(user), name);
+            const std::string_view n{name};
+            if (function && n == "vkMapMemory") {
+                real_map_memory = reinterpret_cast<PFN_vkMapMemory>(function);
+                return reinterpret_cast<PFN_vkVoidFunction>(&MapMemory);
+            }
+            if (function && n == "vkUnmapMemory") {
+                real_unmap_memory = reinterpret_cast<PFN_vkUnmapMemory>(function);
+                return reinterpret_cast<PFN_vkVoidFunction>(&UnmapMemory);
+            }
+            if (function && n == "vkFlushMappedMemoryRanges") {
+                real_flush_ranges = reinterpret_cast<PFN_vkFlushMappedMemoryRanges>(function);
+                return reinterpret_cast<PFN_vkVoidFunction>(&FlushMappedMemoryRanges);
+            }
+            return function ? function
+                            : reinterpret_cast<PFN_vkVoidFunction>(&MissingVulkanFunction);
         },
         const_cast<vk::Instance*>(&vk_instance));
 
