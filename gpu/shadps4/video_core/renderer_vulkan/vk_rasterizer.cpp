@@ -595,8 +595,9 @@ bool Rasterizer::DrawPipeWanted() {
         return env[0] == '1';
     }
     // Stage B spins while draws flow. Measured ahead with 16 threads (+19%) and with 4 cores /
-    // 8 threads (taskset, Steam Deck-like: +18%).
-    return BbThreads::Available() >= 8;
+    // 8 threads (taskset, Steam Deck-like: +18%). ARM port: the Thor gives the game 7 of its 8
+    // cores and uses about two of them in Uncharted 1 (thread stats), so 6 are enough.
+    return BbThreads::Available() >= 6;
 }
 
 bool Rasterizer::UseDrawPipe() const {
