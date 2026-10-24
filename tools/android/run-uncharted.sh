@@ -161,6 +161,10 @@ while :; do
     if [ "$res540" = 1 ] || [ "$res540" = 2 ] && [ -f "$data/render-960x540.bin" ]; then
         set -- "$@" --patches "$data/render-960x540.bin"
         export BB_SCENE_SIZE=960x540
+        # At 540p the Thor waits for its CPU, not its GPU: Uncharted 2's ~1300 compute fences a
+        # frame each waited for the guest copies (40% of the GPU command thread's time); with the
+        # draw pipeline they are signalled after the copies instead (liverpool.cpp).
+        export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
         if [ "$res540" = 2 ]; then
             export BB_RENDER_RES=960x540 BB_OUTPUT_RES=1920x1080
             export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
