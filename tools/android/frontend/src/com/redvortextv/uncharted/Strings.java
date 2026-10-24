@@ -46,11 +46,11 @@ final class Strings {
                 + "Deja 60 Hz en una pantalla de 60 Hz.");
         put("render_res", "Render resolution", "Resolución de render");
         put("render_res_hint", "The size the whole game draws at, scaled to the screen with FSR 1. 720p: the game's "
-                + "own PS4 720p mode, much faster than 1080p. 540p: for GPUs that 720p is still too much for, like the "
-                + "Thor's (softer picture). Also in the in-game menu (L3 + R3).",
+                + "own PS4 720p mode, much faster than 1080p. 540p: for GPUs that 720p is still too much for "
+                + "(softer picture). Also in the in-game menu (L3 + R3).",
             "El tamaño al que se dibuja todo el juego, escalado a la pantalla con FSR 1. 720p: el modo 720p del "
-                + "propio juego en PS4, mucho más rápido que 1080p. 540p: para GPU a las que 720p aún les cuesta, como "
-                + "la de la Thor (imagen más suave). También en el menú del juego (L3 + R3).");
+                + "propio juego en PS4, mucho más rápido que 1080p. 540p: para GPU a las que 720p aún les cuesta "
+                + "(imagen más suave). También en el menú del juego (L3 + R3).");
         put("frame_gen", "Frame generation", "Generación de fotogramas");
         put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
                 + "input latency: LSFG, Lossless Scaling's, with your own Lossless.dll (below). Also in the in-game "
