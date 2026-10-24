@@ -25,7 +25,8 @@ unofficial fan project, not affiliated with Sony Interactive Entertainment or Na
   Uncharted 2 runs at about 33 FPS in eco mode at 720p. On the Thor the limit is the GPU: Uncharted 1
   runs at 26-30 FPS, Uncharted 2 and 3 at 20-30 with drops below 20 in demanding areas.
 - Render resolution: 1080p, 720p (the game's own PS4 720p mode) or 540p (for slower GPUs), in the
-  in-game menu (L3 + R3, then "Save and restart the game") and in the Android launcher. 540p takes
+  in-game menu (L3 + R3, then "Save and restart the game") and in the launchers (Linux: Settings;
+  Android: Graphics). 540p takes
   load off the GPU; on the Thor, Uncharted 2 still runs at about 20-25 FPS there, where the limit is
   now how the game, the CPU and the GPU wait for each other.
 - Known problems: characters sometimes clip through scenery in Uncharted 2; a crash at the end of
