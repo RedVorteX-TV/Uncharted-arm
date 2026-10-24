@@ -39,10 +39,10 @@ final class Strings {
         put("game_rate", "Game display rate", "Frecuencia del juego");
         put("game_rate_120", "120 Hz (120 Hz screens)", "120 Hz (pantallas de 120 Hz)");
         put("game_rate_hint", "The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz "
-                + "screens such as the Thor's (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz on a "
+                + "screens (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz on a "
                 + "60 Hz screen.",
             "La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en "
-                + "pantallas de 120 Hz como la de la Thor (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
+                + "pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
                 + "Deja 60 Hz en una pantalla de 60 Hz.");
         put("render_res", "Render resolution", "Resolución de render");
         put("render_res_hint", "The size the whole game draws at, scaled to the screen with FSR 1. 720p: the game's "
@@ -60,10 +60,10 @@ final class Strings {
                 + "(L3 + R3).");
         put("frame_gen_off", "Off", "Desactivada");
         put("frame_gen_multiplier", "Frame generation multiplier", "Multiplicador de la generación");
-        put("frame_gen_multiplier_hint", "Frames shown per game frame. On the Thor 2× works best: 3× and 4× "
-                + "lower the game's own frame rate.",
-            "Fotogramas mostrados por cada fotograma del juego. En la Thor lo mejor es 2×: 3× y 4× bajan los FPS "
-                + "del propio juego.");
+        put("frame_gen_multiplier_hint", "Frames shown per game frame. 2× usually works best: 3× and 4× "
+                + "lower the game's own frame rate, more so on slower GPUs.",
+            "Fotogramas mostrados por cada fotograma del juego. Normalmente lo mejor es 2×: 3× y 4× bajan los FPS "
+                + "del propio juego, más cuanto menos potente sea la GPU.");
         put("lsfg_dll", "Lossless.dll (LSFG)", "Lossless.dll (LSFG)");
         put("lsfg_dll_hint", "Choose Lossless.dll from your own copy of Lossless Scaling. It is not included "
                 + "with the app.",
