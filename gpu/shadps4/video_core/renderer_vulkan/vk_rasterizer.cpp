@@ -709,7 +709,10 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     }
     const u64 alignment = std::max<u64>(instance.StorageMinAlignment(),
                                         instance.UniformMinAlignment());
-    const auto copy = [&](u32 index, const void* source, VAddr address, u64 size) {
+    // bbport: only the part of each buffer the shader reads (BB_RING_FULL=1: whole buffers).
+    static const bool ring_full = std::getenv("BB_RING_FULL") != nullptr;
+    const auto copy = [&](u32 index, const void* source, VAddr address, u64 size,
+                          u64 full_size) {
         const auto offset = constant_ring->Allocate(size, alignment);
         if (!offset) {
             return;
@@ -721,7 +724,7 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
             memory->CopySparseMemory(address, dst, size);
         }
         constant_ring->Flush(*offset, size);
-        out.push_back({index, static_cast<u32>(size), *offset, address});
+        out.push_back({index, static_cast<u32>(size), *offset, address, static_cast<u32>(full_size)});
         BbStats::constant_copies.fetch_add(1, std::memory_order_relaxed);
         BbStats::constant_bytes.fetch_add(size, std::memory_order_relaxed);
         BbStats::constant_sizes[size <= 256 ? 0 : size <= 1024 ? 1 : size <= 4096 ? 2 : 3].fetch_add(
@@ -733,6 +736,7 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
             if (desc.buffer_type == Shader::BufferType::Flatbuf &&
                 !stage.flattened_ud_buf.empty()) {
                 copy(index, stage.flattened_ud_buf.data(), 0,
+                     stage.flattened_ud_buf.size() * sizeof(u32),
                      stage.flattened_ud_buf.size() * sizeof(u32));
             }
             continue;
@@ -754,7 +758,12 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
             buffer_cache.IsRegionGpuModified(address, size) || PendingWriteOverlaps(address, size)) {
             continue;
         }
-        copy(index, nullptr, address, size);
+        // In whole 16-byte rows (vec4 constants), and a buffer bound but never read still gets
+        // a few bytes (a descriptor range of zero is invalid).
+        const u64 read = desc.read_range_known && !ring_full
+                             ? std::min<u64>(size, std::max<u64>((u64(desc.read_bytes) + 15) & ~15ull, 16))
+                             : size;
+        copy(index, nullptr, address, read, size);
     }
 }
 
@@ -872,11 +881,11 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
                 stage->srt_info.walker_func,
                 {}};
             for (const auto& binding : ring) {
-                if (binding.address && binding.size &&
-                    memory->IsValidGpuMapping(binding.address, binding.size)) {
+                if (binding.address && binding.full_size &&
+                    memory->IsValidGpuMapping(binding.address, binding.full_size)) {
                     const auto* bytes = reinterpret_cast<const u8*>(binding.address);
                     snapshot.rings.emplace_back(binding.address,
-                                                std::vector<u8>(bytes, bytes + binding.size));
+                                                std::vector<u8>(bytes, bytes + binding.full_size));
                 }
             }
             std::scoped_lock lk{const_mutex};
@@ -2939,7 +2948,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 }
             }
             if (!desc.IsSpecial()) {
-                if (ring->size == 864 && gbuffer_draw &&
+                if (ring->full_size == 864 && gbuffer_draw &&
                     memory->IsValidGpuMapping(ring->address, 0)) {
                     camera_motion->OnConstants(reinterpret_cast<const float*>(ring->address));
                 }
