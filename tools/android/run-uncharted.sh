@@ -50,6 +50,7 @@ export BB_WINDOW_SIZE="${BB_SCREEN_W}x${BB_SCREEN_H}" BB_FULLSCREEN=1
 if [ "$(choice game_rate)" = 120 ]; then export BB_VBLANK_HZ=120; else export BB_VBLANK_HZ=60; fi
 case $(setting fps_limit) in 30|40|45|60|0) ;; *) printf 'fps_limit=40\n' >> "$BB_CONFIG" ;; esac
 case $(setting render_720p) in 0|1) ;; *) printf 'render_720p=1\n' >> "$BB_CONFIG" ;; esac
+case $(setting render_540p) in 0|1) ;; *) printf 'render_540p=0\n' >> "$BB_CONFIG" ;; esac
 case $(setting fsr1) in 0|1) ;; *) printf 'fsr1=1\n' >> "$BB_CONFIG" ;; esac
 # Temporal anti-aliasing / FSR 3.1 off unless asked for, as the Linux launcher sets it (libbbgpu's
 # own default is FSR 3.1 with object motion, costly on these GPUs).
@@ -134,7 +135,7 @@ loadexec="$base/data/loadexec.txt"
 export BB_LOADEXEC_FILE="$loadexec"
 player_merge=${BB_GPU_MERGE-unset}
 guest_argv=
-echo "Run: Uncharted Android $(cat "$base/BUILD" 2>/dev/null || echo source), game $exe, $(uname -sr), screen ${BB_SCREEN_W}x${BB_SCREEN_H}, fps_limit $(setting fps_limit), render_720p $(setting render_720p), fsr1 $(setting fsr1)"
+echo "Run: Uncharted Android $(cat "$base/BUILD" 2>/dev/null || echo source), game $exe, $(uname -sr), screen ${BB_SCREEN_W}x${BB_SCREEN_H}, fps_limit $(setting fps_limit), render_720p $(setting render_720p), render_540p $(setting render_540p), fsr1 $(setting fsr1)"
 while :; do
     [ -f "$game_dir/$exe" ] || { echo "Game missing: no $exe in $game_dir"; exit 2; }
     # Uncharted 2 and 3 read the results of GPU work back from memory: accurate GPU memory
@@ -151,33 +152,23 @@ while :; do
     set -- "$bionic/bin/bb-probe" "$data/boot-linked.bin" --content-profile "$data/content.bin" \
         --app0 "$game_dir" --user "$user_dir" --timeout "${BB_TIMEOUT:-0}"
     [ -n "$guest_argv" ] && set -- "$@" --guest-argv "$guest_argv"
-    # Render resolution (launcher.ini render_540p; bb-prepare writes render-960x540.bin after
-    # scripts/render_res.py): 1, the game at 960x540 (HUD, menus and movies too, like the 720p mode);
-    # 2, the scene at 960x540 upscaled to 1920x1080 (FSR 1 with fsr1=1) before the HUD and menus are
-    # drawn at that size (the Linux fork's upscaling presets). Otherwise the 720p mode (bbport.ini
-    # render_720p, also in the in-game menu) or 1080p.
+    # Render resolution (bbport.ini, the launcher and the in-game menu): render_720p=1, the game's
+    # own PS4 720p mode; else render_540p=1, the whole game at 960x540 (HUD, menus and movies too;
+    # bb-prepare writes render-960x540.bin after scripts/render_res.py); else 1080p.
     unset BB_SCENE_SIZE BB_MOVIE_SIZE BB_RENDER_RES BB_OUTPUT_RES BB_UI_COMPOSITE_PS BB_UI_TONEMAP_PS
-    res540=$(choice render_540p)
-    if [ "$res540" = 1 ] || [ "$res540" = 2 ] && [ -f "$data/render-960x540.bin" ]; then
-        set -- "$@" --patches "$data/render-960x540.bin"
-        export BB_SCENE_SIZE=960x540
-        # At 540p the Thor waits for its CPU, not its GPU: Uncharted 2's ~1300 compute fences a
-        # frame each waited for the guest copies (40% of the GPU command thread's time); with the
-        # draw pipeline they are signalled after the copies instead (liverpool.cpp).
-        export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
-        if [ "$res540" = 2 ]; then
-            export BB_RENDER_RES=960x540 BB_OUTPUT_RES=1920x1080
-            export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
-            echo "Render resolution: the scene at 960x540, upscaled to 1920x1080 with the HUD at that size"
-        else
-            echo "Render resolution: 960x540"
-        fi
-    elif [ "$res540" = 1 ] || [ "$res540" = 2 ]; then
-        echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null))"
-    fi
-    if [ "$res540" != 1 ] && [ "$res540" != 2 ] && [ "$(setting render_720p)" = 1 ]; then
+    if [ "$(setting render_720p)" = 1 ]; then
         if [ -f "$data/render-720p.bin" ]; then set -- "$@" --patches "$data/render-720p.bin"
         else echo "Render 720p: not available for $exe ($(cat "$data/render-720p.txt" 2>/dev/null)); rendering at 1080p"; fi
+    elif [ "$(setting render_540p)" = 1 ]; then
+        if [ -f "$data/render-960x540.bin" ]; then
+            set -- "$@" --patches "$data/render-960x540.bin"
+            export BB_SCENE_SIZE=960x540
+            # At 540p the Thor waits for its CPU, not its GPU: Uncharted 2's ~1300 compute fences
+            # a frame each waited for the guest copies (40% of the GPU command thread's time); with
+            # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
+            export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
+            echo "Render resolution: 960x540"
+        else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
     # BB_GAME_CPUS: the CPUs the game may run on (taskset -c list), e.g. 2-7.
     [ -n "${BB_GAME_CPUS:-}" ] && set -- /system/bin/taskset -c "$BB_GAME_CPUS" "$@"
