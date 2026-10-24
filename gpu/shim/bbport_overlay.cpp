@@ -220,7 +220,7 @@ void Menu() {
         static const char* sizes[] = {
             T("1920 x 1080 (the game's own)", "1920 x 1080 (родное)"),
             T("1280 x 720 (the game's PS4 720p mode)", "1280 x 720 (режим 720p PS4)"),
-            T("960 x 540 (slower GPUs: AYN Thor)", "960 x 540 (слабые GPU: AYN Thor)")};
+            T("960 x 540 (slower GPUs)", "960 x 540 (слабые GPU)")};
         const int current = s.render_720p ? 1 : s.render_540p ? 2 : 0;
         if (ImGui::BeginCombo(T("Render resolution", "Разрешение рендера"), sizes[current])) {
             for (int i = 0; i < 3; ++i) {
