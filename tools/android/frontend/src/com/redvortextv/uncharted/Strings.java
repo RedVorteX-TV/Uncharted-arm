@@ -51,15 +51,17 @@ final class Strings {
                 + "Deja 60 Hz en una pantalla de 60 Hz.");
         put("frame_gen", "Frame generation", "Generación de fotogramas");
         put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
-                + "input latency. LSFG is Lossless Scaling's and needs your own Lossless.dll (below). Also in the "
-                + "in-game menu (L3 + R3).",
-            "Fotogramas creados entre dos del juego, para un movimiento más fluido, con algo más de latencia. LSFG es "
-                + "el de Lossless Scaling y necesita tu propio Lossless.dll (abajo). También en el menú del juego "
+                + "input latency: LSFG, Lossless Scaling's, with your own Lossless.dll (below). Also in the in-game "
+                + "menu (L3 + R3).",
+            "Fotogramas creados entre dos del juego, para un movimiento más fluido, con algo más de latencia: LSFG, "
+                + "el de Lossless Scaling, con tu propio Lossless.dll (abajo). También en el menú del juego "
                 + "(L3 + R3).");
         put("frame_gen_off", "Off", "Desactivada");
         put("frame_gen_multiplier", "Frame generation multiplier", "Multiplicador de la generación");
-        put("frame_gen_multiplier_hint", "Frames shown per game frame. 3× and 4× are LSFG only.",
-            "Fotogramas mostrados por cada fotograma del juego. 3× y 4× solo con LSFG.");
+        put("frame_gen_multiplier_hint", "Frames shown per game frame. On the Thor 2× works best: 3× and 4× "
+                + "lower the game's own frame rate.",
+            "Fotogramas mostrados por cada fotograma del juego. En la Thor lo mejor es 2×: 3× y 4× bajan los FPS "
+                + "del propio juego.");
         put("lsfg_dll", "Lossless.dll (LSFG)", "Lossless.dll (LSFG)");
         put("lsfg_dll_hint", "Choose Lossless.dll from your own copy of Lossless Scaling. It is not included "
                 + "with the app.",

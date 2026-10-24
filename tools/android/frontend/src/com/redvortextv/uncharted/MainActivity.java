@@ -345,8 +345,10 @@ public final class MainActivity extends Activity {
         cyclerRow(launcher, "game_rate", Strings.get("game_rate"), Strings.get("game_rate_hint"),
             new String[]{"60", "120"}, new String[]{"60 Hz", Strings.get("game_rate_120")}, "60");
         // Frame generation (bbport.ini, like the in-game menu); LSFG with the player's own Lossless.dll
+        // FSR 3 frame generation shows no effect on Android yet: not offered (a saved choice goes off).
+        if ("fsr3".equals(bbport.get("frame_gen"))) bbport.set("frame_gen", "off");
         cyclerRow(bbport, "frame_gen", Strings.get("frame_gen"), Strings.get("frame_gen_hint"),
-            new String[]{"off", "fsr3", "lsfg"}, new String[]{Strings.get("frame_gen_off"), "FSR 3", "LSFG"}, "off");
+            new String[]{"off", "lsfg"}, new String[]{Strings.get("frame_gen_off"), "LSFG"}, "off");
         cyclerRow(bbport, "frame_gen_multiplier", Strings.get("frame_gen_multiplier"), Strings.get("frame_gen_multiplier_hint"),
             new String[]{"2", "3", "4"}, new String[]{"2×", "3×", "4×"}, "2");
         actionRow(Strings.get("lsfg_dll"), lsfgSummary(), this::askLsfgDll).setTag("lsfg");
