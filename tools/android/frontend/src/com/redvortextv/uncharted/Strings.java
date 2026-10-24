@@ -33,11 +33,6 @@ final class Strings {
         put("u3_detail", "Drake's Deception", "La traición de Drake");
         put("play", "Play", "Jugar");
         put("graphics", "Graphics", "Gráficos");
-        put("render_720p", "Render at 1280 × 720", "Renderizar a 1280 × 720");
-        put("render_720p_hint", "The games render at 720p and the picture is scaled to the screen: much faster on "
-                + "these GPUs. Also in the in-game menu (L3 + R3).",
-            "Los juegos se renderizan a 720p y la imagen se escala a la pantalla: mucho más rápido en estas GPU. "
-                + "También en el menú del juego (L3 + R3).");
         put("fsr1", "FSR 1 (AMD FidelityFX, sharp)", "FSR 1 (AMD FidelityFX, nítido)");
         put("fsr1_hint", "FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.",
             "FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.");
@@ -49,6 +44,14 @@ final class Strings {
             "La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en "
                 + "pantallas de 120 Hz como la de la Thor (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
                 + "Deja 60 Hz en una pantalla de 60 Hz.");
+        put("render_res", "Render resolution", "Resolución de render");
+        put("render_540p", "960 × 540 (HUD at 1080p)", "960 × 540 (interfaz a 1080p)");
+        put("render_res_hint", "The size the games draw at, scaled to the screen with FSR 1. 720p: much faster than "
+                + "1080p. 540p: the scene at 960 × 540 with the HUD and menus sharp at 1080p, for more FPS on "
+                + "the Thor (softer picture). 720p also in the in-game menu (L3 + R3).",
+            "El tamaño al que se dibujan los juegos, escalado a la pantalla con FSR 1. 720p: mucho más rápido que "
+                + "1080p. 540p: la escena a 960 × 540 con la interfaz y los menús nítidos a 1080p, para más FPS en "
+                + "la Thor (imagen más suave). 720p también en el menú del juego (L3 + R3).");
         put("frame_gen", "Frame generation", "Generación de fotogramas");
         put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
                 + "input latency: LSFG, Lossless Scaling's, with your own Lossless.dll (below). Also in the in-game "

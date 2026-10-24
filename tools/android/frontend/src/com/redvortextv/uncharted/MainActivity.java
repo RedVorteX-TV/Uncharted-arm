@@ -337,7 +337,15 @@ public final class MainActivity extends Activity {
 
         // Graphics: shared with the in-game menu through bbport.ini
         section(Strings.get("graphics"));
-        switchRow(bbport, "render_720p", true, Strings.get("render_720p"), Strings.get("render_720p_hint"));
+        // Render resolution: 1080p, 720p (bbport.ini render_720p, also in the in-game menu) or the scene at
+        // 540p with the HUD at 1080p (launcher.ini render_540p, run-uncharted.sh).
+        valueRow(Strings.get("render_res"), Strings.get("render_res_hint"), new String[]{"1080", "720", "540"},
+            new String[]{"1920 × 1080", "1280 × 720", Strings.get("render_540p")},
+            () -> launcher.on("render_540p", false) ? "540" : bbport.on("render_720p", true) ? "720" : "1080",
+            value -> {
+                launcher.set("render_540p", value.equals("540"));
+                bbport.set("render_720p", value.equals("720"));
+            });
         switchRow(bbport, "fsr1", true, Strings.get("fsr1"), Strings.get("fsr1_hint"));
         cyclerRow(bbport, "fps_limit", Strings.get("frame_rate"), Strings.get("frame_rate_hint"),
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
@@ -463,6 +471,32 @@ public final class MainActivity extends Activity {
         return row;
     }
 
+    /** A setting with several values kept by `get` and `set` (more than one file): like cyclerRow. */
+    private LinearLayout valueRow(String title, String hint, String[] values, String[] names,
+                                  java.util.function.Supplier<String> get, java.util.function.Consumer<String> set) {
+        LinearLayout row = row(title, hint);
+        TextView value = text("", 14, GOLD); value.setTypeface(Typeface.DEFAULT_BOLD);
+        row.addView(value);
+        Runnable show = () -> {
+            int at = Math.max(0, java.util.Arrays.asList(values).indexOf(get.get()));
+            value.setText("‹  " + names[at] + "  ›");
+        };
+        show.run();
+        row.setTag(show);
+        java.util.function.IntConsumer step = delta -> {
+            int at = Math.max(0, java.util.Arrays.asList(values).indexOf(get.get()));
+            set.accept(values[(at + delta + values.length) % values.length]);
+            show.run();
+        };
+        row.setOnClickListener(v -> step.accept(1));
+        row.setOnKeyListener((v, code, e) -> {
+            if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
+            if (e.getAction() == KeyEvent.ACTION_DOWN) step.accept(code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+            return true;
+        });
+        return row;
+    }
+
     private LinearLayout actionRow(String title, String hint, Runnable action) {
         LinearLayout row = row(title, hint);
         TextView arrow = text("›", 22, GOLD);
@@ -492,6 +526,7 @@ public final class MainActivity extends Activity {
     /** Every launcher setting back to what runs best on an ARM handheld (the Linux launcher's button). */
     private void applyRecommended() {
         bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
+        launcher.set("render_540p", false);
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"}) launcher.set(key, true);
         launcher.set("game_rate", "60");
         refreshRows(launcherBody);

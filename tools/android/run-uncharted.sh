@@ -151,7 +151,20 @@ while :; do
     set -- "$bionic/bin/bb-probe" "$data/boot-linked.bin" --content-profile "$data/content.bin" \
         --app0 "$game_dir" --user "$user_dir" --timeout "${BB_TIMEOUT:-0}"
     [ -n "$guest_argv" ] && set -- "$@" --guest-argv "$guest_argv"
-    if [ "$(setting render_720p)" = 1 ]; then
+    # Render resolution (launcher.ini render_540p): the scene at 960x540, upscaled to 1920x1080
+    # (FSR 1 with fsr1=1) before the HUD and menus are drawn at that size (the Linux fork's
+    # upscaling presets, scripts/render_res.py; bb-prepare writes render-540p.bin). Otherwise the
+    # 720p mode (bbport.ini render_720p, also in the in-game menu) or 1080p.
+    unset BB_SCENE_SIZE BB_MOVIE_SIZE BB_RENDER_RES BB_OUTPUT_RES BB_UI_COMPOSITE_PS BB_UI_TONEMAP_PS
+    if [ "$(choice render_540p)" = 1 ] && [ -f "$data/render-540p.bin" ]; then
+        set -- "$@" --patches "$data/render-540p.bin"
+        export BB_SCENE_SIZE=960x540 BB_MOVIE_SIZE=960x540 BB_RENDER_RES=960x540 BB_OUTPUT_RES=1920x1080
+        export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
+        echo "Render resolution: the scene at 960x540, upscaled to 1920x1080 with the HUD at that size"
+    elif [ "$(choice render_540p)" = 1 ]; then
+        echo "Render 540p: not available for $exe ($(cat "$data/render-540p.txt" 2>/dev/null))"
+    fi
+    if [ "$(choice render_540p)" != 1 ] && [ "$(setting render_720p)" = 1 ]; then
         if [ -f "$data/render-720p.bin" ]; then set -- "$@" --patches "$data/render-720p.bin"
         else echo "Render 720p: not available for $exe ($(cat "$data/render-720p.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
