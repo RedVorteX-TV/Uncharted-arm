@@ -51,10 +51,19 @@ almacenamiento, elige la carpeta del juego y pulsa Jugar. Con "Buscar actualizac
 
 El port puede usar la generación de fotogramas de Lossless Scaling (LSFG) a 2×, 3× o 4×. Necesita
 **tu propio `Lossless.dll`**, de una copia comprada de [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/).
-El DLL no se incluye ni se proporciona. En Linux, elige el archivo en el launcher (Ajustes >
-Lossless Scaling (LSFG)) y después selecciona LSFG como generación de fotogramas, ahí o en el menú
-del juego (L3+R3). Solo trabaja con los fotogramas terminados, así que añade algo de latencia y
-puede mostrar artefactos en bordes que se mueven rápido y en la interfaz.
+El DLL no se incluye ni se proporciona. Elige el archivo en el launcher (Linux: Ajustes > Lossless
+Scaling (LSFG); Android: Gráficos > Lossless.dll, que lo copia dentro de la app) y después
+selecciona LSFG como generación de fotogramas, ahí o en el menú del juego (L3+R3). Solo trabaja con
+los fotogramas terminados, así que añade algo de latencia y puede mostrar artefactos en bordes que
+se mueven rápido y en la interfaz, más cuanto más bajos sean los FPS del propio juego. En la Thor,
+usa 2×.
+
+## Frecuencia del juego (60 / 120 Hz)
+
+Ajustes (Linux) o Gráficos (Android) > Frecuencia del juego. A 120 Hz, un fotograma que tarda algo
+más de 33 ms se muestra enseguida en lugar de esperar hasta los 50 ms: tiempos de fotograma más
+regulares en pantallas de 120 Hz como las de la Odin 3 y la Thor. Deja 60 Hz en una pantalla de
+60 Hz.
 
 ## Compilar
 
