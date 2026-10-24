@@ -93,6 +93,12 @@ inline std::atomic<std::uint64_t> gpu_late_deliveries{0};
 /// copies, bytes, and copies by size (<= 256 B, <= 1 KB, <= 4 KB, larger).
 inline std::atomic<std::uint64_t> constant_copies{0}, constant_bytes{0};
 inline std::array<std::atomic<std::uint64_t>, 4> constant_sizes{};
+/// Pipeline barriers recorded (Runtime::FlushBarriers), those with image transitions, and the
+/// dispatches that repeat the previous one's shader with nothing recorded between them: the
+/// barriers before those, and what made them needed (a buffer range written or read before).
+inline std::atomic<std::uint64_t> barriers{0}, image_barriers{0};
+inline std::atomic<std::uint64_t> repeat_dispatches{0}, repeat_barriers{0}, repeat_write_overlaps{0},
+    repeat_read_overlaps{0};
 inline std::atomic<std::int64_t> hot_pages{0};
 /// Stall diagnostics (BB_FRAME_STATS): per-frame deltas printed for frames over 40 ms.
 inline std::atomic<std::uint64_t> images_registered{0};

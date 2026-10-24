@@ -42,6 +42,7 @@ void GpuProfiler::WriteTimestamp(u64 key) {
     const u32 query = slice * SliceQueries + used[slice]++;
     keys[slice].push_back(key);
     current = key;
+    open_segment = true;
     scheduler.Record([pool = *pool, query](vk::CommandBuffer cmdbuf) {
         cmdbuf.writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, pool, query);
     });
@@ -67,6 +68,7 @@ void GpuProfiler::BeginFrame() {
     }
     used[slice] = 0;
     keys[slice].clear();
+    open_segment = false;
     pending[slice] = false;
     Print();
 }

@@ -97,6 +97,14 @@ public:
 
     void FlushBarriers();
 
+    /// bbport: IsBufferAccessed calls that found an earlier write / only an earlier read.
+    [[nodiscard]] u64 WriteOverlaps() const noexcept {
+        return write_overlaps;
+    }
+    [[nodiscard]] u64 ReadOverlaps() const noexcept {
+        return read_overlaps;
+    }
+
     /// bbport: runs before this thread changes image state (layouts, pending image
     /// barriers): the rasterizer joins its texture binding helper there (BindHelper).
     void SetImageAccessHook(void (*hook)(void*), void* context) {
@@ -130,6 +138,8 @@ private:
     };
     std::array<AccessMemo, 512> access_memo{};
     u32 access_epoch = 1;
+    u64 write_overlaps = 0;
+    u64 read_overlaps = 0;
 };
 
 } // namespace Vulkan

@@ -35,6 +35,11 @@ public:
         if (!described.contains(key)) {
             described.emplace(key, describe());
         }
+        // Back-to-back segments of one label share a timestamp: a timestamp per dispatch of a
+        // run of small ones (Uncharted 2: ~1200 a frame) serializes them on the GPU.
+        if (key == current && open_segment) {
+            return;
+        }
         WriteTimestamp(key);
     }
 
@@ -81,6 +86,7 @@ private:
     std::unordered_map<u64, Total> totals;
     u64 frames = 0;
     u64 current = 0;
+    bool open_segment = false; ///< a timestamp of this frame's slice opened `current`
     std::chrono::steady_clock::time_point window = std::chrono::steady_clock::now();
 };
 

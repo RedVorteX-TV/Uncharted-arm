@@ -537,6 +537,15 @@ void VideoOutDriver::Flip(const Request& req) {
                             BbStats::constant_bytes.exchange(0) / 1024.0 * per_frame,
                             copies * per_frame, sizes[0] * per_frame, sizes[1] * per_frame,
                             sizes[2] * per_frame, sizes[3] * per_frame);
+                std::printf("Barriers: %.0f/frame (%.0f with image transitions); dispatches repeating "
+                            "the previous shader %.0f/frame, %.0f barriers before them (%.0f after a "
+                            "buffer write, %.0f after only a read)\n",
+                            BbStats::barriers.exchange(0) * per_frame,
+                            BbStats::image_barriers.exchange(0) * per_frame,
+                            BbStats::repeat_dispatches.exchange(0) * per_frame,
+                            BbStats::repeat_barriers.exchange(0) * per_frame,
+                            BbStats::repeat_write_overlaps.exchange(0) * per_frame,
+                            BbStats::repeat_read_overlaps.exchange(0) * per_frame);
             }
             static u32 memory_windows = 0;
             if (memory_windows++ % 6 == 0) {

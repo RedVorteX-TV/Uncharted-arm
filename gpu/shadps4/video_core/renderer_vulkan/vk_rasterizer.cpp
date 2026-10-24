@@ -1380,8 +1380,13 @@ static bool SkipShader(u64 hash) {
     return hash && std::find(skipped.begin(), skipped.end(), hash) != skipped.end();
 }
 
+// bbport: the compute shader of the last dispatch recorded, 0 after a draw (BB_FRAME_STATS:
+// barriers between dispatches that repeat a shader). The recording thread only.
+static u64 last_recorded_cs = 0;
+
 void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
                             bool is_indexed, u32 index_offset) {
+    last_recorded_cs = 0;
     if (DrawPipe::OnStageB()) {
         FrameCapture::Poll();
         scheduler.PopPendingOperations();
@@ -1806,6 +1811,7 @@ void Rasterizer::DrawIndirect(bool is_indexed, VAddr arg_address, u32 offset, u3
 
 void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_indexed,
                                     const IndirectDraw& indirect) {
+    last_recorded_cs = 0;
     if (DrawPipe::OnStageB()) {
         FrameCapture::Poll();
         scheduler.PopPendingOperations();
@@ -2035,6 +2041,10 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         }
     }
 
+    const bool repeat = cs.pgm_hash == last_recorded_cs;
+    last_recorded_cs = cs.pgm_hash;
+    const u64 barriers_before = BbStats::barriers.load(std::memory_order_relaxed);
+    const u64 write_overlaps = runtime.WriteOverlaps(), read_overlaps = runtime.ReadOverlaps();
     if (!BindResources(pipeline)) {
         return;
     }
@@ -2159,6 +2169,17 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
 
     if (needs_barrier) {
         runtime.FlushBarriers();
+    }
+    if (repeat) {
+        BbStats::repeat_dispatches.fetch_add(1, std::memory_order_relaxed);
+        if (const u64 emitted = BbStats::barriers.load(std::memory_order_relaxed) - barriers_before) {
+            BbStats::repeat_barriers.fetch_add(emitted, std::memory_order_relaxed);
+            if (runtime.WriteOverlaps() != write_overlaps) {
+                BbStats::repeat_write_overlaps.fetch_add(1, std::memory_order_relaxed);
+            } else if (runtime.ReadOverlaps() != read_overlaps) {
+                BbStats::repeat_read_overlaps.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
     }
 
     scheduler.EndRendering();

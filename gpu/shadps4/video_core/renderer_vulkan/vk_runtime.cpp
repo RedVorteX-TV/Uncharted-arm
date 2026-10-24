@@ -765,8 +765,10 @@ bool Runtime::IsBufferAccessed(const VideoCore::Buffer* handle, u64 offset, u64 
         .range_end = offset + size - 1,
     };
     bool has_access = barrier_tracker.FindRange(range, Access::Write);
+    write_overlaps += has_access;
     if (check_read_access && !has_access) {
         has_access |= barrier_tracker.FindRange(range, Access::Read);
+        read_overlaps += has_access;
     }
     return has_access;
 }
@@ -844,6 +846,10 @@ void Runtime::FlushBarriers() {
         return;
     }
 
+    BbStats::barriers.fetch_add(1, std::memory_order_relaxed);
+    if (!image_barriers.empty()) {
+        BbStats::image_barriers.fetch_add(1, std::memory_order_relaxed);
+    }
     scheduler.EndRendering();
     scheduler.Record([memory = memory_barrier, has_memory = dep_info.memoryBarrierCount != 0,
                       images = scheduler.RecordData(std::span<const vk::ImageMemoryBarrier2>(
