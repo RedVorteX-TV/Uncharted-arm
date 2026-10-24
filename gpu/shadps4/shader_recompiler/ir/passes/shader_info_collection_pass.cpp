@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <bit>
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <string>
+#include <vector>
+#include <fmt/format.h>
 #include "core/emulator_settings.h"
 #include "shader_recompiler/ir/program.h"
 // After program.h: resource_pass.h uses IR::Inst without including it.
@@ -10,10 +17,113 @@
 
 namespace Shader::Optimization {
 
-// bbport: how much of each buffer the shader reads (BufferResource::read_bytes). A constant-buffer
-// read at a fixed dword extends the range; any other access, or a read at a computed offset, makes
-// the range unknown (the whole buffer).
-void VisitBufferRange(Info& info, const IR::Inst& inst) {
+// bbport: how much of each buffer the shader reads (BufferResource::read_bytes). Every read whose
+// position has a known upper bound extends the range; any other access (a store, a formatted
+// load, a position without a bound) makes it unknown: the whole buffer.
+
+// The largest value `value` can take, when the expression bounds it (constants, sums, products,
+// shifts and masks of them); none otherwise or when 32-bit arithmetic could wrap.
+std::optional<u64> UpperBound(const IR::Value& value, int depth = 0) {
+    const IR::Value& v = value;
+    if (v.IsImmediate()) {
+        return v.Type() == IR::Type::U32 ? std::optional<u64>{v.U32()} : std::nullopt;
+    }
+    if (depth > 16) {
+        return std::nullopt;
+    }
+    const IR::Inst* inst = v.Inst();
+    const auto arg = [&](u32 i) { return UpperBound(inst->Arg(i), depth + 1); };
+    const auto fits = [](u64 x) { return x <= 0xFFFFFFFFull ? std::optional<u64>{x} : std::nullopt; };
+    const auto imm = [&](u32 i) -> std::optional<u64> {
+        const IR::Value a = inst->Arg(i);
+        if (a.IsImmediate() && a.Type() == IR::Type::U32) {
+            return a.U32();
+        }
+        return std::nullopt;
+    };
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::IAdd32: {
+        const auto a = arg(0), b = arg(1);
+        return a && b ? fits(*a + *b) : std::nullopt;
+    }
+    case IR::Opcode::IMul32: {
+        const auto a = arg(0), b = arg(1);
+        return a && b ? fits(*a * *b) : std::nullopt;
+    }
+    case IR::Opcode::ShiftLeftLogical32: {
+        const auto a = arg(0), s = imm(1);
+        return a && s && *s < 32 ? fits(*a << *s) : std::nullopt;
+    }
+    case IR::Opcode::ShiftRightLogical32: {
+        const auto a = arg(0), s = imm(1);
+        if (s && *s < 32) {
+            return (a ? *a : 0xFFFFFFFFull) >> *s;
+        }
+        return std::nullopt;
+    }
+    case IR::Opcode::BitwiseAnd32: {
+        const auto a = arg(0), b = arg(1);
+        if (a && b) {
+            return std::min(*a, *b);
+        }
+        return a ? a : b;
+    }
+    case IR::Opcode::BitwiseOr32: {
+        const auto a = arg(0), b = arg(1);
+        if (!a || !b) {
+            return std::nullopt;
+        }
+        return (u64(1) << std::bit_width(std::max(*a, *b))) - 1;
+    }
+    case IR::Opcode::UMin32: {
+        const auto a = arg(0), b = arg(1);
+        if (a && b) {
+            return std::min(*a, *b);
+        }
+        return a ? a : b;
+    }
+    case IR::Opcode::BitFieldUExtract: {
+        const auto count = imm(2);
+        return count && *count < 32 ? std::optional<u64>{(u64(1) << *count) - 1} : std::nullopt;
+    }
+    default:
+        return std::nullopt;
+    }
+}
+
+/// Bytes past the end of what `inst` reads, when bounded: the position argument's units are those
+/// of the access (dwords for 32-bit loads and constant reads; BufferAddressShift).
+std::optional<u64> ReadEnd(const IR::Inst& inst) {
+    const auto at = [&](u64 unit, u64 count) -> std::optional<u64> {
+        const auto bound = UpperBound(inst.Arg(1));
+        return bound ? std::optional<u64>{(*bound + count) * unit} : std::nullopt;
+    };
+    switch (inst.GetOpcode()) {
+    case IR::Opcode::ReadConstBuffer:
+    case IR::Opcode::LoadBufferU32:
+    case IR::Opcode::LoadBufferF32:
+        return at(4, 1);
+    case IR::Opcode::LoadBufferU32x2:
+    case IR::Opcode::LoadBufferF32x2:
+        return at(4, 2);
+    case IR::Opcode::LoadBufferU32x3:
+    case IR::Opcode::LoadBufferF32x3:
+        return at(4, 3);
+    case IR::Opcode::LoadBufferU32x4:
+    case IR::Opcode::LoadBufferF32x4:
+        return at(4, 4);
+    case IR::Opcode::LoadBufferU8:
+        return at(1, 1);
+    case IR::Opcode::LoadBufferU16:
+        return at(2, 1);
+    case IR::Opcode::LoadBufferU64:
+        return at(8, 1);
+    default:
+        return std::nullopt; // formatted loads, stores, atomics
+    }
+}
+
+void VisitBufferRange(Info& info, const IR::Inst& inst, std::vector<std::string>* report) {
     if (!IsBufferInstruction(inst) || !inst.Arg(0).IsImmediate()) {
         return;
     }
@@ -22,16 +132,26 @@ void VisitBufferRange(Info& info, const IR::Inst& inst) {
         return;
     }
     auto& buffer = info.buffers[handle];
-    if (inst.GetOpcode() == IR::Opcode::ReadConstBuffer && inst.Arg(1).IsImmediate()) {
-        const u64 end = (u64(inst.Arg(1).U32()) + 1) * sizeof(u32);
-        buffer.read_bytes = u32(std::min<u64>(std::max<u64>(buffer.read_bytes, end), UINT32_MAX));
-    } else {
-        buffer.read_range_known = false;
+    // An indexed load's position depends on the buffer's stride, which permutations may differ in.
+    const bool indexed = inst.GetOpcode() != IR::Opcode::ReadConstBuffer &&
+                         inst.Flags<IR::BufferInstInfo>().index_enable;
+    const auto end = buffer.is_formatted || indexed ? std::nullopt : ReadEnd(inst);
+    if (end) {
+        buffer.read_bytes = u32(std::min<u64>(std::max<u64>(buffer.read_bytes, *end), UINT32_MAX));
+        return;
     }
+    if (buffer.read_range_known && report) {
+        const IR::Value position = inst.NumArgs() > 1 ? inst.Arg(1) : IR::Value{};
+        report->push_back(fmt::format(
+            "buffer {}: {} at {}", handle, IR::NameOf(inst.GetOpcode()),
+            position.IsEmpty()       ? std::string{"-"}
+            : position.IsImmediate() ? std::string{"constant"}
+                                     : std::string{IR::NameOf(position.Inst()->GetOpcode())}));
+    }
+    buffer.read_range_known = false;
 }
 
 void Visit(Info& info, const IR::Inst& inst) {
-    VisitBufferRange(info, inst);
     switch (inst.GetOpcode()) {
     case IR::Opcode::GetAttribute:
     case IR::Opcode::GetAttributeU1:
@@ -197,10 +317,28 @@ void CollectShaderInfoPass(IR::Program& program, const Profile& profile) {
         buffer.read_bytes = 0;
         buffer.read_range_known = buffer.buffer_type == BufferType::Guest;
     }
+    // BB_RING_REPORT=1: why a buffer's range stays unknown, per compiled shader.
+    static const bool ring_report = std::getenv("BB_RING_REPORT") != nullptr;
+    std::vector<std::string> report;
     for (IR::Block* const block : program.post_order_blocks) {
         for (IR::Inst& inst : block->Instructions()) {
+            VisitBufferRange(info, inst, ring_report ? &report : nullptr);
             Visit(info, inst);
         }
+    }
+    if (ring_report) {
+        std::string known;
+        for (u32 i = 0; i < info.buffers.size(); ++i) {
+            if (info.buffers[i].read_range_known) {
+                known += fmt::format(" {}:{}B", i, info.buffers[i].read_bytes);
+            }
+        }
+        std::printf("Ring report: shader %08x known [%s ]; unknown:", u32(info.pgm_hash),
+                    known.c_str());
+        for (const auto& line : report) {
+            std::printf(" (%s)", line.c_str());
+        }
+        std::printf("\n");
     }
 
     if (!EmulatorSettings.IsDirectMemoryAccessEnabled()) {
