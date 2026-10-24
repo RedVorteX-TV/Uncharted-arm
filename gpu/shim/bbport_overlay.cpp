@@ -274,18 +274,34 @@ void Menu() {
     }
 
     ImGui::SeparatorText(T("Resolution", "Разрешение"));
-    Checkbox(T("Render the whole game at 1280x720 (restart)", "Вся игра в 1280x720 (перезапуск)"),
-             s.render_720p);
-    Hint(T("The game switches to its own PS4 720p mode: scene, effects, UI and movies draw at "
-           "1280x720 and the frame is enlarged to the screen. Much faster on handhelds, a little "
-           "softer. From spacepepperoni's Linux fork (its Steam Deck mode).",
-           "Игра переходит в свой режим 720p PS4: всё рисуется в 1280x720 и растягивается на "
-           "экран. Намного быстрее на портативных устройствах, чуть мягче."));
-    if (s.render_720p != s.startup_render_720p) {
-        if (ImGui::Button(T("Apply and restart the game", "Применить и перезапустить игру"))) {
-            BbSettings::Save();
-            runtime_restart();
+    // The size the whole game renders at, on restart: its own 1080p, its own PS4 720p mode
+    // (render_720p, scripts/render_720p.py) or 960x540 (render_540p, scripts/render_res.py).
+    {
+        static const char* sizes[] = {
+            T("1920 x 1080 (the game's own)", "1920 x 1080 (родное)"),
+            T("1280 x 720 (the game's PS4 720p mode)", "1280 x 720 (режим 720p PS4)"),
+            T("960 x 540 (slower GPUs)", "960 x 540 (слабые GPU)")};
+        const int current = s.render_720p ? 1 : s.render_540p ? 2 : 0;
+        if (ImGui::BeginCombo(T("Render resolution", "Разрешение рендера"), sizes[current])) {
+            for (int i = 0; i < 3; ++i) {
+                if (ImGui::Selectable(sizes[i], i == current)) {
+                    Store(s.render_720p, i == 1, true);
+                    Store(s.render_540p, i == 2, true);
+                }
+            }
+            ImGui::EndCombo();
         }
+    }
+    Hint(T("The size the whole game draws at (scene, effects, UI and movies); the frame is then "
+           "enlarged to the screen. 1280x720 is the game's own PS4 720p mode: much faster on "
+           "handhelds, a little softer. 960x540 is for GPUs that 720p is still too much for, softer "
+           "again. Applies when the game restarts.",
+           "Размер, в котором рисуется вся игра; кадр растягивается на экран. 1280x720 — режим "
+           "720p PS4. 960x540 — для GPU, которым мало 720p. После перезапуска."));
+    if (s.render_720p != s.startup_render_720p || s.render_540p != s.startup_render_540p) {
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
+                           T("Applies when the game restarts (Save and restart, below)",
+                             "Применится после перезапуска (кнопка ниже)"));
     }
     Checkbox(T("FSR 1 (sharp scaling to the screen)", "FSR 1 (чёткое масштабирование)"), s.fsr1);
     Hint(T("How a frame smaller than the screen (the 1280x720 mode on a 1080p screen) is enlarged: "
@@ -316,8 +332,9 @@ void Menu() {
         }
         ImGui::EndCombo();
     }
-    Hint(T("Runs at the game's 1920x1080 on the scene before post-processing, with the game's own "
-           "motion vectors, and replaces its edge smoothing. Changes apply on the next frame.",
+    Hint(T("Runs at the game's render resolution (launcher: Display) on the scene before "
+           "post-processing, with the game's own motion vectors, and replaces its edge smoothing. "
+           "Changes apply on the next frame.",
            "Работает в родном 1920x1080 игры на сцене до постобработки, с векторами движения "
            "самой игры, и заменяет её сглаживание. Применяется со следующего кадра."));
     if (const char* problem = s.dlss_problem.load(); problem && upscaler == BbSettings::UpscalerDlss) {
@@ -465,6 +482,14 @@ void Menu() {
     ImGui::Spacing();
     if (ImGui::Button(T("Close", "Закрыть"))) {
         keep_open = false;
+    }
+    ImGui::SameLine();
+    // Changes that apply at the next start (resolution, effects, object motion): saved, and the
+    // game starts again at the same executable (BB_RESTART_COMMAND).
+    if (ImGui::Button(T("Save and restart the game", "Сохранить и перезапустить"))) {
+        BbSettings::Save();
+        dirty = false;
+        runtime_restart();
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%s", T("Anti-aliasing, sharpness and frame generation reset to the "

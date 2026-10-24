@@ -52,6 +52,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.sharpness = Clamp(f, 0.0f, 2.0f);
     } else if (key == "jitter") {
         v.jitter = i != 0;
+    } else if (key == "settings_version") {
+        v.settings_version = i;
     } else if (key == "reactive") {
         v.reactive = i != 0;
     } else if (key == "object_motion") {
@@ -68,6 +70,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.show_fps = i != 0;
     } else if (key == "render_720p") {
         v.render_720p = i != 0;
+    } else if (key == "render_540p") {
+        v.render_540p = i != 0;
     } else if (key == "fsr1") {
         v.fsr1 = i != 0;
     } else if (key == "fps_limit") {
@@ -120,7 +124,15 @@ void Load() {
         }
         std::fclose(file);
         std::printf("Settings: %s\n", Path());
+        // Linux fork: sub-pixel jitter off by default. Settings older than version 3 had it
+        // switched back on (version 2); distant objects still shimmer and shake with it, so it is
+        // turned off once. It can be switched on again in the overlay.
+        if (v.settings_version < 3 && v.jitter) {
+            v.jitter = false;
+            std::printf("Settings: sub-pixel jitter switched off (default)\n");
+        }
     }
+    v.settings_version = 3;
     // Environment overrides (scripts, A/B tests).
     if (const char* env = std::getenv("BB_UPSCALER")) {
         v.upscaler = UpscalerOff;
@@ -153,6 +165,7 @@ void Load() {
     v.startup_output_res = v.output_res;
     v.startup_live_resolution = v.live_resolution;
     v.startup_render_720p = v.render_720p;
+    v.startup_render_540p = v.render_540p;
 }
 
 void ConfigureUpscalerSupport(bool fsr4, bool fsr411) {
@@ -211,6 +224,7 @@ void Save() {
     }
     std::fprintf(file,
                  "# bbport settings (in-game menu: Insert / L3+R3)\n"
+                 "settings_version=3\n"
                  "upscaler=%s\npreset=%d\nsharpen=%d\nsharpness=%.2f\njitter=%d\n"
                  "reactive=%d\nobject_motion=%d\nreactive_scale=%.2f\nreactive_threshold=%.2f\nreactive_max=%.2f\n"
                  "debug_view=%d\nshow_fps=%d\nfsr4_auto_exposure=%d\nfsr4_invert_jitter=%d\n",
@@ -231,8 +245,9 @@ void Save() {
     std::fprintf(file, "lsfg_dll=%s\nlsfg_flow_scale=%d\nlsfg_fp16=%d\n", v.lsfg_dll.c_str(),
                  v.lsfg_flow_scale.load(), int(v.lsfg_fp16.load()));
     std::fprintf(file, "fps_limit=%d\n", v.fps_limit.load());
-    // render_720p: read by run.py at start.
-    std::fprintf(file, "render_720p=%d\nfsr1=%d\n", int(v.render_720p.load()), int(v.fsr1.load()));
+    // render_720p, render_540p: read by run.py (run-uncharted.sh on Android) at start.
+    std::fprintf(file, "render_720p=%d\nrender_540p=%d\nfsr1=%d\n", int(v.render_720p.load()),
+                 int(v.render_540p.load()), int(v.fsr1.load()));
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

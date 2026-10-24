@@ -90,6 +90,8 @@ void runtime_set_guest_fpu(void);
 /* Guest-visible errno values are FreeBSD's. */
 int32_t runtime_guest_errno(int host_errno);
 void *runtime_low_map(size_t size, int prot);
+/* Render resolution: guest-visible scratch memory for the GPU library (bbport_movie.cpp). */
+void *runtime_map_guest_memory(uint64_t size);
 void *runtime_image_map(size_t size, int prot);
 /* Windows: reserves the PS4 user address range as a placeholder (no-op elsewhere). */
 void runtime_memory_reserve(void);

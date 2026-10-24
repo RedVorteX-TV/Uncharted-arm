@@ -11,10 +11,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <tuple>
 
 #include <vk_mem_alloc.h>
 
 #include "bbport_settings.h"
+#include "core/emulator_settings.h"
 #include "bbport_toggles.h"
 #include "ffx_vk_portable.h"
 #include "video_core/host_shaders/upscale_merge_comp.h"
@@ -214,6 +216,21 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
         std::printf("Upscaler: shaderStorageImageWriteWithoutFormat unsupported, FSR 3 off\n");
         enabled = false;
     }
+    // Upscaling presets: Uncharted below the output size (see OnComposite).
+    if (const char* ps = std::getenv("BB_UI_COMPOSITE_PS")) {
+        composite_ps = u32(std::strtoull(ps, nullptr, 16));
+    }
+    if (const char* ps = std::getenv("BB_UI_TONEMAP_PS")) {
+        tonemap_ps = u32(std::strtoull(ps, nullptr, 16));
+    }
+    composite_frames = enabled && scaled_session && composite_ps && camera_motion.VelocityMode() &&
+                       (render_width < target_width || render_height < target_height);
+    if (composite_frames) {
+        std::printf("Upscaler: the game draws %ux%u, frames are upscaled to %ux%u at pixel shader "
+                    "%08llx; HUD and menus at %ux%u\n", render_width, render_height, target_width,
+                    target_height, static_cast<unsigned long long>(composite_ps), target_width,
+                    target_height);
+    }
     if (enabled) {
         std::printf("Upscaler: FSR 3.1 available (%s) on scene color before compute shader "
                     "%016llx\n",
@@ -251,6 +268,19 @@ void TemporalUpscaler::OnSceneColor(VideoCore::ImageId color) {
 }
 
 namespace {
+/// The upscalers read 8-bit frames as the stored (sRGB-encoded) values: UNORM views of sRGB
+/// images, as the game's own RGBA8 copy holds them.
+vk::Format LdrFormat(vk::Format format) {
+    switch (format) {
+    case vk::Format::eR8G8B8A8Srgb:
+        return vk::Format::eR8G8B8A8Unorm;
+    case vk::Format::eB8G8R8A8Srgb:
+        return vk::Format::eB8G8R8A8Unorm;
+    default:
+        return format;
+    }
+}
+
 float Halton(u32 index, u32 base) {
     float f = 1.0f, result = 0.0f;
     for (u32 i = index; i > 0; i /= base) {
@@ -295,8 +325,13 @@ bool TemporalUpscaler::OnFrameStart() {
     const auto& settings = BbSettings::Get();
     // The guest's startup resolution patch remains in effect until restart. Keep the FSR
     // model at the applied preset while the menu saves the requested one for run.sh.
-    // Velocity mode (Uncharted) runs at the game's own size: anti-aliasing (Native AA) only.
-    const int preset = camera_motion.VelocityMode() ? 0 : BbSettings::RenderPreset();
+    // Velocity mode (Uncharted) runs at the game's own (patched) size: anti-aliasing (Native AA)
+    // only; below the output size (upscaling presets) the preset (FSR 4's model) follows the
+    // scale: 1.5 Quality, 1.7 Balanced, 2 Performance, more Ultra Performance. By the height.
+    const float scale = float(target_height) / float(std::max(1u, render_height));
+    const int preset = composite_frames ? (scale <= 1.01f ? 0 : scale <= 1.51f ? 1 : scale <= 1.71f ? 2
+                                                          : scale <= 2.01f ? 3 : 4)
+                       : camera_motion.VelocityMode() ? 0 : BbSettings::RenderPreset();
     if (applied_preset != preset || settings.upscaler == BbSettings::UpscalerOff) failed = false;
     const bool active = Active();
     const bool jitter_on = active && settings.jitter && !BbToggle::Disabled(1u << 25);
@@ -339,8 +374,11 @@ bool TemporalUpscaler::OnFrameStart() {
     last_jitter = jitter_on;
     dispatched_last_frame = false;
 
-    // The display pass of an upscaled frame reads the upscaled UI image.
-    display_redirect = ui_phase;
+    // The display pass of an upscaled frame reads the upscaled UI image. After OnComposite the
+    // HUD and menu draws of the frame just upscaled still go to its host display buffer.
+    display_redirect = ui_phase || composite_done;
+    composite_done = false;
+    tonemap_pending = false;
     ui_phase = false;
     ui_read_barrier = false;
     done_this_frame = false;
@@ -1285,8 +1323,9 @@ void TemporalUpscaler::CaptureFrameGen() {
 
 void TemporalUpscaler::OnDrawRecorded(u64 ps_hash, VideoCore::ImageId color) {
     // This draw starts the upscaler's next frame (OnFrameStart: it writes the display buffer);
-    // the frame generator knows whether this frame's inputs were taken.
-    if (!hudless_hash || u32(ps_hash) != hudless_hash || !color || !frame_generator ||
+    // the frame generator knows whether this frame's inputs were taken. With an upscaling
+    // preset the picture before the UI is the upscaled one (UpscaleToUi).
+    if (composite_frames || !hudless_hash || u32(ps_hash) != hudless_hash || !color || !frame_generator ||
         !frame_generator->Wanted()) {
         return;
     }
@@ -1360,6 +1399,17 @@ bool TemporalUpscaler::Scaled() const {
 }
 
 void TemporalUpscaler::OnColorTarget(VideoCore::ImageId color) {
+    if (composite_frames) {
+        // Uncharted: the copy of the finished frame (RGBA8 at the render size) that the composite
+        // draw puts back into the display buffer; also in menus without a 3D scene.
+        const auto& image = texture_cache.GetImage(color);
+        if (image.info.pixel_format == vk::Format::eR8G8B8A8Unorm &&
+            RenderTarget(image.info.size.width, image.info.size.height) &&
+            !FrameCapture::IsDisplayBuffer(image.info.guest_address)) {
+            ldr_target = color;
+        }
+        return;
+    }
     if (ui_phase || !camera_motion.Depth()) {
         return;
     }
@@ -1374,6 +1424,9 @@ void TemporalUpscaler::OnColorTarget(VideoCore::ImageId color) {
 
 void TemporalUpscaler::OnDraw(u64 vs_hash, VideoCore::ImageId color,
                               VideoCore::ImageId depth, bool native_viewport) {
+    if (composite_frames) {
+        return; // the UI starts at OnComposite, not at Bloodborne's Scaleform draws
+    }
     if (!Scaled() && vs_hash == ui_trigger_vs) done_this_frame = true;
     if (!Scaled() || !color) {
         return;
@@ -1612,11 +1665,15 @@ void TemporalUpscaler::RunScaled() {
     if (depth.info.size.width != iw || depth.info.size.height != ih || w > ow || h > oh) {
         return;
     }
-    if (!EnsureResources(w, h, ow, oh, false)) {
+    // TAA resolves at the render size (tw x th); FSR 1 (or a bilinear stretch) brings it to the
+    // output size after. The others upscale themselves.
+    const bool taa = BbSettings::Get().upscaler == BbSettings::UpscalerTaa;
+    const u32 tw = taa ? w : ow, th = taa ? h : oh;
+    if (!EnsureResources(w, h, tw, th, false)) {
         failed = true;
         return;
     }
-    EnsureUiResources(ow, oh, color.info.pixel_format, depth.info.pixel_format);
+    EnsureUiResources(ow, oh, LdrFormat(color.info.pixel_format), depth.info.pixel_format);
     PrepareUiDepth(camera_motion.Depth());
     const auto depth_format = depth.info.pixel_format;
     // Views kept across frames: FSR 4 registers images by view in a registry of eight.
@@ -1637,7 +1694,7 @@ void TemporalUpscaler::RunScaled() {
         source_height = h;
     } else {
         depth_view = CachedView(depth, depth_format, vk::ImageAspectFlagBits::eDepth);
-        color_view = CachedView(color, color.info.pixel_format, vk::ImageAspectFlagBits::eColor);
+        color_view = CachedView(color, LdrFormat(color.info.pixel_format), vk::ImageAspectFlagBits::eColor);
         runtime.Transit(&depth, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader,
                         vk::AccessFlagBits2::eShaderRead);
         runtime.Transit(&color, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader,
@@ -1673,7 +1730,11 @@ void TemporalUpscaler::RunScaled() {
     barrier(vk::Image(motion_image), vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eUndefined,
             all, vk::AccessFlagBits2::eNone, vk::ImageLayout::eGeneral,
             vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderWrite);
-    camera_motion.RecordMotion(cmdbuf, depth_view, *motion_view, w, h);
+    if (camera_motion.VelocityMode()) {
+        camera_motion.RecordVelocity(cmdbuf, depth_view, *motion_view, w, h);
+    } else {
+        camera_motion.RecordMotion(cmdbuf, depth_view, *motion_view, w, h);
+    }
     barrier(vk::Image(motion_image), vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eGeneral,
             vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderWrite,
             vk::ImageLayout::eGeneral, all, vk::AccessFlagBits2::eShaderRead);
@@ -1695,7 +1756,7 @@ void TemporalUpscaler::RunScaled() {
             RecordTaa(cmdbuf, color_view, depth_view);
         } else if (UseDlss()) {
             ok4 = RecordDlss(cmdbuf,
-                             {color_image, color_view, color.info.pixel_format,
+                             {color_image, color_view, LdrFormat(color.info.pixel_format),
                               vk::ImageAspectFlagBits::eColor, source_width, source_height},
                              {depth_image, depth_view, depth_format, vk::ImageAspectFlagBits::eDepth,
                               source_width, source_height},
@@ -1709,23 +1770,46 @@ void TemporalUpscaler::RunScaled() {
             if (BbSettings::Get().upscaler != BbSettings::UpscalerTaa) {
                 ExtraSharpen(cmdbuf, vk::Image(output_image), false, ow, oh);
             }
-            barrier(vk::Image(output_image), vk::ImageAspectFlagBits::eColor,
-                    vk::ImageLayout::eGeneral, all, rw, vk::ImageLayout::eGeneral,
-                    vk::PipelineStageFlagBits2::eBlit, vk::AccessFlagBits2::eTransferRead);
+            vk::Image source = vk::Image(output_image);
+            vk::ImageLayout source_layout = vk::ImageLayout::eGeneral;
+            u32 sw = tw, sh = th;
+            if (taa && EmulatorSettings.IsFsrEnabled() && tw < ow && th < oh) {
+                barrier(source, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eGeneral, all, rw,
+                        vk::ImageLayout::eShaderReadOnlyOptimal,
+                        vk::PipelineStageFlagBits2::eComputeShader, vk::AccessFlagBits2::eShaderRead);
+                if (!fsr1_created) {
+                    fsr1_pass.Create(instance.GetDevice(), instance.GetAllocator(), 2);
+                    fsr1_created = true;
+                }
+                fsr1_pass.Render(cmdbuf, *output_view, {tw, th}, {ow, oh},
+                                 {.enable = true, .use_rcas = false}, false);
+                source = fsr1_pass.LastOutput();
+                source_layout = vk::ImageLayout::eTransferSrcOptimal;
+                sw = ow;
+                sh = oh;
+                barrier(source, vk::ImageAspectFlagBits::eColor,
+                        vk::ImageLayout::eShaderReadOnlyOptimal,
+                        vk::PipelineStageFlagBits2::eComputeShader,
+                        vk::AccessFlagBits2::eShaderStorageWrite, source_layout,
+                        vk::PipelineStageFlagBits2::eBlit, vk::AccessFlagBits2::eTransferRead);
+            } else {
+                barrier(source, vk::ImageAspectFlagBits::eColor,
+                        vk::ImageLayout::eGeneral, all, rw, vk::ImageLayout::eGeneral,
+                        vk::PipelineStageFlagBits2::eBlit, vk::AccessFlagBits2::eTransferRead);
+            }
             barrier(vk::Image(ui_image), vk::ImageAspectFlagBits::eColor,
                     vk::ImageLayout::eGeneral, all, rw, vk::ImageLayout::eGeneral,
                     vk::PipelineStageFlagBits2::eBlit, vk::AccessFlagBits2::eTransferWrite);
             const vk::ImageBlit region{
                 .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
                 .srcOffsets = std::array{vk::Offset3D{0, 0, 0},
-                                         vk::Offset3D{s32(ow), s32(oh), 1}},
+                                         vk::Offset3D{s32(sw), s32(sh), 1}},
                 .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
                 .dstOffsets = std::array{vk::Offset3D{0, 0, 0},
                                          vk::Offset3D{s32(ow), s32(oh), 1}},
             };
-            cmdbuf.blitImage(vk::Image(output_image), vk::ImageLayout::eGeneral,
-                             vk::Image(ui_image), vk::ImageLayout::eGeneral, region,
-                             vk::Filter::eNearest);
+            cmdbuf.blitImage(source, source_layout, vk::Image(ui_image), vk::ImageLayout::eGeneral,
+                             region, sw == ow && sh == oh ? vk::Filter::eNearest : vk::Filter::eLinear);
             barrier(vk::Image(ui_image), vk::ImageAspectFlagBits::eColor,
                     vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eBlit,
                     vk::AccessFlagBits2::eTransferWrite, vk::ImageLayout::eGeneral,
@@ -1736,16 +1820,16 @@ void TemporalUpscaler::RunScaled() {
                 DumpImages(instance, scheduler, cmdbuf, dump,
                            {{color_image, source_width, source_height, 4, "input", "rgba"},
                             {vk::Image(motion_image), w, h, 4, "motion", "rg16f"},
-                            {vk::Image(output_image), ow, oh, 8, "output", "rgba16f"}});
+                            {vk::Image(output_image), tw, th, 8, "output", "rgba16f"}});
                 DumpImages(instance, scheduler, cmdbuf, dump,
                            {{depth_image, source_width, source_height, 4, "depth", "f32",
                              vk::ImageAspectFlagBits::eDepth}});
                 if (BbSettings::Get().upscaler == BbSettings::UpscalerTaa &&
                     std::getenv("BB_TAA_DIAGNOSTICS")) {
                     DumpImages(instance, scheduler, cmdbuf, dump,
-                               {{vk::Image(taa_history[taa_next]),ow,oh,16,
+                               {{vk::Image(taa_history[taa_next]),tw,th,16,
                                  "previous_history","rgba32f"},
-                                {vk::Image(opaque_image),ow,oh,8,"history_sample","rgba16f"}});
+                                {vk::Image(opaque_image),tw,th,8,"history_sample","rgba16f"}});
                 }
                 // ObjectMotion's attachment can be in a different resolution from the FSR
                 // inputs: only dump it when it matches, to avoid an out-of-bounds GPU copy.
@@ -1768,7 +1852,7 @@ void TemporalUpscaler::RunScaled() {
     FfxVkPortableUpscaleDispatchInfo info{};
     info.structSize = sizeof(info);
     info.commandBuffer = cmdbuf;
-    info.color = Describe(color_image, color.info.pixel_format, source_width, source_height,
+    info.color = Describe(color_image, LdrFormat(color.info.pixel_format), source_width, source_height,
                           color.usage_flags, vk::ImageAspectFlagBits::eColor,
                           FFX_VK_PORTABLE_RESOURCE_STATE_GENERIC_READ);
     info.depth = Describe(depth_image, depth_format, source_width, source_height, depth.usage_flags,
@@ -1874,18 +1958,42 @@ bool TemporalUpscaler::RedirectColor(VideoCore::ImageId color,
         return false;
     }
     std::scoped_lock lock{display_mutex};
-    auto& display = displays[address];
     if (!display_redirect) {
-        display.valid = false; // not upscaled: the presenter shows the guest buffer
+        displays[address].valid = false; // not upscaled: the presenter shows the guest buffer
         return false;
     }
-    if (!display.image || display.format != image.info.pixel_format ||
-        display.width != ui_width || display.height != ui_height) {
+    auto& display = HostDisplay(address, image.info.pixel_format);
+    scheduler.EndRendering();
+    // OnComposite has written the upscaled frame into it: the HUD draws keep it (no discard).
+    const vk::ImageMemoryBarrier2 b{
+        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+        .srcAccessMask = composite_frames ? vk::AccessFlagBits2::eMemoryWrite : vk::AccessFlagBits2::eNone,
+        .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentRead |
+                         vk::AccessFlagBits2::eColorAttachmentWrite,
+        .oldLayout = composite_frames ? vk::ImageLayout::eGeneral : vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eGeneral,
+        .image = vk::Image(display.image),
+        .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+    };
+    scheduler.Record([b](vk::CommandBuffer cmd) {
+        cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
+    });
+    display.valid = true;
+    target = {Mirror(vk::Image(display.image), display.views, view_info.format, {}),
+              vk::ImageLayout::eGeneral, ui_width, ui_height};
+    return true;
+}
+
+TemporalUpscaler::DisplayImage& TemporalUpscaler::HostDisplay(VAddr address, vk::Format format) {
+    auto& display = displays[address];
+    if (!display.image || display.format != format || display.width != ui_width ||
+        display.height != ui_height) {
         const auto device = instance.GetDevice();
         scheduler.Finish();
         display.views.clear();
         std::printf("Display: host buffer %ux%u (live)\n", ui_width, ui_height);
-        display.format = image.info.pixel_format;
+        display.format = format;
         display.width = ui_width;
         display.height = ui_height;
         display.image = VideoCore::UniqueImage(device, instance.GetAllocator());
@@ -1899,28 +2007,223 @@ bool TemporalUpscaler::RedirectColor(VideoCore::ImageId color,
             .samples = vk::SampleCountFlagBits::e1,
             .tiling = vk::ImageTiling::eOptimal,
             .usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled |
-                     vk::ImageUsageFlagBits::eTransferSrc,
+                     vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
             .initialLayout = vk::ImageLayout::eUndefined,
         });
         display.views.clear();
     }
+    return display;
+}
+
+void TemporalUpscaler::UpscaleToUi(VideoCore::ImageId source) {
+    // The upscale writes ui_image (output size): FSR 3.1 / FSR 4 / DLSS / TAA with the scene's
+    // depth and the velocity pass's camera. Without them (anti-aliasing off, menus without a 3D
+    // scene, the upscaler failed) FSR 1 (EASU) upscales the frame when it is on, else a bilinear
+    // stretch; the sharpening (RCAS) follows at the presenter, on the output-size frame. After
+    // it, draws into the source go to ui_image at the output size (RedirectColor).
+    ldr_target = source;
+    if (Active() && !failed && camera_motion.Ready()) {
+        RunScaled();
+    }
+    auto& ldr = texture_cache.GetImage(ldr_target);
+    if (!ui_phase) {
+        EnsureUiResources(target_width, target_height, LdrFormat(ldr.info.pixel_format),
+                          vk::Format::eD32SfloatS8Uint);
+        const auto [w, h] = SceneSize(ldr.info.size.width, ldr.info.size.height);
+        // An sRGB source (the tonemapped frame) would be decoded by a blit into the UNORM
+        // ui_image: FSR 1 reads it through a UNORM view instead.
+        const bool srgb = LdrFormat(ldr.info.pixel_format) != ldr.info.pixel_format;
+        const bool fsr1 = (EmulatorSettings.IsFsrEnabled() || srgb) && w < ui_width && h < ui_height;
+        if (fsr1) {
+            runtime.Transit(&ldr, vk::ImageLayout::eShaderReadOnlyOptimal,
+                            vk::PipelineStageFlagBits2::eComputeShader,
+                            vk::AccessFlagBits2::eShaderRead);
+        } else {
+            runtime.Transit(&ldr, vk::ImageLayout::eTransferSrcOptimal,
+                            vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead);
+        }
+        runtime.FlushBarriers();
+        const vk::ImageView ldr_view =
+            fsr1 ? CachedView(ldr, LdrFormat(ldr.info.pixel_format), vk::ImageAspectFlagBits::eColor)
+                 : vk::ImageView{};
+        scheduler.EndRendering();
+        const auto cmd = scheduler.CommandBuffer();
+        const vk::ImageMemoryBarrier2 to_dst{
+            .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .srcAccessMask = vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .image = vk::Image(ui_image),
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+        if (fsr1) {
+            if (!fsr1_created) {
+                fsr1_pass.Create(instance.GetDevice(), instance.GetAllocator(), 2);
+                fsr1_created = true;
+            }
+            // EASU on the game's sRGB-encoded values (FSR 1's intended space), into a float
+            // image; the blit to ui_image (UNORM) converts at the same size without encoding.
+            fsr1_pass.Render(cmd, ldr_view, {w, h}, {ui_width, ui_height},
+                             {.enable = true, .use_rcas = false}, false,
+                             {ldr.info.size.width, ldr.info.size.height});
+            const std::array to_copy{
+                vk::ImageMemoryBarrier2{
+                    .srcStageMask = vk::PipelineStageFlagBits2::eComputeShader,
+                    .srcAccessMask = vk::AccessFlagBits2::eShaderStorageWrite,
+                    .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+                    .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+                    .oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+                    .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+                    .image = fsr1_pass.LastOutput(),
+                    .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+                },
+                to_dst,
+            };
+            cmd.pipelineBarrier2({.imageMemoryBarrierCount = u32(to_copy.size()),
+                                  .pImageMemoryBarriers = to_copy.data()});
+            const vk::ImageBlit same{
+                .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                .srcOffsets = std::array{vk::Offset3D{0, 0, 0},
+                                         vk::Offset3D{s32(ui_width), s32(ui_height), 1}},
+                .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                .dstOffsets = std::array{vk::Offset3D{0, 0, 0},
+                                         vk::Offset3D{s32(ui_width), s32(ui_height), 1}},
+            };
+            cmd.blitImage(fsr1_pass.LastOutput(), vk::ImageLayout::eTransferSrcOptimal,
+                          vk::Image(ui_image), vk::ImageLayout::eGeneral, same, vk::Filter::eNearest);
+        } else {
+            cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_dst});
+            const vk::ImageBlit stretch{
+                .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                .srcOffsets = std::array{vk::Offset3D{0, 0, 0}, vk::Offset3D{s32(w), s32(h), 1}},
+                .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+                .dstOffsets = std::array{vk::Offset3D{0, 0, 0},
+                                         vk::Offset3D{s32(ui_width), s32(ui_height), 1}},
+            };
+            cmd.blitImage(ldr.GetImage(), vk::ImageLayout::eTransferSrcOptimal, vk::Image(ui_image),
+                          vk::ImageLayout::eGeneral, stretch, vk::Filter::eLinear);
+        }
+        reset = true; // the history doesn't continue across stretched frames
+        done_this_frame = true;
+        ui_phase = true;
+        ui_color = ldr_target;
+        ui_depth = {};
+    }
+    // Frame generation: the picture before the HUD at the output size, as the presenter shows
+    // the frame (the host display buffer).
+    if (ui_phase && frame_generator && frame_generator->Wanted()) {
+        scheduler.EndRendering();
+        const auto cmd = scheduler.CommandBuffer();
+        vk::ImageMemoryBarrier2 b{
+            .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .srcAccessMask = vk::AccessFlagBits2::eMemoryWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+            .image = vk::Image(ui_image),
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        };
+        cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
+        frame_generator->CaptureHudless(cmd, vk::Image(ui_image), ui_format, ui_width, ui_height);
+        b.srcStageMask = vk::PipelineStageFlagBits2::eTransfer;
+        b.srcAccessMask = vk::AccessFlagBits2::eTransferRead;
+        b.dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput |
+                         vk::PipelineStageFlagBits2::eTransfer;
+        b.dstAccessMask = vk::AccessFlagBits2::eColorAttachmentRead |
+                          vk::AccessFlagBits2::eColorAttachmentWrite |
+                          vk::AccessFlagBits2::eTransferRead;
+        b.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+        b.newLayout = vk::ImageLayout::eGeneral;
+        cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
+    }
+}
+
+bool TemporalUpscaler::OnComposite(u64 ps_hash, VideoCore::ImageId color) {
+    if (!composite_frames || !color) {
+        return false;
+    }
+    // The tonemap draw finishes the frame in its target; Uncharted 3 then draws world-anchored
+    // prompts (the journal, the d-pad) into it before the copies. The draw after the tonemap
+    // upscales the clean frame, so those prompts are drawn over it at the output size.
+    if (tonemap_pending) {
+        tonemap_pending = false;
+        UpscaleToUi(tonemap_target);
+    }
+    if (tonemap_ps && ps_hash == tonemap_ps && !ui_phase) {
+        tonemap_target = color;
+        tonemap_pending = true;
+        return false;
+    }
+    if (ps_hash != composite_ps) {
+        return false;
+    }
+    const auto& target = texture_cache.GetImage(color);
+    const VAddr address = target.info.guest_address;
+    if (!FrameCapture::IsDisplayBuffer(address)) {
+        return false;
+    }
+    if (!ui_phase) {
+        // No tonemap this frame: the copy's source, as it is.
+        if (!ldr_target) {
+            return false;
+        }
+        UpscaleToUi(ldr_target);
+    }
+    // ui_image -> the host display buffer, byte for byte: the game's copy already holds the
+    // sRGB-encoded values its composite writes through an sRGB buffer unchanged (a blit would
+    // encode them a second time: a washed-out picture).
+    std::scoped_lock lock{display_mutex};
+    auto& display = HostDisplay(address, target.info.pixel_format);
     scheduler.EndRendering();
-    const vk::ImageMemoryBarrier2 b{
-        .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
-        .srcAccessMask = vk::AccessFlagBits2::eNone,
+    const auto cmd = scheduler.CommandBuffer();
+    const std::array before{
+        vk::ImageMemoryBarrier2{
+            .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .srcAccessMask = vk::AccessFlagBits2::eMemoryWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .dstAccessMask = vk::AccessFlagBits2::eTransferRead,
+            .oldLayout = vk::ImageLayout::eGeneral,
+            .newLayout = vk::ImageLayout::eGeneral,
+            .image = vk::Image(ui_image),
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        },
+        vk::ImageMemoryBarrier2{
+            .srcStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .srcAccessMask = vk::AccessFlagBits2::eMemoryRead,
+            .dstStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .dstAccessMask = vk::AccessFlagBits2::eTransferWrite,
+            .oldLayout = vk::ImageLayout::eUndefined,
+            .newLayout = vk::ImageLayout::eTransferDstOptimal,
+            .image = vk::Image(display.image),
+            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
+        },
+    };
+    cmd.pipelineBarrier2({.imageMemoryBarrierCount = u32(before.size()),
+                          .pImageMemoryBarriers = before.data()});
+    const vk::ImageCopy copy{
+        .srcSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .dstSubresource = {vk::ImageAspectFlagBits::eColor, 0, 0, 1},
+        .extent = {ui_width, ui_height, 1},
+    };
+    cmd.copyImage(vk::Image(ui_image), vk::ImageLayout::eGeneral, vk::Image(display.image),
+                  vk::ImageLayout::eTransferDstOptimal, copy);
+    const vk::ImageMemoryBarrier2 after{
+        .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+        .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
         .dstStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-        .oldLayout = vk::ImageLayout::eUndefined,
+        .dstAccessMask = vk::AccessFlagBits2::eColorAttachmentRead |
+                         vk::AccessFlagBits2::eColorAttachmentWrite,
+        .oldLayout = vk::ImageLayout::eTransferDstOptimal,
         .newLayout = vk::ImageLayout::eGeneral,
         .image = vk::Image(display.image),
         .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
     };
-    scheduler.Record([b](vk::CommandBuffer cmd) {
-        cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b});
-    });
+    cmd.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &after});
     display.valid = true;
-    target = {Mirror(vk::Image(display.image), display.views, view_info.format, {}),
-              vk::ImageLayout::eGeneral, ui_width, ui_height};
+    composite_done = true;
     return true;
 }
 

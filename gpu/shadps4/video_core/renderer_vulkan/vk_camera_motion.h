@@ -75,6 +75,12 @@ public:
     [[nodiscard]] std::array<u32, 2> RenderSize() const noexcept {
         return render_size;
     }
+    /// Render resolution (scripts/render_res.py, after BilalReloaded's Uncharted PC port): the
+    /// game's patched render size (BB_SCENE_SIZE=<w>x<h>, default 1920x1080). The frame's scene
+    /// depth and the anti-aliasing work at this size.
+    [[nodiscard]] std::array<u32, 2> SceneSize() const noexcept {
+        return {scene_width, scene_height};
+    }
     /// Vertical field of view and near/far planes of the current camera.
     [[nodiscard]] float VerticalFov() const noexcept;
     [[nodiscard]] float Near() const noexcept;
@@ -121,6 +127,7 @@ private:
     bool frame_has_camera = false;
     std::array<float, 2> jitter{}, previous_jitter{};
     std::array<u32, 2> render_size{};
+    u32 scene_width = 1920, scene_height = 1080;
     VideoCore::ImageId depth_id{};
     bool velocity_mode = false;
     std::vector<u64> velocity_shaders;

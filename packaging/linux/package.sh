@@ -72,11 +72,13 @@ ldd "${probe_libraries[@]}" | awk '/=> \// {print $1, $3}' | sort -u |
         [[ $name == libbbgpu.so || $name == libbbcpu.so ]] && continue
         [[ $name =~ $system ]] || cp -L "$path" "$dest/bin/lib/$name"
     done
-cp scripts/prepare.py scripts/link_modules.py scripts/link_libc.py scripts/content_profile.py scripts/render_720p.py "$dest/scripts/"
+cp scripts/prepare.py scripts/link_modules.py scripts/link_libc.py scripts/content_profile.py scripts/render_720p.py scripts/render_res.py "$dest/scripts/"
 cp run.py LICENSE COPYING.GPL-3 "$dest/"  # GPL v3: the binaries include the LSFG files
 cp launcher/uncharted.png "$dest/launcher/"
 cp README.md "$dest/README.md"
 echo "${LINUX_BUILD:-}" > "$dest/LINUX_BUILD"
+# A custom build that must never update itself to an official release (NO_UPDATE_CHECK=1).
+if [[ ${NO_UPDATE_CHECK:-0} == 1 ]]; then : > "$dest/NO_UPDATE_CHECK"; fi
 for license in gpu/third_party/httplib/LICENSE:cpp-httplib launcher/fonts/OFL.txt:Cinzel; do
     if [[ -f ${license%%:*} ]]; then cp "${license%%:*}" "$dest/licenses/${license##*:}-LICENSE.txt"; fi
 done
@@ -124,5 +126,7 @@ if [[ ! -x $tool ]]; then
     chmod +x "$tool"
 fi
 # Extract-and-run: works without FUSE (containers, CI).
-ARCH=$arch APPIMAGE_EXTRACT_AND_RUN=1 "$tool" --no-appstream "$appdir" "dist/Uncharted-$arch.AppImage" >/dev/null
-ls -lh dist/uncharted-linux.tar.gz "dist/Uncharted-$arch.AppImage"
+# APPIMAGE_NAME: another file name (a custom build next to the official one).
+appimage=dist/${APPIMAGE_NAME:-Uncharted-$arch.AppImage}
+ARCH=$arch APPIMAGE_EXTRACT_AND_RUN=1 "$tool" --no-appstream "$appdir" "$appimage" >/dev/null
+ls -lh dist/uncharted-linux.tar.gz "$appimage"

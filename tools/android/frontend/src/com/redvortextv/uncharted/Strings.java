@@ -33,22 +33,24 @@ final class Strings {
         put("u3_detail", "Drake's Deception", "La traición de Drake");
         put("play", "Play", "Jugar");
         put("graphics", "Graphics", "Gráficos");
-        put("render_720p", "Render at 1280 × 720", "Renderizar a 1280 × 720");
-        put("render_720p_hint", "The games render at 720p and the picture is scaled to the screen: much faster on "
-                + "these GPUs. Also in the in-game menu (L3 + R3).",
-            "Los juegos se renderizan a 720p y la imagen se escala a la pantalla: mucho más rápido en estas GPU. "
-                + "También en el menú del juego (L3 + R3).");
         put("fsr1", "FSR 1 (AMD FidelityFX, sharp)", "FSR 1 (AMD FidelityFX, nítido)");
         put("fsr1_hint", "FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.",
             "FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.");
         put("game_rate", "Game display rate", "Frecuencia del juego");
         put("game_rate_120", "120 Hz (120 Hz screens)", "120 Hz (pantallas de 120 Hz)");
         put("game_rate_hint", "The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz "
-                + "screens such as the Thor's (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz on a "
+                + "screens (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz on a "
                 + "60 Hz screen.",
             "La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en "
-                + "pantallas de 120 Hz como la de la Thor (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
+                + "pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
                 + "Deja 60 Hz en una pantalla de 60 Hz.");
+        put("render_res", "Render resolution", "Resolución de render");
+        put("render_res_hint", "The size the whole game draws at, scaled to the screen with FSR 1. 720p: the game's "
+                + "own PS4 720p mode, much faster than 1080p. 540p: for GPUs that 720p is still too much for "
+                + "(softer picture). Also in the in-game menu (L3 + R3).",
+            "El tamaño al que se dibuja todo el juego, escalado a la pantalla con FSR 1. 720p: el modo 720p del "
+                + "propio juego en PS4, mucho más rápido que 1080p. 540p: para GPU a las que 720p aún les cuesta "
+                + "(imagen más suave). También en el menú del juego (L3 + R3).");
         put("frame_gen", "Frame generation", "Generación de fotogramas");
         put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
                 + "input latency: LSFG, Lossless Scaling's, with your own Lossless.dll (below). Also in the in-game "
@@ -58,10 +60,10 @@ final class Strings {
                 + "(L3 + R3).");
         put("frame_gen_off", "Off", "Desactivada");
         put("frame_gen_multiplier", "Frame generation multiplier", "Multiplicador de la generación");
-        put("frame_gen_multiplier_hint", "Frames shown per game frame. On the Thor 2× works best: 3× and 4× "
-                + "lower the game's own frame rate.",
-            "Fotogramas mostrados por cada fotograma del juego. En la Thor lo mejor es 2×: 3× y 4× bajan los FPS "
-                + "del propio juego.");
+        put("frame_gen_multiplier_hint", "Frames shown per game frame. 2× usually works best: 3× and 4× "
+                + "lower the game's own frame rate, more so on slower GPUs.",
+            "Fotogramas mostrados por cada fotograma del juego. Normalmente lo mejor es 2×: 3× y 4× bajan los FPS "
+                + "del propio juego, más cuanto menos potente sea la GPU.");
         put("lsfg_dll", "Lossless.dll (LSFG)", "Lossless.dll (LSFG)");
         put("lsfg_dll_hint", "Choose Lossless.dll from your own copy of Lossless Scaling. It is not included "
                 + "with the app.",

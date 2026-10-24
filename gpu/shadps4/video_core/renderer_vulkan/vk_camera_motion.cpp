@@ -70,9 +70,16 @@ CameraMotion::CameraMotion(const Instance& instance_, Scheduler& scheduler_,
         list = *end == ',' ? end + 1 : end;
     }
     velocity_mode = for_upscaler && !velocity_shaders.empty();
+    if (const char* size = std::getenv("BB_SCENE_SIZE")) {
+        u32 w = 0, h = 0;
+        if (std::sscanf(size, "%ux%u", &w, &h) == 2 && w && h) {
+            scene_width = w;
+            scene_height = h;
+        }
+    }
     if (velocity_mode) {
-        std::printf("Camera motion: from the game's velocity pass (%zu shaders)\n",
-                    velocity_shaders.size());
+        std::printf("Camera motion: from the game's velocity pass (%zu shaders), scene %ux%u\n",
+                    velocity_shaders.size(), scene_width, scene_height);
     }
     const auto device = instance.GetDevice();
     if (for_upscaler) {

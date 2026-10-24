@@ -131,3 +131,76 @@ Bytes render_720p_patch(const std::vector<std::pair<u64, Bytes>>& writes) {
     }
     return blob;
 }
+
+// scripts/render_res.py (ported from BilalReloaded's Uncharted PC port by way of the Linux fork),
+// resolution_patch() for sizes up to 1080p: in the display settings code (the anchor movl $1920,
+// 0x8(%reg); movl $1080, 0xc(%reg), from 0x40 bytes before it to 0x800 after) every store of a
+// size field gets the new value; the render target heaps keep their 1080p size.
+std::vector<std::pair<u64, Bytes>> render_size_writes(const Bytes& elf_bytes, u32 width, u32 height,
+                                                      std::string& error) {
+    const u8* e = elf_bytes.data();
+    const size_t n = elf_bytes.size();
+    if (n < 0x40) { error = "not an ELF image"; return {}; }
+    const u64 phoff = le64(e + 0x20);
+    if (phoff + 56 > n) { error = "not an ELF image"; return {}; }
+    const i64 base = (i64)le64(e + phoff + 8) - (i64)le64(e + phoff + 16);
+    if (width > WIDTH || height > HEIGHT || width % 8 || height % 4) {
+        error = "only sizes up to 1920x1080 (width a multiple of 8, height of 4)";
+        return {};
+    }
+    // The anchor with any base register (render_res.py: c7 ?? 08 80070000 c7 ?? 0c 38040000).
+    size_t first = n;
+    for (size_t p = 0; p + 14 <= n; p++) {
+        if (e[p] == 0xc7 && e[p + 2] == 0x08 && le32(e + p + 3) == WIDTH && e[p + 7] == 0xc7 &&
+            e[p + 9] == 0x0c && le32(e + p + 10) == HEIGHT) {
+            first = p;
+            break;
+        }
+    }
+    if (first == n || first < 0x40) { error = "display settings code not found"; return {}; }
+    const size_t start = first - 0x40, end = std::min(n, first + 0x800);
+    struct Store { u8 disp; u32 old_value, new_value; };
+    const Store stores[] = {
+        {0x08, WIDTH, width}, {0x18, WIDTH, width}, {0x24, WIDTH, width}, {0x38, WIDTH, width},
+        {0x0c, HEIGHT, height}, {0x1c, HEIGHT, height}, {0x28, HEIGHT, height}, {0x3c, HEIGHT, height},
+        {0x40, 240, width / 8}, {0x44, 270, height / 4},
+        {0x30, 2560, 2560 * width / WIDTH}, {0x34, 1216, 1216 * height / HEIGHT},
+    };
+    std::vector<std::pair<u64, Bytes>> out;
+    auto put32 = [&](size_t at, u32 v) {
+        u8 b[4]; std::memcpy(b, &v, 4);
+        out.push_back({(u64)((i64)at - base), Bytes(b, b + 4)});
+    };
+    // movl $imm32, disp8(%reg), any base register but rsp (render_res.py's list), non-overlapping
+    // like bytes.replace.
+    for (const u8 reg : {0x47, 0x40, 0x41, 0x42, 0x43, 0x45, 0x46}) {
+        for (const Store& store : stores) {
+            for (size_t p = start; p + 7 <= end;) {
+                if (e[p] == 0xc7 && e[p + 1] == reg && e[p + 2] == store.disp &&
+                    le32(e + p + 3) == store.old_value) {
+                    put32(p + 3, store.new_value);
+                    p += 7;
+                } else p++;
+            }
+        }
+    }
+    // movabs $(1080 << 32 | 1920), %rax
+    for (size_t p = start; p + 10 <= end;) {
+        if (e[p] == 0x48 && e[p + 1] == 0xb8 && le32(e + p + 2) == WIDTH && le32(e + p + 6) == HEIGHT) {
+            put32(p + 2, width);
+            put32(p + 6, height);
+            p += 10;
+        } else p++;
+    }
+    if (out.empty()) { error = "no size stores in the display settings code"; return {}; }
+    // The movie decoder's maximum frame size, as render_720p.py does: Videodec2 fits the 1080p
+    // movies to it, the size the game's movie textures have at this resolution.
+    const std::vector<size_t> dec = decoders(e, n);
+    if (dec.size() != 1) {
+        error = "expected one movie decoder setup, found " + std::to_string(dec.size());
+        return {};
+    }
+    put32(dec[0] + 4, width);
+    put32(dec[0] + 12, height);
+    return out;
+}

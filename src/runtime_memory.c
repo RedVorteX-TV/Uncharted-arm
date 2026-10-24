@@ -414,6 +414,10 @@ static ABI int32_t direct_allocate(int64_t low, int64_t high, uint64_t size,
     if (!alignment) alignment = PAGE;
     if (!out || low < 0 || high < 0 || !size || size % PAGE || !valid_alignment(alignment) || type < 0 || type > 10)
         return INVALID;
+    /* Render resolution (scripts/render_res.py, after BilalReloaded's Uncharted PC port): the
+     * games search up to the retail pool size (5056 MiB); a raised pool (BB_DMEM_MB) extends
+     * that search so the larger render target heaps fit. */
+    if ((uint64_t)high >= UINT64_C(5056) * 1024 * 1024 && (uint64_t)high < POOL_SIZE) high = (int64_t)POOL_SIZE;
     uint64_t end = (uint64_t)high < POOL_SIZE ? (uint64_t)high : POOL_SIZE;
     if ((uint64_t)low >= end || size > end - (uint64_t)low) return NO_SPACE;
     write_lock();
@@ -675,6 +679,15 @@ uintptr_t runtime_memory_resolve(const char *name) {
     if (!strcmp(name, "MBuItvba6z8#p#J")) return (uintptr_t)direct_release;
     if (!strcmp(name, "cQke9UuBQOk#p#J")) return (uintptr_t)direct_unmap;
     return RUNTIME_LOOKUP(exports,name);
+}
+/* Render resolution (gpu/shim/bbport_movie.cpp, after BilalReloaded's Uncharted PC port): guest
+ * memory for the GPU library's own data (movie frames scaled to the display size): flexible
+ * memory, CPU and GPU read/write. Placed high: games claim virtual ranges from 0x1000000000 up
+ * without reserving them (Uncharted's memory areas, whose freed pages leave holes that look free
+ * here). */
+void *runtime_map_guest_memory(uint64_t size) {
+    void *address=(void *)UINT64_C(0xf000000000);
+    return map_flexible(&address,align_up(size,PAGE),0x33,0)==0 ? address : NULL;
 }
 /* Host-owned memory the guest can see (image, stacks, trampolines) lives in
  * [LOW_MIN, USER_MIN): PS4 code packs pointers into 40-bit fields. */
