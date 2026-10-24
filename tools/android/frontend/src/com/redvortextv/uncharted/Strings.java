@@ -41,6 +41,14 @@ final class Strings {
         put("fsr1", "FSR 1 (AMD FidelityFX, sharp)", "FSR 1 (AMD FidelityFX, nítido)");
         put("fsr1_hint", "FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.",
             "FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.");
+        put("game_rate", "Game display rate", "Frecuencia del juego");
+        put("game_rate_120", "120 Hz (120 Hz screens)", "120 Hz (pantallas de 120 Hz)");
+        put("game_rate_hint", "The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz "
+                + "screens such as the Thor's (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz on a "
+                + "60 Hz screen.",
+            "La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en "
+                + "pantallas de 120 Hz como la de la Thor (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
+                + "Deja 60 Hz en una pantalla de 60 Hz.");
         put("frame_gen", "Frame generation", "Generación de fotogramas");
         put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
                 + "input latency. LSFG is Lossless Scaling's and needs your own Lossless.dll (below). Also in the "
@@ -84,13 +92,6 @@ final class Strings {
                 + "game hangs at the same spot every time. With it off Uncharted 2 and 3 run at a somewhat lower frame rate.",
             "Desactívalo si una escena se congela (la imagen se para mientras el sonido sigue) o el juego se cuelga "
                 + "siempre en el mismo sitio. Desactivado, Uncharted 2 y 3 van con algo menos de FPS.");
-        put("vblank_120", "Show frames as soon as they are ready (test)", "Mostrar los fotogramas en cuanto estén listos (prueba)");
-        put("vblank_120_hint", "The game's display rate goes from 60 to 120 Hz: a frame that takes a little over 33 ms "
-                + "is shown at once instead of waiting until 50 ms. Experimental: turn it off if the game runs too fast "
-                + "or something goes out of sync.",
-            "La frecuencia de pantalla del juego pasa de 60 a 120 Hz: un fotograma que tarda algo más de 33 ms se "
-                + "muestra enseguida en lugar de esperar a los 50 ms. Experimental: apágalo si el juego va demasiado "
-                + "rápido o algo se desincroniza.");
         put("arm_job_spin", "Let idle game threads sleep", "Dejar que los hilos inactivos del juego duerman");
         put("arm_job_spin_hint", "Turn off if the game stutters or pauses for a moment again and again in one place, "
                 + "or loading screens take much longer than usual. With it off the game uses about twice the CPU: more "

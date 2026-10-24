@@ -45,9 +45,9 @@ export BB_PRESENT_SOCKET="$files/bbpresent.sock"
 export BB_SCREEN_W="${BB_SCREEN_W:-1920}" BB_SCREEN_H="${BB_SCREEN_H:-1080}"
 export BB_WINDOW_SIZE="${BB_SCREEN_W}x${BB_SCREEN_H}" BB_FULLSCREEN=1
 # The game's display rate stays 60 Hz; the FPS limit is fps_limit in bbport.ini (libbbgpu reads it,
-# the in-game menu changes it). Test switch (launcher.ini vblank_120): 120 Hz, so a frame that misses
-# 33 ms is shown at the next 8 ms instead of waiting for 50 ms.
-if [ "$(choice vblank_120)" = 1 ]; then export BB_VBLANK_HZ=120; else export BB_VBLANK_HZ=60; fi
+# the in-game menu changes it). launcher.ini game_rate=120 (120 Hz screens): a frame that misses
+# 33 ms is shown at 41.7 ms instead of waiting for 50.
+if [ "$(choice game_rate)" = 120 ]; then export BB_VBLANK_HZ=120; else export BB_VBLANK_HZ=60; fi
 case $(setting fps_limit) in 30|40|45|60|0) ;; *) printf 'fps_limit=40\n' >> "$BB_CONFIG" ;; esac
 case $(setting render_720p) in 0|1) ;; *) printf 'render_720p=1\n' >> "$BB_CONFIG" ;; esac
 case $(setting fsr1) in 0|1) ;; *) printf 'fsr1=1\n' >> "$BB_CONFIG" ;; esac

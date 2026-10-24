@@ -342,6 +342,8 @@ public final class MainActivity extends Activity {
         cyclerRow(bbport, "fps_limit", Strings.get("frame_rate"), Strings.get("frame_rate_hint"),
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
                 Strings.get("fps_45"), Strings.get("fps_60"), Strings.get("fps_0")}, "40");
+        cyclerRow(launcher, "game_rate", Strings.get("game_rate"), Strings.get("game_rate_hint"),
+            new String[]{"60", "120"}, new String[]{"60 Hz", Strings.get("game_rate_120")}, "60");
         // Frame generation (bbport.ini, like the in-game menu); LSFG with the player's own Lossless.dll
         cyclerRow(bbport, "frame_gen", Strings.get("frame_gen"), Strings.get("frame_gen_hint"),
             new String[]{"off", "fsr3", "lsfg"}, new String[]{Strings.get("frame_gen_off"), "FSR 3", "LSFG"}, "off");
@@ -353,7 +355,6 @@ public final class MainActivity extends Activity {
         section(Strings.get("compatibility"));
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
-        switchRow(launcher, "vblank_120", false, Strings.get("vblank_120"), Strings.get("vblank_120_hint"));
         actionRow(Strings.get("recommended"), Strings.get("recommended_hint"), this::applyRecommended);
 
         // System
@@ -490,7 +491,7 @@ public final class MainActivity extends Activity {
     private void applyRecommended() {
         bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"}) launcher.set(key, true);
-        launcher.set("vblank_120", false);
+        launcher.set("game_rate", "60");
         refreshRows(launcherBody);
         notice(Strings.get("recommended_done"));
     }
