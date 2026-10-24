@@ -21,7 +21,7 @@ class ArmLauncher(unittest.TestCase):
         linux.apply_arm_defaults(ns)
         self.assertEqual(ns['APP_DEFAULTS']['frame_rate'], '40')
         self.assertFalse(ns['APP_DEFAULTS']['steam_deck'])
-        self.assertTrue(ns['APP_DEFAULTS']['render_720p'])
+        self.assertEqual(ns['APP_DEFAULTS']['render_res'], '720')
         self.assertEqual([v for v, _t in ns['ANTI_ALIASING']], ['off', 'fsr3'])
         self.assertEqual([v for v, _t in ns['FRAME_GENERATION']], ['off', 'fsr3', 'lsfg'])
         self.assertEqual([v for v, _t in ns['FRAME_GEN_MULTIPLIERS']], ['2', '3', '4'])
@@ -30,11 +30,22 @@ class ArmLauncher(unittest.TestCase):
         self.assertIn('40', [v for v, _t in ns['FRAME_RATES']])
 
     def test_ini_round_trip(self):
-        values = linux.arm_ini_values({'frame_rate': '45', 'render_720p': False, 'scaler': 'bilinear'})
-        self.assertEqual(values, {'fps_limit': '45', 'render_720p': '0', 'fsr1': '0'})
+        values = linux.arm_ini_values({'frame_rate': '45', 'render_res': '1080', 'scaler': 'bilinear'})
+        self.assertEqual(values, {'fps_limit': '45', 'render_720p': '0', 'render_540p': '0', 'fsr1': '0'})
         text = ''.join(f'{k}={v}\n' for k, v in values.items())
         self.assertEqual(linux.arm_settings_from_ini('show_fps=1\n' + text),
-                         {'frame_rate': '45', 'render_720p': False, 'scaler': 'bilinear'})
+                         {'frame_rate': '45', 'render_res': '1080', 'scaler': 'bilinear'})
+        for res, flags in (('720', ('1', '0')), ('540', ('0', '1'))):
+            values = linux.arm_ini_values({'render_res': res})
+            self.assertEqual((values['render_720p'], values['render_540p']), flags)
+            text = ''.join(f'{k}={v}\n' for k, v in values.items())
+            self.assertEqual(linux.arm_settings_from_ini(text)['render_res'], res)
+        # A launcher before 0.1.5 saved the 720p checkbox.
+        self.assertEqual(linux.arm_ini_values({'render_720p': False})['render_720p'], '0')
+        self.assertEqual(linux.arm_ini_values({'render_720p': True})['render_720p'], '1')
+        self.assertEqual(linux.arm_ini_values({})['render_720p'], '1')
+        # Both set (an edited file): 720p wins, as in run.py.
+        self.assertEqual(linux.arm_settings_from_ini('render_720p=1\nrender_540p=1\n')['render_res'], '720')
         self.assertEqual(linux.arm_ini_values({'frame_rate': '144'})['fps_limit'], '40')
 
     def test_environment(self):
