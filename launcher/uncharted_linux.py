@@ -471,7 +471,8 @@ def apply_defaults(ns):
 # Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
 ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
                 'render_720p': True, 'scaler': 'fsr1', 'check_updates': False,
-                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True, 'lsfg_dll': ''}
+                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True, 'lsfg_dll': '',
+                'game_rate': '60'}
 # Advanced > Compatibility (ARM): the ARM port's performance fixes, each one off with its variable
 # when a scene misbehaves (the Environment field and the player's own variables still win).
 ARM_COMPATIBILITY = (
@@ -496,6 +497,9 @@ ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 
                    ('60', '60 FPS'), ('0', 'No limit')]
 ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
 ARM_INI = ('fps_limit', 'render_720p', 'fsr1')
+# The display rate the game sees (BB_VBLANK_HZ): at 60 Hz a frame that misses 33 ms waits until
+# 50 ms; at 120 Hz it waits until 41.7 (steadier on 120 Hz screens, the Odin 3 and the Thor).
+ARM_GAME_RATES = [('60', '60 Hz'), ('120', '120 Hz (120 Hz screens)')]
 # Lossless Scaling's frame generation, with the player's own Lossless.dll (never included).
 ARM_LSFG = ('lsfg', 'Lossless Scaling LSFG (your Lossless.dll)')
 ARM_FRAME_GEN_MULTIPLIERS = [('2', '2× (one generated frame)'), ('3', '3× (LSFG only)'), ('4', '4× (LSFG only)')]
@@ -549,7 +553,7 @@ def arm_environment(settings, env):
     """ARM hosts: the game's display rate stays 60 Hz (the limit is fps_limit); 720p, FSR 1 and
     the limit come from bbport.ini, so that the in-game menu's changes hold after a restart; what
     these GPUs cannot run falls back to off."""
-    env['BB_VBLANK_HZ'] = '60'
+    env['BB_VBLANK_HZ'] = '120' if str(settings.get('game_rate') or '60') == '120' else '60'
     for name in ('BB_FPS_LIMIT', 'BB_RENDER_720P', 'BB_FSR1'):
         env.pop(name, None)
     for key, name, _title, _hint in ARM_COMPATIBILITY:
@@ -1522,6 +1526,10 @@ def launcher_class(base, ns):
                 self.check(f, 'render_720p', _('Render at 1280 × 720'),
                            _('The games render at 720p and the upscaling below scales them to the '
                              'screen: much higher FPS on ARM handhelds. Also in the in-game menu (L3+R3).'))
+                self.row(f, _('Game display rate'), self.choice(f, 'game_rate', ARM_GAME_RATES, 30),
+                         _('The refresh rate the game paces its frames to. 120 Hz: steadier frame times on '
+                           '120 Hz screens (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz '
+                           'on a 60 Hz screen.'))
             elif name == 'display':
                 self.check(f, 'steam_deck', _('Steam Deck mode'),
                            _('Optimizes settings for Steam Deck. 1280x800 60FPS'))
@@ -1652,6 +1660,7 @@ def launcher_class(base, ns):
             """The ARM defaults on the Settings page and the Compatibility switches, saved."""
             values = dict(ARM_DEFAULTS, window_size='1920x1080', anti_aliasing='off', frame_generation='off',
                           sharpening=ns['APP_DEFAULTS']['sharpening'])
+            values.pop('lsfg_dll')  # the player's file stays chosen
             for key, value in values.items():
                 if key in self.vars:
                     self.vars[key].set(value)

@@ -86,6 +86,13 @@ ES = {
         'El Lossless.dll de tu copia de Lossless Scaling (Steam: clic derecho, Administrar, Ver archivos locales). '
         'No se incluye con el port. Después elige LSFG como generación de fotogramas, aquí o en el menú del juego.',
     'All files': 'Todos los archivos',
+    'Game display rate': 'Frecuencia del juego',
+    '120 Hz (120 Hz screens)': '120 Hz (pantallas de 120 Hz)',
+    'The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz screens (a frame a '
+    'little over 33 ms is not held until 50 ms). Keep 60 Hz on a 60 Hz screen.':
+        'La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en '
+        'pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). Deja 60 Hz en una '
+        'pantalla de 60 Hz.',
     'Double-click a cover to launch': 'Doble clic en una portada para jugar',
     'Press a key…': 'Pulsa una tecla…',
 
