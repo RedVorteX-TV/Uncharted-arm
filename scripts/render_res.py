@@ -192,12 +192,35 @@ def patch_image(data, game, width, height):
     raise SystemExit(f"Render resolution: no size up to {width}x{height} fits {game.upper()}'s memory")
 
 
+# movl $1920, d(%rsp); movl $1088, d+4(%rsp): the movie decoder's maximum frame size, as
+# scripts/render_720p.py patches it. Below 1080p (the ARM port's 540p) Videodec2 then fits the
+# 1080p movies to the game's own movie textures, and BB_MOVIE_SIZE's scratch frames (flexible
+# memory, which is full on the Thor) are not needed.
+MOVIE_DECODER = re.compile(rb"\xc7\x44\x24(.)\x80\x07\x00\x00\xc7\x44\x24(.)\x40\x04\x00\x00", re.S)
+
+
+def patch_movie_decoder(data, width, height):
+    """The movie decoder's maximum frame size set to width x height; False (unchanged) unless
+    there is exactly one decoder setup."""
+    sites = [m for m in MOVIE_DECODER.finditer(data) if m.group(2)[0] == m.group(1)[0] + 4]
+    if len(sites) != 1:
+        print(f"Render resolution: {len(sites)} movie decoder setups (one expected): movies through "
+              "BB_MOVIE_SIZE")
+        return False
+    at = sites[0].start()
+    data[at + 4:at + 8] = width.to_bytes(4, "little")
+    data[at + 12:at + 16] = height.to_bytes(4, "little")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("image", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--exe", required=True, help="u1, u2 or u3")
     parser.add_argument("--size", required=True, help="WIDTHxHEIGHT")
+    parser.add_argument("--movie-decoder", action="store_true",
+                        help="also the movie decoder's maximum frame size (sizes below 1080p)")
     args = parser.parse_args()
     game = args.exe.lower()
     if game not in ("u1", "u2", "u3"):
@@ -205,10 +228,12 @@ def main():
     width, height = parse_size(args.size)
     data = bytearray(args.image.read_bytes())
     patched, render, extra_mib = patch_image(data, game, width, height)
+    movie_decoder = args.movie_decoder and patch_movie_decoder(patched, *render)
     temporary = args.out.with_name(args.out.name + ".tmp")
     temporary.write_bytes(patched)
     os.replace(temporary, args.out)
-    meta = {"render": f"{render[0]}x{render[1]}", "extra_mib": extra_mib, "requested": f"{width}x{height}"}
+    meta = {"render": f"{render[0]}x{render[1]}", "extra_mib": extra_mib, "requested": f"{width}x{height}",
+            "movie_decoder": bool(movie_decoder)}
     args.out.with_suffix(".json").write_text(json.dumps(meta), encoding="utf-8")
     return 0
 

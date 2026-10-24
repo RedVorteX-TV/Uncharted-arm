@@ -470,7 +470,7 @@ def apply_defaults(ns):
 # the frame rate limit are shared with the in-game menu through bbport.ini (ARM_INI).
 # Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
 ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
-                'render_720p': True, 'scaler': 'fsr1', 'check_updates': False,
+                'render_res': '720', 'scaler': 'fsr1', 'check_updates': False,
                 'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True, 'lsfg_dll': '',
                 'game_rate': '60'}
 # Advanced > Compatibility (ARM): the ARM port's performance fixes, each one off with its variable
@@ -496,7 +496,12 @@ ARM_CREDIT = 'ARM port by RedVorteX-TV'
 ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
                    ('60', '60 FPS'), ('0', 'No limit')]
 ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
-ARM_INI = ('fps_limit', 'render_720p', 'fsr1')
+ARM_INI = ('fps_limit', 'render_720p', 'render_540p', 'fsr1')
+# The size the games render at (bbport.ini render_720p / render_540p, shared with the in-game
+# menu): 720p is the game's own PS4 mode (scripts/render_720p.py), 540p the whole game at 960x540
+# (scripts/render_res.py), for GPUs that 720p is still too much for.
+ARM_RENDER_RESOLUTIONS = [('1080', "1920 × 1080 (the games' own)"), ('720', '1280 × 720 (recommended)'),
+                          ('540', '960 × 540 (slower GPUs)')]
 # The display rate the game sees (BB_VBLANK_HZ): at 60 Hz a frame that misses 33 ms waits until
 # 50 ms; at 120 Hz it waits until 41.7 (steadier on 120 Hz screens, the Odin 3 and the Thor).
 ARM_GAME_RATES = [('60', '60 Hz'), ('120', '120 Hz (120 Hz screens)')]
@@ -519,22 +524,36 @@ def apply_arm_defaults(ns):
                                      '(chosen below). Smoother motion, a little more input latency.')
     ROW_HINTS['Frame rate'] = 'A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.'
     ROW_HINTS['Window size'] = ('Only for windowed mode: in fullscreen the game fills the screen. The resolution the '
-                                'games render at is "Render at 1280 × 720" above.')
+                                'games render at is "Render resolution" above.')
+
+
+def arm_render_res(settings):
+    """The render resolution setting ('1080', '720' or '540'); a launcher before 0.1.5 saved the
+    720p checkbox (render_720p) instead."""
+    res = str(settings.get('render_res') or '')
+    if res in [value for value, _text in ARM_RENDER_RESOLUTIONS]:
+        return res
+    if 'render_720p' in settings:
+        return '720' if settings['render_720p'] else '1080'
+    return ARM_DEFAULTS['render_res']
 
 
 def arm_ini_values(settings):
-    """bbport.ini's fps_limit, render_720p and fsr1 for these launcher settings."""
+    """bbport.ini's fps_limit, render_720p, render_540p and fsr1 for these launcher settings."""
     rate = str(settings.get('frame_rate') or '40')
     if rate not in [value for value, _text in ARM_FRAME_RATES]:
         rate = ARM_DEFAULTS['frame_rate']
-    return {'fps_limit': rate, 'render_720p': '1' if settings.get('render_720p', True) else '0',
+    res = arm_render_res(settings)
+    return {'fps_limit': rate, 'render_720p': '1' if res == '720' else '0',
+            'render_540p': '1' if res == '540' else '0',
             'fsr1': '1' if str(settings.get('scaler') or 'fsr1') == 'fsr1' else '0'}
 
 
 def arm_settings_from_ini(text):
-    """The launcher settings bbport.ini's fps_limit, render_720p and fsr1 stand for (the in-game
-    menu changes them too): {setting: value} for the keys present."""
+    """The launcher settings bbport.ini's fps_limit, render_720p, render_540p and fsr1 stand for
+    (the in-game menu changes them too): {setting: value} for the keys present."""
     out = {}
+    flags = {}
     for line in text.splitlines():
         key, sep, value = line.partition('=')
         key, value = key.strip(), value.strip()
@@ -542,10 +561,13 @@ def arm_settings_from_ini(text):
             continue
         if key == 'fps_limit' and value in [v for v, _t in ARM_FRAME_RATES]:
             out['frame_rate'] = value
-        elif key == 'render_720p' and value in ('0', '1'):
-            out['render_720p'] = value == '1'
+        elif key in ('render_720p', 'render_540p') and value in ('0', '1'):
+            flags[key] = value == '1'
         elif key == 'fsr1' and value in ('0', '1'):
             out['scaler'] = 'fsr1' if value == '1' else 'bilinear'
+    if flags:  # as run.py reads them: 720p first
+        out['render_res'] = ('720' if flags.get('render_720p') else
+                             '540' if flags.get('render_540p') else '1080')
     return out
 
 
@@ -1528,9 +1550,11 @@ def launcher_class(base, ns):
                           kind='primary').pack(side='left')
                 self.note(f, _('Puts every setting on this page back to what runs best on an ARM handheld: '
                                '720p with FSR 1, a 40 FPS limit, fullscreen and all the compatibility fixes on.'), top=4)
-                self.check(f, 'render_720p', _('Render at 1280 × 720'),
-                           _('The games render at 720p and the upscaling below scales them to the '
-                             'screen: much higher FPS on ARM handhelds. Also in the in-game menu (L3+R3).'))
+                self.row(f, _('Render resolution'), self.choice(f, 'render_res', ARM_RENDER_RESOLUTIONS, 30),
+                         _('The size the games render at, scaled to the screen by the upscaling below. '
+                           '720p: the games\' own PS4 720p mode, much higher FPS on ARM handhelds. 540p: '
+                           'for GPUs that 720p is still too much for (softer picture). Also in the in-game '
+                           'menu (L3+R3).'))
                 self.row(f, _('Game display rate'), self.choice(f, 'game_rate', ARM_GAME_RATES, 30),
                          _('The refresh rate the game paces its frames to. 120 Hz: steadier frame times on '
                            '120 Hz screens (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz '

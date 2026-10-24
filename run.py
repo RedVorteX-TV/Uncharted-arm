@@ -206,13 +206,17 @@ def render_resolution(env, exe, out, image):
             print('Render resolution: not used with the 720p mode (the game renders at 1280x720)')
         return image
     size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
-    # The in-game menu's 960x540 (bbport.ini render_540p, ARM port): the whole game at that size.
-    if not size and config_flag(env, 'render_540p'):
+    # 960x540 (bbport.ini render_540p: the in-game menu and the ARM launcher): the whole game at
+    # that size, scaled to the screen like the 720p mode, whatever resolution the launcher sends.
+    render_540p = config_flag(env, 'render_540p')
+    if render_540p:
+        if size and size != '960x540':
+            print(f'Render resolution: 960x540 (render_540p) instead of {size}')
         size = '960x540'
     output = parse_size(size) if size not in ('', 'native', 'off', '0') else None
     output = output or (1920, 1080)
     preset = (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
-    scale = UPSCALE_SCALES.get(preset)
+    scale = None if render_540p else UPSCALE_SCALES.get(preset)
     if scale and env.get('BB_UPSCALER', '').lower() == 'none':
         print('Upscaling preset: needs the camera tracking (BB_UPSCALER=none): drawing at the output size')
         scale = None
@@ -222,10 +226,12 @@ def render_resolution(env, exe, out, image):
         wanted = (max(640, round(output[0] / scale / 16) * 16), max(360, round(output[1] / scale / 4) * 4))
     render = wanted
     patched = image
+    movie_decoder = False
     if wanted != (1920, 1080):
         import json
         text = f'{wanted[0]}x{wanted[1]}'
-        patched = out / f'boot-res-{text}.bin'
+        # 540p: the movie decoder patched too (render_res.py --movie-decoder), as on Android.
+        patched = out / f'boot-res-{text}{"-movies" if render_540p else ""}.bin'
         meta = patched.with_suffix('.json')
         sources = [image, PORT / 'scripts' / 'render_res.py']
         if not (patched.is_file() and meta.is_file() and
@@ -233,16 +239,18 @@ def render_resolution(env, exe, out, image):
             print(f'Render resolution: preparing {text} for {key.upper()} ...')
             for old in out.glob('boot-res-*'):
                 old.unlink(missing_ok=True)
-            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text)
+            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text,
+                       *(['--movie-decoder'] if render_540p else []))
         info = json.loads(meta.read_text(encoding='utf-8'))
         render = parse_size(info['render'])
+        movie_decoder = bool(info.get('movie_decoder'))
         if info.get('extra_mib'):
             needed = 5056 + int(info['extra_mib']) + 64
             player = env.get('BB_DMEM_MB_USER', '')
             env['BB_DMEM_MB'] = str(max(needed, int(player)) if player.isdigit() else needed)
     render_text = f'{render[0]}x{render[1]}'
     env['BB_SCENE_SIZE'] = render_text
-    if render != (1920, 1080):
+    if render != (1920, 1080) and not movie_decoder:
         env['BB_MOVIE_SIZE'] = render_text
     upscaled = render[0] < output[0] or render[1] < output[1]
     if upscaled:

@@ -9,6 +9,8 @@ render_res = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(render_res)
 
 MIB = 1 << 20
+# movl $1920, 0x30(%rsp); movl $1088, 0x34(%rsp): the movie decoder's maximum frame size.
+DECODER_1080P = bytes.fromhex('c7442430' '80070000' 'c7442434' '40040000')
 
 
 def image(base=0x47):
@@ -18,7 +20,9 @@ def image(base=0x47):
                         (0x30, 2560), (0x34, 1216), (0x38, 1920), (0x3c, 1080), (0x40, 240), (0x44, 270)]:
         data += bytes([0xc7, base, disp]) + value.to_bytes(4, 'little')
     data += bytes.fromhex('48b8') + (1920).to_bytes(4, 'little') + (1080).to_bytes(4, 'little')
-    data += b'\x90' * 0x900
+    data += b'\x90' * 0x100
+    data += DECODER_1080P
+    data += b'\x90' * 0x800
     for entry_id, parent, size, align in [(2, 2, 1536 * MIB, 0x100000), (3, 2, 2988 * MIB, 0x100000),
                                           (0x85, 6, 497 * MIB, 0x80), (0x84, 6, 128 * MIB, 0x80)]:
         data += struct.pack('<IIQQQ', entry_id, parent, size, align, 0)
@@ -27,7 +31,7 @@ def image(base=0x47):
 
 
 class UpscalePresets(unittest.TestCase):
-    def run_sizes(self, exe, env):
+    def run_sizes(self, exe, env, ini=None):
         import shutil
         import sys
         import tempfile
@@ -38,9 +42,29 @@ class UpscalePresets(unittest.TestCase):
             out = Path(folder)
             (out / 'boot-linked.bin').write_bytes(image())
             env = dict(env)
-            run.render_resolution(env, exe, out, out / 'boot-linked.bin')
+            if ini is not None:
+                (out / 'bbport.ini').write_text(ini, encoding='utf-8')
+                env['BB_CONFIG'] = str(out / 'bbport.ini')
+            patched = run.render_resolution(env, exe, out, out / 'boot-linked.bin')
+            self.patched = patched.read_bytes()
             shutil.rmtree(out, ignore_errors=True)
             return env
+
+    def test_540p_from_bbport_ini(self):
+        # The ARM launcher and the in-game menu: render_540p=1 wins over the launcher's resolution,
+        # without an upscaling preset, and the movie decoder is patched instead of BB_MOVIE_SIZE.
+        env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_QUALITY': 'quality'},
+                             ini='render_720p=0\nrender_540p=1\n')
+        self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertNotIn('BB_RENDER_RES', env)
+        self.assertNotIn('BB_MOVIE_SIZE', env)
+        self.assertIn(bytes.fromhex('c7442430') + (960).to_bytes(4, 'little') + bytes.fromhex('c7442434') +
+                      (540).to_bytes(4, 'little'), self.patched)
+
+    def test_720p_wins_over_540p(self):
+        env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
+                             ini='render_720p=1\nrender_540p=1\n')
+        self.assertNotIn('BB_SCENE_SIZE', env)
 
     def test_quality_1440p(self):
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '2560x1440', 'BB_UPSCALE_QUALITY': 'quality'})

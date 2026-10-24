@@ -222,8 +222,8 @@ ES = {
         'Los juegos se renderizan a 1920 × 1080. Una ventana más grande, o la pantalla completa en una pantalla 1440p o 4K, recibe la imagen escalada para ajustarse.',
     'Game renders at 1920 x 1080 and is upscaled at higher resolutions':
         'El juego se renderiza a 1920 × 1080 y se escala a resoluciones mayores',
-    'Only for windowed mode: in fullscreen the game fills the screen. The resolution the games render at is "Render at 1280 × 720" above.':
-        'Solo para el modo ventana: en pantalla completa el juego ocupa toda la pantalla. La resolución a la que se renderizan los juegos es "Renderizar a 1280 × 720", más arriba.',
+    'Only for windowed mode: in fullscreen the game fills the screen. The resolution the games render at is "Render resolution" above.':
+        'Solo para el modo ventana: en pantalla completa el juego ocupa toda la pantalla. La resolución a la que se renderizan los juegos es "Resolución de render", más arriba.',
     '1280 × 720': '1280 × 720',
     '1600 × 900': '1600 × 900',
     "1920 × 1080 (the games' own)": '1920 × 1080 (la de los juegos)',
@@ -231,9 +231,11 @@ ES = {
     '1280 × 800 (Steam Deck)': '1280 × 800 (Steam Deck)',
     '2560 × 1440': '2560 × 1440',
     '3840 × 2160 (4K)': '3840 × 2160 (4K)',
-    'Render at 1280 × 720': 'Renderizar a 1280 × 720',
-    'The games render at 720p and the upscaling below scales them to the screen: much higher FPS on ARM handhelds. Also in the in-game menu (L3+R3).':
-        'Los juegos se renderizan a 720p y el escalado de abajo los ajusta a la pantalla: muchos más FPS en consolas portátiles ARM. También en el menú del juego (L3+R3).',
+    'Render resolution': 'Resolución de render',
+    '1280 × 720 (recommended)': '1280 × 720 (recomendada)',
+    '960 × 540 (slower GPUs)': '960 × 540 (GPU menos potentes)',
+    "The size the games render at, scaled to the screen by the upscaling below. 720p: the games' own PS4 720p mode, much higher FPS on ARM handhelds. 540p: for GPUs that 720p is still too much for (softer picture). Also in the in-game menu (L3+R3).":
+        'El tamaño al que se renderizan los juegos, ajustado a la pantalla con el escalado de abajo. 720p: el modo 720p de los propios juegos en PS4, muchos más FPS en consolas portátiles ARM. 540p: para GPU a las que 720p aún les cuesta (imagen más suave). También en el menú del juego (L3+R3).',
     'Upscaling': 'Escalado',
     'FSR 1 keeps edges sharp when the image is enlarged; bilinear is softer.':
         'FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.',
