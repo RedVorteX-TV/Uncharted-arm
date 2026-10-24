@@ -524,6 +524,20 @@ void VideoOutDriver::Flip(const Request& req) {
                         BbStats::tick_wait_ns.exchange(0) / (window * 1e7),
                         frames ? double(BbStats::reduced_draws.exchange(0)) / frames : 0.0,
                         frames ? double(BbStats::scene_draws.exchange(0)) / frames : 0.0);
+            // Shader constants copied per draw: how much of the GPU thread's copying they are.
+            {
+                const u64 copies = BbStats::constant_copies.exchange(0);
+                std::array<u64, 4> sizes{};
+                for (u32 i = 0; i < sizes.size(); ++i) {
+                    sizes[i] = BbStats::constant_sizes[i].exchange(0);
+                }
+                const double per_frame = frames ? 1.0 / frames : 0.0;
+                std::printf("Constants: %.0f KB/frame in %.0f copies (%.0f up to 256 B, %.0f up to "
+                            "1 KB, %.0f up to 4 KB, %.0f larger)\n",
+                            BbStats::constant_bytes.exchange(0) / 1024.0 * per_frame,
+                            copies * per_frame, sizes[0] * per_frame, sizes[1] * per_frame,
+                            sizes[2] * per_frame, sizes[3] * per_frame);
+            }
             static u32 memory_windows = 0;
             if (memory_windows++ % 6 == 0) {
                 PrintMemoryStats();
