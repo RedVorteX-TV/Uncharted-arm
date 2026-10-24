@@ -51,10 +51,17 @@ tells you when a newer version is out.
 
 The port can use Lossless Scaling's frame generation (LSFG) at 2×, 3× or 4×. It needs
 **your own `Lossless.dll`** from a copy of [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)
-that you bought. The DLL is not included and will not be provided. On Linux, choose the file in the
-launcher (Settings > Lossless Scaling (LSFG)), and then pick LSFG as the frame generation, either
-there or in the in-game menu (L3+R3). It works from the finished frames only, so it adds a little
-latency and can show artifacts around fast-moving edges and the UI.
+that you bought. The DLL is not included and will not be provided. Choose the file in the launcher
+(Linux: Settings > Lossless Scaling (LSFG); Android: Graphics > Lossless.dll, which copies it into
+the app), then pick LSFG as the frame generation, there or in the in-game menu (L3+R3). It works
+from the finished frames only, so it adds a little latency and can show artifacts around
+fast-moving edges and the UI, more so the lower the game's own frame rate. On the Thor, use 2×.
+
+## Game display rate (60 / 120 Hz)
+
+Settings (Linux) or Graphics (Android) > Game display rate. At 120 Hz a frame that takes a little
+over 33 ms is shown at once instead of being held until 50 ms: steadier frame times on 120 Hz
+screens such as the Odin 3's and the Thor's. Keep 60 Hz on a 60 Hz screen.
 
 ## Build
 
