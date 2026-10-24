@@ -514,9 +514,10 @@ private:
     /// Stage A: small read-only guest buffers copied into the constant ring for a packet.
     struct RingBinding {
         u32 index;  ///< buffer resource of the stage
-        u32 size;
+        u32 size;   ///< copied: the part the shader reads (Shader::BufferResource::read_bytes)
         u64 offset; ///< in the ring
         VAddr address;
+        u32 full_size; ///< the guest buffer's
     };
     struct PendingWrite {
         VAddr begin;

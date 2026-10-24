@@ -3,12 +3,35 @@
 
 #include "core/emulator_settings.h"
 #include "shader_recompiler/ir/program.h"
+// After program.h: resource_pass.h uses IR::Inst without including it.
+#include "shader_recompiler/ir/passes/resource_pass.h"
 #include "shader_recompiler/profile.h"
 #include "video_core/buffer_cache/buffer_cache.h"
 
 namespace Shader::Optimization {
 
+// bbport: how much of each buffer the shader reads (BufferResource::read_bytes). A constant-buffer
+// read at a fixed dword extends the range; any other access, or a read at a computed offset, makes
+// the range unknown (the whole buffer).
+void VisitBufferRange(Info& info, const IR::Inst& inst) {
+    if (!IsBufferInstruction(inst) || !inst.Arg(0).IsImmediate()) {
+        return;
+    }
+    const u32 handle = inst.Arg(0).U32();
+    if (handle >= info.buffers.size()) {
+        return;
+    }
+    auto& buffer = info.buffers[handle];
+    if (inst.GetOpcode() == IR::Opcode::ReadConstBuffer && inst.Arg(1).IsImmediate()) {
+        const u64 end = (u64(inst.Arg(1).U32()) + 1) * sizeof(u32);
+        buffer.read_bytes = u32(std::min<u64>(std::max<u64>(buffer.read_bytes, end), UINT32_MAX));
+    } else {
+        buffer.read_range_known = false;
+    }
+}
+
 void Visit(Info& info, const IR::Inst& inst) {
+    VisitBufferRange(info, inst);
     switch (inst.GetOpcode()) {
     case IR::Opcode::GetAttribute:
     case IR::Opcode::GetAttributeU1:
@@ -170,6 +193,10 @@ void Visit(Info& info, const IR::Inst& inst) {
 
 void CollectShaderInfoPass(IR::Program& program, const Profile& profile) {
     Info& info = program.info;
+    for (auto& buffer : info.buffers) {
+        buffer.read_bytes = 0;
+        buffer.read_range_known = buffer.buffer_type == BufferType::Guest;
+    }
     for (IR::Block* const block : program.post_order_blocks) {
         for (IR::Inst& inst : block->Instructions()) {
             Visit(info, inst);

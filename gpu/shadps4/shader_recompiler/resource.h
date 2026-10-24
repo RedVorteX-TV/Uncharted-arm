@@ -83,6 +83,11 @@ struct BufferResource {
     bool is_formatted{};
     SharpFetchPostOp post_op{};
     u32 post_op_dw1_mask{};
+    /// bbport: the bytes from the buffer's start the shader can read, known when every access
+    /// is a constant-buffer read at a fixed offset (CollectShaderInfoPass). Per-draw constant
+    /// copies take only these (Rasterizer::CollectRingBindings).
+    u32 read_bytes{};
+    bool read_range_known{};
 
     bool IsSpecial() const noexcept {
         return buffer_type != BufferType::Guest;
