@@ -342,6 +342,13 @@ void Menu() {
     const int frame_gen = s.frame_gen;
     if (ImGui::BeginCombo(T("Generation", "Генерация"), frame_gens[frame_gen])) {
         for (int i = 0; i < BbSettings::FrameGenCount; ++i) {
+#ifdef __ANDROID__
+            // Android: FSR 3 frame generation shows no effect there yet; not offered (kept for
+            // a frame_gen=fsr3 already chosen).
+            if (i == BbSettings::FrameGenFsr3 && frame_gen != i) {
+                continue;
+            }
+#endif
             const bool supported = (i != BbSettings::FrameGenDlss || s.dlssg_max_multiplier > 1) &&
                                    (i != BbSettings::FrameGenLsfg || !s.lsfg_dll.empty());
             ImGui::BeginDisabled(!supported);
