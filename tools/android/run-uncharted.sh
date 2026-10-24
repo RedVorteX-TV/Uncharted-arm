@@ -171,6 +171,7 @@ while :; do
             # barrier tracker switches between page-granular reads and exact reads (toggle 2048,
             # "Runtime: disabled optimizations mask=" in the log), to see which barriers it adds.
             export BB_GPU_PROFILE=${BB_GPU_PROFILE:-1}
+            export BB_BARRIER_REPORT=${BB_BARRIER_REPORT:-1}
             export BB_TOGGLE_FILE="$TMPDIR/toggles"
             mkdir -p "$TMPDIR"; echo 0 > "$BB_TOGGLE_FILE"
             ( while kill -0 $$ 2>/dev/null; do

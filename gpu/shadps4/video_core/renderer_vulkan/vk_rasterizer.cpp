@@ -1383,6 +1383,10 @@ static bool SkipShader(u64 hash) {
 // bbport: the compute shader of the last dispatch recorded, 0 after a draw (BB_FRAME_STATS:
 // barriers between dispatches that repeat a shader). The recording thread only.
 static u64 last_recorded_cs = 0;
+// BB_BARRIER_REPORT=1: the buffers of the first dispatches that repeat the previous shader,
+// each with whether it overlapped an earlier access (what makes the barrier before it).
+static bool reporting_repeat = false;
+static u32 repeat_reports = 0;
 
 void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
                             bool is_indexed, u32 index_offset) {
@@ -2043,9 +2047,21 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
 
     const bool repeat = cs.pgm_hash == last_recorded_cs;
     last_recorded_cs = cs.pgm_hash;
+    static const bool barrier_report = std::getenv("BB_BARRIER_REPORT") != nullptr;
+    // Past the first frames of play: the first 3000 repeats of a shader, then 60 reported.
+    static u64 repeats_seen = 0;
+    reporting_repeat = barrier_report && repeat && ++repeats_seen > 3000 && repeat_reports < 60;
+    if (reporting_repeat) {
+        ++repeat_reports;
+        std::printf("Barrier report: dispatch cs %08x (%ux%ux%u groups), repeat %llu\n",
+                    u32(cs.pgm_hash), cs_program.dim_x, cs_program.dim_y, cs_program.dim_z,
+                    static_cast<unsigned long long>(repeats_seen));
+    }
     const u64 barriers_before = BbStats::barriers.load(std::memory_order_relaxed);
     const u64 write_overlaps = runtime.WriteOverlaps(), read_overlaps = runtime.ReadOverlaps();
-    if (!BindResources(pipeline)) {
+    const bool bound = BindResources(pipeline);
+    reporting_repeat = false;
+    if (!bound) {
         return;
     }
     NoteSmallWrittenBuffers(cs);
@@ -3191,7 +3207,16 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     // Raw storage-buffer writes can also make an aliased cached image stale.
                     texture_cache.InvalidateMemoryFromGPU(vsharp.base_address, size);
                 }
-                needs_barrier |= runtime.IsBufferAccessed(buffer, offset, size, desc.is_written);
+                const bool accessed = runtime.IsBufferAccessed(buffer, offset, size, desc.is_written);
+                needs_barrier |= accessed;
+                if (reporting_repeat) {
+                    std::printf("  buffer %u %s guest %#llx size %llu stride %u: buffer %p +%#llx%s\n",
+                                buffer_index, desc.is_written ? "written" : "read",
+                                static_cast<unsigned long long>(vsharp.base_address),
+                                static_cast<unsigned long long>(size), u32(vsharp.GetStride()),
+                                static_cast<const void*>(buffer), static_cast<unsigned long long>(offset),
+                                accessed ? ", overlaps an earlier access" : "");
+                }
                 if (const VAddr watch = WatchedGpuWrite();
                     watch && desc.is_written && vsharp.base_address < watch + 0x1000 &&
                     watch < vsharp.base_address + size) {
