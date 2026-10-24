@@ -26,8 +26,8 @@ proyecto de fans no oficial, sin relación con Sony Interactive Entertainment ni
   Uncharted 1 va a 26-30 FPS, y Uncharted 2 y 3 a 20-30, con bajadas por debajo de 20 en zonas
   exigentes.
 - Resolución de render: 1080p, 720p (el modo 720p del propio juego en PS4) o 540p (para GPU menos
-  potentes), en el menú del juego (L3 + R3, y luego "Save and restart the game") y en el launcher
-  de Android. 540p le quita carga a la GPU; en la Thor, Uncharted 2 sigue a unos 20-25 FPS con ella,
+  potentes), en el menú del juego (L3 + R3, y luego "Save and restart the game") y en los launchers
+  (Linux: Ajustes; Android: Gráficos). 540p le quita carga a la GPU; en la Thor, Uncharted 2 sigue a unos 20-25 FPS con ella,
   porque ahora el límite es cómo se esperan entre sí el juego, el procesador y la GPU.
 - Problemas conocidos: en Uncharted 2 los personajes a veces atraviesan partes del escenario; un
   cierre al final de una cinemática de Uncharted 2 se ha visto una vez.
