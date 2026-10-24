@@ -375,6 +375,15 @@ void Menu() {
         Store(s.frame_gen_multiplier, multiplier, true);
     }
     ImGui::EndDisabled();
+    if (s.frame_gen == BbSettings::FrameGenLsfg) {
+        // How finely LSFG measures motion: 100 is automatic (432 lines, about 40% of a 1080p
+        // screen); higher values cost more GPU and ghost less around moving characters.
+        int flow = s.lsfg_flow_scale.load();
+        if (ImGui::SliderInt(T("LSFG motion resolution", "Разрешение движения LSFG"), &flow, 25, 100,
+                             flow >= 100 ? T("auto", "авто") : "%d%%")) {
+            Store(s.lsfg_flow_scale, flow, true);
+        }
+    }
     if (const char* problem = s.frame_gen_problem.load()) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "%s", problem);
     }
