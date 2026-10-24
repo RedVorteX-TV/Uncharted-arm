@@ -353,6 +353,7 @@ public final class MainActivity extends Activity {
         section(Strings.get("compatibility"));
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
+        switchRow(launcher, "vblank_120", false, Strings.get("vblank_120"), Strings.get("vblank_120_hint"));
         actionRow(Strings.get("recommended"), Strings.get("recommended_hint"), this::applyRecommended);
 
         // System
@@ -489,6 +490,7 @@ public final class MainActivity extends Activity {
     private void applyRecommended() {
         bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"}) launcher.set(key, true);
+        launcher.set("vblank_120", false);
         refreshRows(launcherBody);
         notice(Strings.get("recommended_done"));
     }

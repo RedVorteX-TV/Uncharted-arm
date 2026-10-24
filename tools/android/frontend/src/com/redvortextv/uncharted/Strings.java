@@ -84,6 +84,13 @@ final class Strings {
                 + "game hangs at the same spot every time. With it off Uncharted 2 and 3 run at a somewhat lower frame rate.",
             "Desactívalo si una escena se congela (la imagen se para mientras el sonido sigue) o el juego se cuelga "
                 + "siempre en el mismo sitio. Desactivado, Uncharted 2 y 3 van con algo menos de FPS.");
+        put("vblank_120", "Show frames as soon as they are ready (test)", "Mostrar los fotogramas en cuanto estén listos (prueba)");
+        put("vblank_120_hint", "The game's display rate goes from 60 to 120 Hz: a frame that takes a little over 33 ms "
+                + "is shown at once instead of waiting until 50 ms. Experimental: turn it off if the game runs too fast "
+                + "or something goes out of sync.",
+            "La frecuencia de pantalla del juego pasa de 60 a 120 Hz: un fotograma que tarda algo más de 33 ms se "
+                + "muestra enseguida en lugar de esperar a los 50 ms. Experimental: apágalo si el juego va demasiado "
+                + "rápido o algo se desincroniza.");
         put("arm_job_spin", "Let idle game threads sleep", "Dejar que los hilos inactivos del juego duerman");
         put("arm_job_spin_hint", "Turn off if the game stutters or pauses for a moment again and again in one place, "
                 + "or loading screens take much longer than usual. With it off the game uses about twice the CPU: more "
