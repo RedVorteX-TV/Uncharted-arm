@@ -711,8 +711,12 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     }
     const u64 alignment = std::max<u64>(instance.StorageMinAlignment(),
                                         instance.UniformMinAlignment());
-    // bbport: only the part of each buffer the shader reads (BB_RING_FULL=1: whole buffers).
-    static const bool ring_full = std::getenv("BB_RING_FULL") != nullptr;
+    // bbport: BB_RING_NARROW=1 copies only the part of each buffer the shader reads (not yet
+    // checked in play: whole buffers by default).
+    static const bool ring_full = [] {
+        const char* env = std::getenv("BB_RING_NARROW");
+        return !(env && env[0] == '1');
+    }();
     const auto copy = [&](u32 index, const void* source, VAddr address, u64 size,
                           u64 full_size) {
         const auto offset = constant_ring->Allocate(size, alignment);
