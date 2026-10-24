@@ -70,6 +70,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.show_fps = i != 0;
     } else if (key == "render_720p") {
         v.render_720p = i != 0;
+    } else if (key == "render_540p") {
+        v.render_540p = i != 0;
     } else if (key == "fsr1") {
         v.fsr1 = i != 0;
     } else if (key == "fps_limit") {
@@ -163,6 +165,7 @@ void Load() {
     v.startup_output_res = v.output_res;
     v.startup_live_resolution = v.live_resolution;
     v.startup_render_720p = v.render_720p;
+    v.startup_render_540p = v.render_540p;
 }
 
 void ConfigureUpscalerSupport(bool fsr4, bool fsr411) {
@@ -242,8 +245,9 @@ void Save() {
     std::fprintf(file, "lsfg_dll=%s\nlsfg_flow_scale=%d\nlsfg_fp16=%d\n", v.lsfg_dll.c_str(),
                  v.lsfg_flow_scale.load(), int(v.lsfg_fp16.load()));
     std::fprintf(file, "fps_limit=%d\n", v.fps_limit.load());
-    // render_720p: read by run.py at start.
-    std::fprintf(file, "render_720p=%d\nfsr1=%d\n", int(v.render_720p.load()), int(v.fsr1.load()));
+    // render_720p, render_540p: read by run.py (run-uncharted.sh on Android) at start.
+    std::fprintf(file, "render_720p=%d\nrender_540p=%d\nfsr1=%d\n", int(v.render_720p.load()),
+                 int(v.render_540p.load()), int(v.fsr1.load()));
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

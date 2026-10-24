@@ -83,6 +83,10 @@ struct Values {
     /// BB_RENDER_720P overrides.
     std::atomic<bool> render_720p{false};
     bool startup_render_720p = false;
+    /// The whole game at 960x540 (run.py and run-uncharted.sh: scripts/render_res.py's patch), on
+    /// restart; for GPUs slower than 720p needs (the Thor). render_720p wins when both are set.
+    std::atomic<bool> render_540p{false};
+    bool startup_render_540p = false;
     /// FSR 1 (EASU + RCAS) instead of bilinear where the presenter scales the game's frame to
     /// the window (the 720p mode on a 1080p screen). Live; BB_FSR1 sets it at start.
     std::atomic<bool> fsr1{false};

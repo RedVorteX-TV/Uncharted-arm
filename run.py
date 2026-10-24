@@ -142,20 +142,27 @@ def prepare(game, exe, out):
     stamp.write_text(source, encoding='utf-8')
 
 
-def render_720p(env):
-    """BB_RENDER_720P (the launcher's Steam Deck mode), else the in-game menu's choice in bbport.ini
-    (render_720p=1, ARM port), read again at each start so "Apply and restart" picks it up."""
-    if env.get('BB_RENDER_720P') in ('0', '1'):
-        return env['BB_RENDER_720P'] == '1'
+def config_flag(env, name):
+    """A 0/1 setting of bbport.ini (the in-game menu and the launchers write it), read again at
+    each start so "Save and restart" picks it up."""
     try:
         text = Path(env.get('BB_CONFIG', '')).read_text(encoding='utf-8', errors='replace')
     except OSError:
         return False
+    value = None
     for line in text.splitlines():
-        key, _, value = line.partition('=')
-        if key.strip() == 'render_720p':
-            return value.strip() == '1'
-    return False
+        key, _, rest = line.partition('=')
+        if key.strip() == name:
+            value = rest.strip()
+    return value == '1'
+
+
+def render_720p(env):
+    """BB_RENDER_720P (the launcher's Steam Deck mode), else the in-game menu's choice in bbport.ini
+    (render_720p=1, ARM port)."""
+    if env.get('BB_RENDER_720P') in ('0', '1'):
+        return env['BB_RENDER_720P'] == '1'
+    return config_flag(env, 'render_720p')
 
 
 # Upscaling presets (BB_UPSCALE_QUALITY[_U1/_U2/_U3]): the resolution chosen (BB_RESOLUTION) is the
@@ -199,6 +206,9 @@ def render_resolution(env, exe, out, image):
             print('Render resolution: not used with the 720p mode (the game renders at 1280x720)')
         return image
     size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
+    # The in-game menu's 960x540 (bbport.ini render_540p, ARM port): the whole game at that size.
+    if not size and config_flag(env, 'render_540p'):
+        size = '960x540'
     output = parse_size(size) if size not in ('', 'native', 'off', '0') else None
     output = output or (1920, 1080)
     preset = (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
