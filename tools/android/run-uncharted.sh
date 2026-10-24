@@ -167,6 +167,10 @@ while :; do
             # a frame each waited for the guest copies (40% of the GPU command thread's time); with
             # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
             export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
+            # Measurement build: constants copied only as far as the shaders read them (needs the
+            # draw pipeline), the large copies listed once, and GPU time per pass every 5 s.
+            export BB_RING_NARROW=${BB_RING_NARROW:-1} BB_RING_REPORT=${BB_RING_REPORT:-1}
+            export BB_GPU_PROFILE=${BB_GPU_PROFILE:-1}
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
