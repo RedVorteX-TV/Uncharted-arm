@@ -596,7 +596,14 @@ bool Rasterizer::DrawPipeWanted() {
     }
     // Stage B spins while draws flow. Measured ahead with 16 threads (+19%) and with 4 cores /
     // 8 threads (taskset, Steam Deck-like: +18%).
+#ifdef __ANDROID__
+    // ARM port: not on Android. The Thor gives the game 7 or 8 cores depending on its performance
+    // mode; with the pipeline its frame rate did not rise and frame times got less even (it waits
+    // for its GPU), so it stays off whatever the count. BB_DRAW_PIPE=1 turns it on.
+    return false;
+#else
     return BbThreads::Available() >= 8;
+#endif
 }
 
 bool Rasterizer::UseDrawPipe() const {
