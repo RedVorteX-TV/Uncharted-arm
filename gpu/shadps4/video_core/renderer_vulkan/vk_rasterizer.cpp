@@ -722,6 +722,10 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
         }
         constant_ring->Flush(*offset, size);
         out.push_back({index, static_cast<u32>(size), *offset, address});
+        BbStats::constant_copies.fetch_add(1, std::memory_order_relaxed);
+        BbStats::constant_bytes.fetch_add(size, std::memory_order_relaxed);
+        BbStats::constant_sizes[size <= 256 ? 0 : size <= 1024 ? 1 : size <= 4096 ? 2 : 3].fetch_add(
+            1, std::memory_order_relaxed);
     };
     for (u32 index = 0; index < stage.buffers.size(); ++index) {
         const auto& desc = stage.buffers[index];

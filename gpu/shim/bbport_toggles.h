@@ -1,6 +1,7 @@
 // bbport: optimizations that can be switched off while the game runs (BB_TOGGLE_FILE,
 // see runtime_memory.c), to find which one changes rendering without restarting.
 #pragma once
+#include <array>
 #include <atomic>
 #include <csetjmp>
 #include <chrono>
@@ -88,6 +89,10 @@ inline std::atomic<std::uint64_t> gpu_merges{0};
 inline std::atomic<std::uint64_t> gpu_side_downloads{0}, gpu_side_download_ns{0};
 /// ... or, a few GPU-written bytes beside the write, delivered once written (DeliverSmallGpuDataLater).
 inline std::atomic<std::uint64_t> gpu_late_deliveries{0};
+/// Shader constants copied into the constant ring per draw (Rasterizer::CollectRingBindings):
+/// copies, bytes, and copies by size (<= 256 B, <= 1 KB, <= 4 KB, larger).
+inline std::atomic<std::uint64_t> constant_copies{0}, constant_bytes{0};
+inline std::array<std::atomic<std::uint64_t>, 4> constant_sizes{};
 inline std::atomic<std::int64_t> hot_pages{0};
 /// Stall diagnostics (BB_FRAME_STATS): per-frame deltas printed for frames over 40 ms.
 inline std::atomic<std::uint64_t> images_registered{0};
