@@ -15,13 +15,15 @@ proyecto de fans no oficial, sin relación con Sony Interactive Entertainment ni
 | | Linux (Odin 3, Snapdragon 8 Elite) | Android (AYN Thor, Snapdragon 8 Gen 2) |
 |---|---|---|
 | Uncharted 1 | Jugable | Jugable |
-| Uncharted 2 | Jugable | Jugable |
-| Uncharted 3 | Jugable | Jugable |
+| Uncharted 2 | Jugable | Funciona: se ejecuta, pero a veces baja de 20 FPS |
+| Uncharted 3 | Jugable | Funciona: se ejecuta, pero a veces baja de 20 FPS |
 
-- El rendimiento lo limita más la traducción a Vulkan de cada dibujo en el procesador (unos 2.000
-  por fotograma) que la GPU. Uncharted 2 va a unos 33 FPS en el modo eco de la Odin 3 a 720p; en la
-  Thor, Uncharted 1 va algo por encima de 30 FPS y Uncharted 2 y 3 a 25-30, con bajadas a 26-27 en
-  zonas exigentes. El objetivo en la Thor son 30 FPS estables.
+- Jugable: se puede pasar de principio a fin con unos FPS suficientemente estables. Funciona: se
+  ejecuta y se puede jugar, pero los FPS todavía no son suficientes para considerarlo jugable.
+- En la Odin 3 el límite es la traducción a Vulkan de cada dibujo en el procesador (unos 2.000 por
+  fotograma): Uncharted 2 va a unos 33 FPS en modo eco a 720p. En la Thor el límite es la GPU:
+  Uncharted 1 va a 26-30 FPS, y Uncharted 2 y 3 a 20-30, con bajadas por debajo de 20 en zonas
+  exigentes. El siguiente paso para la Thor es una resolución interna más baja (540p).
 - Problemas conocidos: en Uncharted 2 los personajes a veces atraviesan partes del escenario; un
   cierre al final de una cinemática de Uncharted 2 se ha visto una vez.
 
