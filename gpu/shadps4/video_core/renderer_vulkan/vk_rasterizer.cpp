@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cmath>
+#include <mutex>
+#include <unordered_map>
 #include <map>
 #include <mutex>
 #include <unordered_set>
@@ -463,17 +466,18 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     if (gbuffer_draw) {
         camera_motion->OnGBufferPass(db_desc.first);
     } else if (camera_motion->VelocityMode() && db_desc.first && !camera_motion->Depth()) {
-        // Uncharted: no G-buffer of 5 targets. The frame's first pass at the display size that
+        // Uncharted: no G-buffer of 5 targets. The frame's first pass at the render size that
         // is depth-only (U1's prepass) or draws RGBA16F color (U2's first scene pass) holds the
-        // scene depth.
+        // scene depth. The render size is the patched one (BB_SCENE_SIZE, render resolution).
         const auto& depth = texture_cache.GetImage(db_desc.first);
+        const auto [scene_w, scene_h] = camera_motion->SceneSize();
         bool scene_pass = !cb_descs[0].first;
         if (cb_descs[0].first) {
             const auto& color = texture_cache.GetImage(cb_descs[0].first);
             scene_pass = color.info.pixel_format == vk::Format::eR16G16B16A16Sfloat &&
-                         color.info.size.width == 1920 && color.info.size.height == 1080;
+                         color.info.size.width == scene_w && color.info.size.height == scene_h;
         }
-        if (scene_pass && depth.info.size.width == 1920 && depth.info.size.height == 1080 &&
+        if (scene_pass && depth.info.size.width == scene_w && depth.info.size.height == scene_h &&
             (depth.info.pixel_format == vk::Format::eD32SfloatS8Uint ||
              depth.info.pixel_format == vk::Format::eD32Sfloat)) {
             camera_motion->OnGBufferPass(db_desc.first);
@@ -1390,10 +1394,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         return; // bbport: BB_SKIP_SHADERS also matches vertex shaders
     }
     const auto& regs = Regs();
-    // bbport: the pass copying a finished frame to a display buffer; the previous draw's
-    // target is that frame.
-    if (camera_motion->Enabled() && regs.color_buffers[0] &&
-        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
+    const auto frame_start = [&] {
         scene_started = false;
         camera_motion->OnDisplayPass(cb_descs[0].first);
         if (upscaler->OnFrameStart()) {
@@ -1406,12 +1407,38 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         static const char* scene_debug = std::getenv("BB_SCENE_DEBUG");
         scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
         scene_targets->debug = scene_debug_frame;
+    };
+    // bbport: the pass copying a finished frame to a display buffer; the previous draw's
+    // target is that frame. After BilalReloaded's Uncharted PC port (from Supermedo/uncharted_pc
+    // #261): Uncharted draws twice into the same display buffer per frame (484cdbf5, then
+    // 749bbec9): only the first starts a frame. The second reset the upscaler's history every
+    // frame (shimmer on every edge under TAA, FSR and DLAA) and skipped every other jitter
+    // phase. BB_ONE_FRAME_START=0 brings the old behaviour back. With an upscaling preset
+    // (TemporalUpscaler::OnComposite) the frames start at the upscale instead.
+    static const bool every_display_draw = [] {
+        const char* env = std::getenv("BB_ONE_FRAME_START");
+        return env && env[0] == '0';
+    }();
+    if (camera_motion->Enabled() && !upscaler->CompositeFrames() && regs.color_buffers[0] &&
+        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
+        (scene_started || regs.color_buffers[0].Address() != frame_display_address ||
+         every_display_draw)) {
+        frame_display_address = regs.color_buffers[0].Address();
+        frame_start();
     }
     bind_prepared = used_prepared;
     motion_draw = pipeline->GetGraphicsKey().motion_vectors;
     motion_geometry = 0;
 
     PrepareRenderState(pipeline);
+    if (upscaler->CompositeFrames()) {
+        const auto* fragment = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        if (fragment && upscaler->OnComposite(fragment->pgm_hash, cb_descs[0].first)) {
+            bind_prepared = nullptr; // as after a draw: later dispatches bind without its sharps
+            frame_start();           // the guest's copy is replaced by the upscale
+            return;
+        }
+    }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
         upscaler->OnDraw(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash,
@@ -2907,6 +2934,56 @@ VAddr WatchedGpuWrite() {
 }
 } // namespace
 
+// Render resolution (after BilalReloaded's Uncharted PC port, 16 Oct): Uncharted 2's aim depth of
+// field focuses on the depth under the crosshair: ps 9f801363 samples a 24-pixel box of the scene
+// depth at uv = c[6] * (ndc * c[2] + 0.5) + c[0] (and 1 - c[1] + ... for v), c = 8 floats the game
+// writes per frame. c[0], c[1] are the crosshair in pixels of the HUD's 1920x1080 space times
+// 1 / render size (c[6], c[7]): with a render resolution above 1080p the box left the crosshair
+// (4K: uv 0.25 instead of 0.5, the depth of the wall beside Nate) and everything behind the
+// target was blurred while aiming. The centre is corrected to the HUD space for every render size
+// (no change at 1080p). BB_AIM_FOCUS_FIX=0: off.
+static void FixAimFocusCentre(Core::MemoryManager* memory, VAddr address) {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_AIM_FOCUS_FIX");
+        return !(env && env[0] == '0');
+    }();
+    if (!enabled || !memory->IsValidGpuMapping(address, 32)) {
+        return;
+    }
+    float c[8];
+    memory->CopySparseMemory(address, reinterpret_cast<u8*>(c), sizeof(c));
+    const float inv_width = c[6], inv_height = c[7];
+    if (!(inv_width > 0.0f && inv_width < 1.0f && inv_height > 0.0f && inv_height < 1.0f)) {
+        return;
+    }
+    const float x_scale = 1920.0f * inv_width, y_scale = 1080.0f * inv_height;
+    if (std::abs(x_scale - 1.0f) < 1e-4f && std::abs(y_scale - 1.0f) < 1e-4f) {
+        return; // 1080p: already right
+    }
+    // The block may be bound by more than one draw: values corrected once stay as they are.
+    static std::mutex mutex;
+    static std::unordered_map<VAddr, std::pair<float, float>> corrected;
+    std::scoped_lock lock{mutex};
+    if (const auto it = corrected.find(address);
+        it != corrected.end() && it->second == std::pair{c[0], c[1]}) {
+        return;
+    }
+    const float fixed[2] = {c[0] / x_scale, c[1] / y_scale};
+    memory->TryWriteBacking(reinterpret_cast<void*>(address), fixed, sizeof(fixed));
+    if (corrected.size() >= 512) {
+        corrected.clear();
+    }
+    corrected[address] = {fixed[0], fixed[1]};
+    static bool reported = false;
+    if (!reported) {
+        reported = true;
+        std::printf("Aim focus: crosshair box centre %.4f,%.4f -> %.4f,%.4f (render %ux%u)\n", c[0],
+                    c[1], fixed[0], fixed[1], u32(1.0f / inv_width + 0.5f),
+                    u32(1.0f / inv_height + 0.5f));
+        std::fflush(stdout);
+    }
+}
+
 void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* prepared,
                              Shader::Backend::Bindings& binding,
                              Shader::PushData& push_data, u32& write_index) {
@@ -3064,6 +3141,9 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 if (size != vsharp.GetSize()) {
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
                               vsharp.GetSize(), size, stage.pgm_hash);
+                }
+                if (stage.pgm_hash == 0x9f801363 && !desc.is_written && size >= 32) {
+                    FixAimFocusCentre(memory, vsharp.base_address);
                 }
                 static const bool force_upload = std::getenv("BB_FORCE_VB_UPLOAD") != nullptr;
                 if ((force_upload || (ForceUploadVs(false) &&

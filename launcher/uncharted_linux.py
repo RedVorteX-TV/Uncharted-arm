@@ -591,8 +591,13 @@ DECK_FALLBACK = {'anti_aliasing': 'off', 'frame_generation': 'off', 'frame_gen_m
 
 # The texts under upstream's settings rows, by row title: replaced, or None for none.
 ROW_HINTS = {'Frame rate': None,
-             'Window size': 'Game renders at 1920 x 1080 and is upscaled at higher resolutions',
-             'Upscaling': None, 'Sharpening': None, 'Anti-aliasing': None,
+             'Window size': 'Set it to the Resolution above for a sharp 1:1 picture',
+             'Resolution': "Your screen's resolution. Drake's Fortune draws at most 2880 x 1620",
+             'Upscaler': 'DLSS or FSR 4 for upscaling; FSR 1 only enlarges, TAA only smooths edges',
+             'Quality': 'Native: anti-aliasing only (DLAA). Quality 1.5x, Balanced 1.7x, Performance 2x, '
+                        'Ultra Performance 3x',
+             'Sharpness': 'For every upscaler, FSR 1 included (AMD RCAS)', 'Sharpening': None,
+             'Anti-aliasing': None,
              'Frame generation': None, 'Multiplier': None, 'Mouse sensitivity': None}
 
 

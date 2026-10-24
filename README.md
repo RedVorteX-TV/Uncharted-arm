@@ -98,6 +98,9 @@ Built on the work of:
 - [Pepin208/uncharted_pc_linux](https://github.com/Pepin208/uncharted_pc_linux): the first ARM
   attempt this port started from.
 - Mevlock's uncharted_pc-dev: the patch that skips the collection menu.
+- [BilalReloaded's Uncharted PC port](https://github.com/bc160201983/Uncharted-The-Nathan-Drake-Collection-PC-port)
+  (GPL-2.0-or-later), as Tutuzaooo brought it to the Linux fork: the render resolution and the
+  upscaling presets (scripts/render_res.py, cutscene movie scaling in gpu/shim/bbport_movie.cpp).
 - [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) and
   [ARMSX2](https://github.com/ARMSX2/ARMSX2): the LSFG frame generation passes, from
   [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)'s

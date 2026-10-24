@@ -68,7 +68,7 @@ struct Values {
     std::atomic<int> preset{NativeAA};
     std::atomic<bool> sharpen{true};
     std::atomic<float> sharpness{0.3f};
-    std::atomic<bool> jitter{true};
+    std::atomic<bool> jitter{false}; ///< off by default: distant detail shimmers with it
     std::atomic<bool> reactive{false};
     std::atomic<bool> object_motion{true};
     std::atomic<float> reactive_scale{1.0f};
@@ -83,6 +83,10 @@ struct Values {
     /// BB_RENDER_720P overrides.
     std::atomic<bool> render_720p{false};
     bool startup_render_720p = false;
+    /// The whole game at 960x540 (run.py and run-uncharted.sh: scripts/render_res.py's patch), on
+    /// restart; for GPUs slower than 720p needs (the Thor). render_720p wins when both are set.
+    std::atomic<bool> render_540p{false};
+    bool startup_render_540p = false;
     /// FSR 1 (EASU + RCAS) instead of bilinear where the presenter scales the game's frame to
     /// the window (the 720p mode on a 1080p screen). Live; BB_FSR1 sets it at start.
     std::atomic<bool> fsr1{false};
@@ -115,6 +119,10 @@ struct Values {
     std::string lsfg_dll;
     std::atomic<int> lsfg_flow_scale{100};
     std::atomic<bool> lsfg_fp16{false};
+
+    /// The settings file's version (settings_version): below 3 the jitter switch is turned off
+    /// once (version 2 had switched it back on; distant objects still shimmer and shake with it).
+    int settings_version = 0;
 
     /// Startup settings for the explicit BB_RENDER_RES compatibility patch only.
     int startup_preset = NativeAA;
