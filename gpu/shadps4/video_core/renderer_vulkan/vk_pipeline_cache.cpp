@@ -948,6 +948,23 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
 
         RegisterShaderMeta(info, spec.fetch_shader_data, spec, perm_hash, perm_idx);
         std::unique_lock lk{programs_mutex};
+        // bbport: the program's Info serves every permutation; the constants copied for a draw
+        // (BufferResource::read_bytes) must cover what each of them reads.
+        const auto merge = [&](Shader::Info& into) {
+            const bool same = into.buffers.size() == new_info.buffers.size();
+            for (u32 i = 0; i < into.buffers.size(); ++i) {
+                auto& buffer = into.buffers[i];
+                if (!same || !new_info.buffers[i].read_range_known) {
+                    buffer.read_range_known = false;
+                } else {
+                    buffer.read_bytes = std::max(buffer.read_bytes, new_info.buffers[i].read_bytes);
+                }
+            }
+        };
+        merge(info);
+        if (program->info_template) {
+            merge(*program->info_template);
+        }
         program->AddPermut(module, std::move(spec));
     } else {
         info.AddBindings(binding);

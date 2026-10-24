@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <map>
+#include <mutex>
+#include <unordered_set>
 #include "core/libraries/videoout/driver.h"
 #include <xxhash.h>
 #include "video_core/renderer_vulkan/ui_composition.h"
@@ -764,6 +766,19 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
                              ? std::min<u64>(size, std::max<u64>((u64(desc.read_bytes) + 15) & ~15ull, 16))
                              : size;
         copy(index, nullptr, address, read, size);
+        // BB_RING_REPORT=1: the large buffers copied, once each (with the compile-time reasons).
+        static const bool ring_report = std::getenv("BB_RING_REPORT") != nullptr;
+        if (ring_report && size >= 4096) {
+            static std::mutex report_mutex;
+            static std::unordered_set<u64> reported;
+            std::scoped_lock lock{report_mutex};
+            if (reported.size() < 300 && reported.insert((u64(u32(stage.pgm_hash)) << 8) | index).second) {
+                std::printf("Ring copy: shader %08x buffer %u: %llu of %llu bytes (%s)\n",
+                            u32(stage.pgm_hash), index, static_cast<unsigned long long>(read),
+                            static_cast<unsigned long long>(size),
+                            desc.read_range_known ? "range known" : "range unknown");
+            }
+        }
     }
 }
 
