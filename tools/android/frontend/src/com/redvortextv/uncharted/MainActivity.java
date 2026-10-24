@@ -339,11 +339,14 @@ public final class MainActivity extends Activity {
         section(Strings.get("graphics"));
         // Render resolution: 1080p, 720p (bbport.ini render_720p, also in the in-game menu) or the scene at
         // 540p with the HUD at 1080p (launcher.ini render_540p, run-uncharted.sh).
-        valueRow(Strings.get("render_res"), Strings.get("render_res_hint"), new String[]{"1080", "720", "540"},
-            new String[]{"1920 × 1080", "1280 × 720", Strings.get("render_540p")},
-            () -> launcher.on("render_540p", false) ? "540" : bbport.on("render_720p", true) ? "720" : "1080",
+        valueRow(Strings.get("render_res"), Strings.get("render_res_hint"), new String[]{"1080", "720", "540", "540hud"},
+            new String[]{"1920 × 1080", "1280 × 720", "960 × 540", Strings.get("render_540p")},
+            () -> {
+                String low = launcher.get("render_540p", "0");
+                return low.equals("1") ? "540" : low.equals("2") ? "540hud" : bbport.on("render_720p", true) ? "720" : "1080";
+            },
             value -> {
-                launcher.set("render_540p", value.equals("540"));
+                launcher.set("render_540p", value.equals("540") ? "1" : value.equals("540hud") ? "2" : "0");
                 bbport.set("render_720p", value.equals("720"));
             });
         switchRow(bbport, "fsr1", true, Strings.get("fsr1"), Strings.get("fsr1_hint"));
@@ -526,7 +529,7 @@ public final class MainActivity extends Activity {
     /** Every launcher setting back to what runs best on an ARM handheld (the Linux launcher's button). */
     private void applyRecommended() {
         bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
-        launcher.set("render_540p", false);
+        launcher.set("render_540p", "0");
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"}) launcher.set(key, true);
         launcher.set("game_rate", "60");
         refreshRows(launcherBody);

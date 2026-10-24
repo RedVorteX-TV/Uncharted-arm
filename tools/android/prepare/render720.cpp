@@ -192,6 +192,15 @@ std::vector<std::pair<u64, Bytes>> render_size_writes(const Bytes& elf_bytes, u3
             p += 10;
         } else p++;
     }
-    if (out.empty()) error = "no size stores in the display settings code";
+    if (out.empty()) { error = "no size stores in the display settings code"; return {}; }
+    // The movie decoder's maximum frame size, as render_720p.py does: Videodec2 fits the 1080p
+    // movies to it, the size the game's movie textures have at this resolution.
+    const std::vector<size_t> dec = decoders(e, n);
+    if (dec.size() != 1) {
+        error = "expected one movie decoder setup, found " + std::to_string(dec.size());
+        return {};
+    }
+    put32(dec[0] + 4, width);
+    put32(dec[0] + 12, height);
     return out;
 }

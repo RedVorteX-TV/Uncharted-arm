@@ -28,18 +28,18 @@ void say(const std::string& line) {
 }
 
 // The scene at 960x540 (launcher: render resolution 540p; the HUD is drawn at the output size,
-// run-uncharted.sh): render-540p.bin, or render-540p.txt with the reason.
+// run-uncharted.sh): render-960x540.bin, or render-960x540.txt with the reason.
 void write_render_540p(const Bytes& elf, const std::string& out) {
     std::string error;
     auto writes = render_size_writes(elf, 960, 540, error);
     if (error.empty()) {
         Bytes blob = render_720p_patch(writes);
-        OutFile f(path_join(out, "render-540p.bin"));
+        OutFile f(path_join(out, "render-960x540.bin"));
         f.write(blob.data(), blob.size());
         f.close();
         say("Render 540p: " + std::to_string(writes.size()) + " size values patched");
     } else {
-        write_text_file(path_join(out, "render-540p.txt"), error + "\n");
+        write_text_file(path_join(out, "render-960x540.txt"), error + "\n");
         say("Render 540p: " + error);
     }
 }
@@ -285,7 +285,7 @@ int run(const std::string& game, const std::string& data, const std::string& exe
             if (text == identity) {
                 say("Game image: existing image matches selected game");
                 // Images prepared before the 540p patch existed get it on their own.
-                if (!is_file(path_join(data, "render-540p.bin")) && !is_file(path_join(data, "render-540p.txt"))) {
+                if (!is_file(path_join(data, "render-960x540.bin")) && !is_file(path_join(data, "render-960x540.txt"))) {
                     MappedFile source = read_file(path_join(game, exe));
                     write_render_540p(parse_self(source.view()).elf, data);
                 }
@@ -308,7 +308,7 @@ int run(const std::string& game, const std::string& data, const std::string& exe
             raise_errno(errno, path_join(work, "boot-linked.bin"));
         if (rename(path_join(work, "content.bin").c_str(), path_join(data, "content.bin").c_str()) < 0)
             raise_errno(errno, path_join(work, "content.bin"));
-        for (const char* name : {"render-720p.bin", "render-720p.txt", "render-540p.bin", "render-540p.txt"}) {
+        for (const char* name : {"render-720p.bin", "render-720p.txt", "render-960x540.bin", "render-960x540.txt"}) {
             unlink(path_join(data, name).c_str());
             if (is_file(path_join(work, name))) rename(path_join(work, name).c_str(), path_join(data, name).c_str());
         }

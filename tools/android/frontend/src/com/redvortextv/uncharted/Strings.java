@@ -45,13 +45,13 @@ final class Strings {
                 + "pantallas de 120 Hz como la de la Thor (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
                 + "Deja 60 Hz en una pantalla de 60 Hz.");
         put("render_res", "Render resolution", "Resolución de render");
-        put("render_540p", "960 × 540 (HUD at 1080p)", "960 × 540 (interfaz a 1080p)");
+        put("render_540p", "960 × 540, HUD at 1080p", "960 × 540, interfaz a 1080p");
         put("render_res_hint", "The size the games draw at, scaled to the screen with FSR 1. 720p: much faster than "
-                + "1080p. 540p: the scene at 960 × 540 with the HUD and menus sharp at 1080p, for more FPS on "
-                + "the Thor (softer picture). 720p also in the in-game menu (L3 + R3).",
+                + "1080p. 540p: more FPS on the Thor, with a softer picture; with \"HUD at 1080p\" the HUD and menus stay "
+                + "sharp. 720p also in the in-game menu (L3 + R3).",
             "El tamaño al que se dibujan los juegos, escalado a la pantalla con FSR 1. 720p: mucho más rápido que "
-                + "1080p. 540p: la escena a 960 × 540 con la interfaz y los menús nítidos a 1080p, para más FPS en "
-                + "la Thor (imagen más suave). 720p también en el menú del juego (L3 + R3).");
+                + "1080p. 540p: más FPS en la Thor, con una imagen más suave; con \"interfaz a 1080p\" la interfaz y los "
+                + "menús siguen nítidos. 720p también en el menú del juego (L3 + R3).");
         put("frame_gen", "Frame generation", "Generación de fotogramas");
         put("frame_gen_hint", "Frames made between two of the game's, for smoother motion, with a little more "
                 + "input latency: LSFG, Lossless Scaling's, with your own Lossless.dll (below). Also in the in-game "
