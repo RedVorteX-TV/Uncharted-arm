@@ -168,14 +168,13 @@ while :; do
             # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
             export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
             # Measurement build: GPU time per pass every 5 s, and barriers per frame. Every 40 s the
-            # barrier tracker switches between page-granular reads and exact reads (toggle 2048,
-            # "Runtime: disabled optimizations mask=" in the log), to see which barriers it adds.
+            # written interleaved attributes switch between tight barrier ranges and the V#s' own
+            # (toggle 1 << 58, "Runtime: disabled optimizations mask=" in the log).
             export BB_GPU_PROFILE=${BB_GPU_PROFILE:-1}
-            export BB_BARRIER_REPORT=${BB_BARRIER_REPORT:-1}
             export BB_TOGGLE_FILE="$TMPDIR/toggles"
             mkdir -p "$TMPDIR"; echo 0 > "$BB_TOGGLE_FILE"
             ( while kill -0 $$ 2>/dev/null; do
-                  sleep 40; echo 2048 > "$BB_TOGGLE_FILE"; sleep 40; echo 0 > "$BB_TOGGLE_FILE"
+                  sleep 40; echo 288230376151711744 > "$BB_TOGGLE_FILE"; sleep 40; echo 0 > "$BB_TOGGLE_FILE"
               done ) &
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi

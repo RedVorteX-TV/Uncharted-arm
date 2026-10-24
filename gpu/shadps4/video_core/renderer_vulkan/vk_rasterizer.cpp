@@ -3061,6 +3061,46 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
             std::fflush(stdout);
         }
     }
+    // bbport: written vertex attributes interleaved in one record array (Uncharted 2's skinning:
+    // V#s at +0, +0xc and +0x14 with stride 28) each span base + stride * records, which runs up
+    // to a stride past the array into the next mesh's vertices, written by the next dispatch: a
+    // barrier between every two dispatches of a ~1300-dispatch convoy (~17 ms of GPU a frame on
+    // an Adreno 740). V#s with one stride and record count, less than a stride apart, are one
+    // array: their barrier ranges end where it does.
+    std::array<VAddr, Shader::NUM_BUFFERS> record_end{};
+    if (!BbToggle::Disabled(BbToggle::TightStridedWrites)) {
+        std::array<AmdGpu::Buffer, Shader::NUM_BUFFERS> sharps{};
+        u32 strided = 0;
+        for (u32 i = 0; i < stage.buffers.size() && i < sharps.size(); ++i) {
+            const auto& desc = stage.buffers[i];
+            if (desc.IsSpecial() || !desc.is_written) {
+                continue;
+            }
+            sharps[i] = prepared ? prepared->buffer_sharps[i] : desc.GetSharp(stage);
+            strided += sharps[i].base_address && sharps[i].GetStride() && sharps[i].num_records;
+        }
+        for (u32 i = 0; strided > 1 && i < stage.buffers.size() && i < sharps.size(); ++i) {
+            const auto& a = sharps[i];
+            if (!a.base_address || !a.GetStride() || !a.num_records) {
+                continue;
+            }
+            const VAddr base = a.base_address;
+            VAddr first = base;
+            u32 members = 0;
+            for (u32 j = 0; j < stage.buffers.size() && j < sharps.size(); ++j) {
+                const auto& b = sharps[j];
+                const VAddr other = b.base_address;
+                if (other && b.GetStride() == a.GetStride() && b.num_records == a.num_records &&
+                    std::max(base, other) - std::min(base, other) < a.GetStride()) {
+                    first = std::min(first, other);
+                    ++members;
+                }
+            }
+            if (members > 1) {
+                record_end[i] = first + u64(a.GetStride()) * a.num_records;
+            }
+        }
+    }
     for (u32 buffer_index = 0; buffer_index < stage.buffers.size(); ++buffer_index) {
         const auto& desc = stage.buffers[buffer_index];
         const RingBinding* ring = num_ring_stages ? FindRingBinding(stage, buffer_index) : nullptr;
@@ -3198,7 +3238,13 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 }
                 push_data.AddOffset(binding.buffer, adjust);
                 buffer_infos.emplace_back(buffer->Handle(), offset_aligned, size + adjust);
-                bound_buffers.emplace_back(buffer, offset, size, desc.is_written);
+                // The range barriers track (record_end above); the descriptor keeps the V#'s.
+                u64 tracked = size;
+                if (buffer_index < record_end.size() && record_end[buffer_index] &&
+                    vsharp.base_address + size > record_end[buffer_index]) {
+                    tracked = record_end[buffer_index] - vsharp.base_address;
+                }
+                bound_buffers.emplace_back(buffer, offset, tracked, desc.is_written);
                 if (g_gpu_checkpoints && num_checkpoint_buffers < std::size(checkpoint_buffers)) {
                     checkpoint_buffers[num_checkpoint_buffers++] = {
                         vsharp.base_address, static_cast<u32>(size), desc.is_written};
@@ -3207,7 +3253,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     // Raw storage-buffer writes can also make an aliased cached image stale.
                     texture_cache.InvalidateMemoryFromGPU(vsharp.base_address, size);
                 }
-                const bool accessed = runtime.IsBufferAccessed(buffer, offset, size, desc.is_written);
+                const bool accessed = runtime.IsBufferAccessed(buffer, offset, tracked, desc.is_written);
                 needs_barrier |= accessed;
                 if (reporting_repeat) {
                     std::printf("  buffer %u %s guest %#llx size %llu stride %u: buffer %p +%#llx%s\n",
