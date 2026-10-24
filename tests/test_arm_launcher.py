@@ -42,6 +42,14 @@ class ArmLauncher(unittest.TestCase):
         linux.arm_environment({'anti_aliasing': 'dlss'}, env)
         self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_UPSCALER': 'off', 'BB_FRAME_GEN': 'off'})
 
+    def test_game_rate(self):
+        env = {}
+        linux.arm_environment({'game_rate': '120'}, env)
+        self.assertEqual(env['BB_VBLANK_HZ'], '120')
+        env = {}
+        linux.arm_environment({}, env)
+        self.assertEqual(env['BB_VBLANK_HZ'], '60')
+
     def test_lsfg_dll(self):
         env = {'BB_FRAME_GEN': 'lsfg'}
         linux.arm_environment({'frame_generation': 'lsfg', 'lsfg_dll': ' /games/Lossless.dll '}, env)
