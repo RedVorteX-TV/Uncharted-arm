@@ -32,6 +32,10 @@ public:
     [[nodiscard]] vk::Buffer Handle() const noexcept {
         return buffer.Handle();
     }
+    /// The ring's device address (the skinning batch reads constants by address).
+    [[nodiscard]] vk::DeviceAddress DeviceAddress() const noexcept {
+        return buffer.BufferDeviceAddress();
+    }
 
     /// Stage A: `size` bytes at `alignment`; returns the ring offset, or nullopt when the ring is
     /// still in use by the GPU (the caller leaves the binding to stage B).

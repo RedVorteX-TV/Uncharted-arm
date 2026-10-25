@@ -167,6 +167,16 @@ while :; do
             # a frame each waited for the guest copies (40% of the GPU command thread's time); with
             # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
             export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
+            # Measurement build: the batched skinning (needs the draw pipeline), its statistics and
+            # GPU time per pass every 5 s. Every 40 s the batching switches off and on again
+            # (toggle 1 << 59, "Runtime: disabled optimizations mask=" in the log).
+            export BB_SKIN_BATCH=${BB_SKIN_BATCH:-1} BB_SKIN_BATCH_STATS=${BB_SKIN_BATCH_STATS:-1}
+            export BB_GPU_PROFILE=${BB_GPU_PROFILE:-1}
+            export BB_TOGGLE_FILE="$TMPDIR/toggles"
+            mkdir -p "$TMPDIR"; echo 0 > "$BB_TOGGLE_FILE"
+            ( while kill -0 $$ 2>/dev/null; do
+                  sleep 40; echo 576460752303423488 > "$BB_TOGGLE_FILE"; sleep 40; echo 0 > "$BB_TOGGLE_FILE"
+              done ) &
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
