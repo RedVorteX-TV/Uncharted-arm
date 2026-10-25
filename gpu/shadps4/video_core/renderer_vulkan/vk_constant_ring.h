@@ -8,7 +8,11 @@
 #pragma once
 
 #include <array>
+#include <algorithm>
 #include <atomic>
+#include <deque>
+#include <optional>
+#include <utility>
 
 #include "common/assert.h"
 #include "common/types.h"
@@ -44,7 +48,7 @@ public:
         if (at % Capacity + size > Capacity) {
             at += Capacity - at % Capacity; // wrap to the ring start
         }
-        const auto in_use = [&] { return at + size > Capacity && at + size - Capacity > retired; };
+        const auto in_use = [&] { return at + size > Capacity && at + size - Capacity > Kept(); };
         if (in_use()) {
             Retire();
             if (in_use()) {
@@ -52,7 +56,34 @@ public:
             }
         }
         position = at + size;
+        last_at = at;
         return at % Capacity;
+    }
+
+    /// Stage A (stream dedupe, from revvv991's uncharted-android): a copy made in the current
+    /// epoch may be bound again by later packets of that epoch. An epoch ends after EpochBytes
+    /// of allocations; its bytes are kept until every packet produced in it has completed (its
+    /// end position retired).
+    static constexpr u64 EpochBytes = 8ull << 20;
+    void EnableEpochs() {
+        if (!epochs) {
+            epochs = true;
+            epoch_start = position;
+        }
+    }
+    [[nodiscard]] u64 EpochStart() const noexcept {
+        return epoch_start;
+    }
+    /// The position of the last allocation (compared with EpochStart).
+    [[nodiscard]] u64 LastAllocation() const noexcept {
+        return last_at;
+    }
+    /// Stage A, before a packet's allocations.
+    void NextEpochIfFull() {
+        if (epochs && position - epoch_start >= EpochBytes) {
+            live_epochs.push_back({epoch_start, position});
+            epoch_start = position;
+        }
     }
 
     [[nodiscard]] u8* Data(u64 offset) noexcept {
@@ -72,10 +103,13 @@ public:
     /// Stage B, after recording a packet whose allocations end at `end`. Stamps of one
     /// submission tick are merged: only the last end per tick is published.
     void Stamp(u64 end) {
+        const u64 tick = scheduler.CurrentTick();
         if (end == pending_end) {
+            // A later packet that allocated nothing may bind copies made before it
+            // (deduplicated): the end retires with the latest packet that has it.
+            pending_tick = tick;
             return;
         }
-        const u64 tick = scheduler.CurrentTick();
         if (tick != pending_tick && pending_end != last_published) {
             Publish(pending_end, pending_tick);
         }
@@ -92,6 +126,21 @@ private:
         stamps[at % stamps.size()] = {end, tick};
         stamps_head.store(at + 1, std::memory_order_release);
         last_published = end;
+    }
+
+    /// Stage A: the position before which the ring may be overwritten.
+    u64 Kept() {
+        if (!epochs) {
+            return retired;
+        }
+        while (!live_epochs.empty() && live_epochs.front().second <= retired) {
+            live_epochs.pop_front();
+        }
+        u64 kept = std::min(retired, epoch_start);
+        if (!live_epochs.empty()) {
+            kept = std::min(kept, live_epochs.front().first);
+        }
+        return kept;
     }
 
     void Retire() {
@@ -127,6 +176,10 @@ private:
     VideoCore::Buffer buffer;
     u64 position = 0;     ///< stage A
     u64 retired = 0;      ///< stage A: the GPU is done with everything before this
+    u64 last_at = 0;      ///< stage A
+    bool epochs = false;  ///< stage A
+    u64 epoch_start = 0;  ///< stage A
+    std::deque<std::pair<u64, u64>> live_epochs; ///< stage A: closed epochs (start, end)
     u64 pending_end = 0, pending_tick = 0, last_published = 0; ///< stage B
     std::array<StampEntry, 1024> stamps{};
     alignas(64) std::atomic<u64> stamps_head{0}; ///< stage B writes

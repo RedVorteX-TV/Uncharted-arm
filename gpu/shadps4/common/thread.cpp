@@ -4,6 +4,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <ctime>
+#include <cstdio>
+#include <cstdlib>
+#include <mutex>
+#include <vector>
 #include <string>
 #include <thread>
 
@@ -184,7 +188,99 @@ void SetThreadName(void* thread, const char* name) {
     SetThreadDescription(thread, UTF8ToUTF16W(name).data());
 }
 
+void SetRenderAffinity(bool) {}
+
 #else // !_WIN32, so must be POSIX threads
+
+#if defined(__linux__)
+namespace {
+// bbport: BB_RENDER_CPUS=<cpu list, e.g. 3-7 or 3,5-7>: the host GPU threads (command processor,
+// draw recording and preparation, Vulkan recorder, presentation) run on these CPUs only. From
+// revvv991's uncharted-android: on the Retroid Pocket G2 the scheduler put the draw and Vulkan
+// recorders mostly on the slow cores while the guest's job workers held the fast ones. Their
+// thread ids are kept, so that SetRenderAffinity can let them run anywhere again (toggle 60).
+std::mutex render_threads_mutex;
+std::vector<pid_t> render_threads;
+bool render_pinned = true;
+
+const cpu_set_t* RenderCpus() {
+    static const cpu_set_t* const set = []() -> const cpu_set_t* {
+        const char* env = std::getenv("BB_RENDER_CPUS");
+        if (!env || !*env) {
+            return nullptr;
+        }
+        static cpu_set_t cpus;
+        CPU_ZERO(&cpus);
+        for (const char* p = env; *p;) {
+            char* end;
+            const long first = std::strtol(p, &end, 10);
+            long last = first;
+            if (end == p) {
+                break;
+            }
+            if (*end == '-') {
+                p = end + 1;
+                last = std::strtol(p, &end, 10);
+            }
+            for (long cpu = first; cpu >= 0 && cpu <= last && cpu < CPU_SETSIZE; ++cpu) {
+                CPU_SET(cpu, &cpus);
+            }
+            p = *end == ',' ? end + 1 : end;
+            if (*end != ',' && *end) {
+                break;
+            }
+        }
+        return CPU_COUNT(&cpus) ? &cpus : nullptr;
+    }();
+    return set;
+}
+
+const cpu_set_t& AllCpus() {
+    static const cpu_set_t all = [] {
+        cpu_set_t cpus;
+        CPU_ZERO(&cpus);
+        for (long cpu = 0; cpu < CPU_SETSIZE && cpu < sysconf(_SC_NPROCESSORS_CONF); ++cpu) {
+            CPU_SET(cpu, &cpus);
+        }
+        return cpus;
+    }();
+    return all;
+}
+
+void ApplyRenderAffinity(const std::string& name) {
+    static const char* const prefixes[] = {"shadPS4:GpuCom", "bb:Draw", "bb:VkRecorder",
+                                           "bb:Present", "shadPS4:Present"};
+    bool render = false;
+    for (const char* prefix : prefixes) {
+        render = render || name.rfind(prefix, 0) == 0;
+    }
+    const cpu_set_t* set = RenderCpus();
+    if (!render || !set) {
+        return;
+    }
+    std::scoped_lock lock{render_threads_mutex};
+    render_threads.push_back(static_cast<pid_t>(gettid()));
+    if (render_pinned && sched_setaffinity(0, sizeof(*set), set) == 0) {
+        std::printf("Thread %s: CPUs %s\n", name.c_str(), std::getenv("BB_RENDER_CPUS"));
+    }
+}
+} // namespace
+
+void SetRenderAffinity(bool pinned) {
+    const cpu_set_t* set = RenderCpus();
+    std::scoped_lock lock{render_threads_mutex};
+    if (!set || pinned == render_pinned) {
+        return;
+    }
+    render_pinned = pinned;
+    for (const pid_t tid : render_threads) {
+        sched_setaffinity(tid, sizeof(cpu_set_t), pinned ? set : &AllCpus());
+    }
+    std::printf("Render threads: %s\n", pinned ? std::getenv("BB_RENDER_CPUS") : "any CPU");
+}
+#else
+void SetRenderAffinity(bool) {}
+#endif
 
 // MinGW with the POSIX threading model does not support pthread_setname_np
 #if !defined(_WIN32) || defined(_MSC_VER)
@@ -204,6 +300,7 @@ void SetCurrentThreadName(const char* name) {
         errno = e;
         LOG_ERROR(Common, "Failed to set thread name to '{}': {}", truncated, GetLastErrorMsg());
     }
+    ApplyRenderAffinity(truncated);
 #else
     pthread_setname_np(pthread_self(), name);
 #endif

@@ -18,6 +18,8 @@ public:
     }
     u64 ClampRangeSize(VAddr virtual_addr, u64 size);
     void CopySparseMemory(VAddr source, u8* dest, u64 size);
+    /// The whole range is mapped guest memory (readable at its address).
+    bool IsHostMapped(VAddr virtual_addr, u64 size);
     bool TryWriteBacking(void* address, const void* data, u64 size);
     /// CPU wrote guest memory outside page tracking (e.g. decoded video frames).
     void InvalidateMemory(VAddr address, u64 size);
