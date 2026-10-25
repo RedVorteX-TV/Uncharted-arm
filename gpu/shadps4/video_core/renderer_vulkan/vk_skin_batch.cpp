@@ -3,7 +3,8 @@
 // GPL-2.0-or-later), with its host shaders skin_batch.comp and skin_mv_batch.comp; its notes are
 // kept as they were (g2-arm64: that port's marker). In this port: the vertex count read from the
 // user data is checked against the dispatch's workgroups before a dispatch joins (else it runs
-// on its own), and toggle bit 59 turns the batching off while the game runs.
+// on its own), and toggle bit 59 turns the batching off while the game runs. On by default here
+// (BB_SKIN_BATCH=0: off).
 //
 // g2-arm64: Uncharted 1's GPU skinning (cs 8f067540) batched, and the same way Uncharted 2's
 // skinning with motion vectors (cs 7d7e7206, host_shaders/skin_mv_batch.comp: ~95 dispatches a
@@ -147,10 +148,12 @@ private:
     std::vector<Range> ranges;
 };
 
+// This port: on by default (BB_SKIN_BATCH=0 turns it off). Measured on the Thor in Uncharted
+// 2 at 540p: the skinning 20 -> 2.6 ms of GPU a frame, ~22 -> ~29 FPS in the same area.
 bool SkinBatchWanted() {
     static const bool wanted = [] {
         const char* env = std::getenv("BB_SKIN_BATCH");
-        return env && env[0] == '1';
+        return !(env && env[0] == '0');
     }();
     return wanted;
 }

@@ -2,6 +2,10 @@
 
 **[Leer en español](README.es.md)** · **[RedVorteX-TV on YouTube](https://youtube.com/@redvortex-tv)**
 
+A fork of [Supermedo/uncharted_pc](https://github.com/Supermedo/uncharted_pc), through
+[spacepepperoni/uncharted_Linux](https://github.com/spacepepperoni/uncharted_Linux), its Linux and
+Steam Deck fork (that one is the version for the Steam Deck and x86-64 Linux).
+
 Uncharted 1, 2 and 3 from the PS4 collection on ARM handhelds and phones with a Snapdragon GPU: Linux
 (AYN Odin 3 with Armada, an AppImage) and Android (an APK). The games' x86-64 code runs through
 FEXCore and their graphics go to Vulkan (Mesa Turnip on Adreno), on the same native-port base as the
@@ -26,9 +30,8 @@ unofficial fan project, not affiliated with Sony Interactive Entertainment or Na
   runs at 26-30 FPS, Uncharted 2 and 3 at 20-30 with drops below 20 in demanding areas.
 - Render resolution: 1080p, 720p (the game's own PS4 720p mode) or 540p (for slower GPUs), in the
   in-game menu (L3 + R3, then "Save and restart the game") and in the launchers (Linux: Settings;
-  Android: Graphics). 540p takes
-  load off the GPU; on the Thor, Uncharted 2 still runs at about 20-25 FPS there, where the limit is
-  now how the game, the CPU and the GPU wait for each other.
+  Android: Graphics). 540p takes load off the GPU. With the batched skinning of 0.1.6, Uncharted 2
+  at 540p runs at about 25-45 FPS on the Thor, depending on the area.
 - Known problems: characters sometimes clip through scenery in Uncharted 2; a crash at the end of
   one Uncharted 2 cinematic was seen once.
 
@@ -105,6 +108,9 @@ Built on the work of:
 - [BilalReloaded's Uncharted PC port](https://github.com/bc160201983/Uncharted-The-Nathan-Drake-Collection-PC-port)
   (GPL-2.0-or-later), as Tutuzaooo brought it to the Linux fork: the render resolution and the
   upscaling presets (scripts/render_res.py, cutscene movie scaling in gpu/shim/bbport_movie.cpp).
+- [revvv991/uncharted-android](https://github.com/revvv991/uncharted-android) (GPL-2.0-or-later):
+  the batched skinning (vk_skin_batch.cpp and its host shaders), the constant copies bound again,
+  the GPU threads on the fast cores and fewer wakeups of the game's submission thread.
 - [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) and
   [ARMSX2](https://github.com/ARMSX2/ARMSX2): the LSFG frame generation passes, from
   [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)'s

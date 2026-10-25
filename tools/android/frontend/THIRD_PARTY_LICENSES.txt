@@ -22,6 +22,9 @@ is at the end of this file. The sources come from:
 - fexdroid (https://github.com/cobrabm12/fexdroid, MIT): the origin of the
   Android app's first display and input bridges, which Bloodborne-Android grew from.
 - Menu icons: Material Design icons (Apache-2.0, Google).
+- revvv991's uncharted-android (https://github.com/revvv991/uncharted-android,
+  GPL-2.0-or-later): the batched skinning and its shaders, the constant copies bound again,
+  the GPU threads on the fast cores.
 - LSFG frame generation (GPL-3.0-or-later): Eden's (https://git.eden-emu.dev/eden-emu/eden,
   PR #4263), based on lsfg-vk (https://github.com/PancakeTAS/lsfg-vk), as ARMSX2
   (https://github.com/ARMSX2/ARMSX2) ported it. Its shaders come from the player's own
