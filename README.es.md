@@ -2,6 +2,10 @@
 
 **[Read in English](README.md)** · **[RedVorteX-TV en YouTube](https://youtube.com/@redvortex-tv)**
 
+Un fork de [Supermedo/uncharted_pc](https://github.com/Supermedo/uncharted_pc), a través de
+[spacepepperoni/uncharted_Linux](https://github.com/spacepepperoni/uncharted_Linux), su fork para
+Linux y Steam Deck (esa es la versión para la Steam Deck y Linux x86-64).
+
 Uncharted 1, 2 y 3 de la colección de PS4 en consolas portátiles y móviles ARM con GPU Snapdragon:
 Linux (AYN Odin 3 con Armada, una AppImage) y Android (un APK). El código x86-64 de los juegos se
 ejecuta con FEXCore y sus gráficos van a Vulkan (Mesa Turnip en Adreno), sobre la misma base de port
@@ -27,8 +31,8 @@ proyecto de fans no oficial, sin relación con Sony Interactive Entertainment ni
   exigentes.
 - Resolución de render: 1080p, 720p (el modo 720p del propio juego en PS4) o 540p (para GPU menos
   potentes), en el menú del juego (L3 + R3, y luego "Save and restart the game") y en los launchers
-  (Linux: Ajustes; Android: Gráficos). 540p le quita carga a la GPU; en la Thor, Uncharted 2 sigue a unos 20-25 FPS con ella,
-  porque ahora el límite es cómo se esperan entre sí el juego, el procesador y la GPU.
+  (Linux: Ajustes; Android: Gráficos). 540p le quita carga a la GPU. Con el skinning por lotes de la
+  0.1.6, Uncharted 2 a 540p va a unos 25-45 FPS en la Thor, según la zona.
 - Problemas conocidos: en Uncharted 2 los personajes a veces atraviesan partes del escenario; un
   cierre al final de una cinemática de Uncharted 2 se ha visto una vez.
 
@@ -105,6 +109,13 @@ Sobre el trabajo de:
 - [Pepin208/uncharted_pc_linux](https://github.com/Pepin208/uncharted_pc_linux): el primer intento
   en ARM del que partió este port.
 - uncharted_pc-dev de Mevlock: el parche que salta el menú de la colección.
+- [El port de PC de Uncharted de BilalReloaded](https://github.com/bc160201983/Uncharted-The-Nathan-Drake-Collection-PC-port)
+  (GPL-2.0 o posterior), tal como Tutuzaooo lo llevó al fork de Linux: la resolución de render y
+  los presets de escalado (scripts/render_res.py, el escalado de las cinemáticas en
+  gpu/shim/bbport_movie.cpp).
+- [revvv991/uncharted-android](https://github.com/revvv991/uncharted-android) (GPL-2.0 o
+  posterior): el skinning por lotes (vk_skin_batch.cpp y sus shaders), las constantes reutilizadas,
+  los hilos de GPU en los núcleos rápidos y menos despertares del hilo de envíos del juego.
 - [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) y
   [ARMSX2](https://github.com/ARMSX2/ARMSX2): los pases de generación de fotogramas LSFG, a partir
   de los de [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)

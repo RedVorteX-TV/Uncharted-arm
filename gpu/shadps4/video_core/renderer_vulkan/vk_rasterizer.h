@@ -270,7 +270,7 @@ private:
                   const IndirectDraw* indirect = nullptr);
     /// Everything of a direct dispatch after the pipeline selection (GPU thread or stage B).
     void DispatchRecord(const ComputePipeline* pipeline);
-    /// Batched skinning (vk_skin_batch.cpp, BB_SKIN_BATCH=1; from revvv991's uncharted-android):
+    /// Batched skinning (vk_skin_batch.cpp, BB_SKIN_BATCH=0 off; from revvv991's uncharted-android):
     /// the skinning dispatches collected on stage B and recorded as one dispatch. AddSkinJob:
     /// false when the dispatch takes the regular path (the batch is recorded first; `bound`: its
     /// resources are bound already). FlushSkinBatch: records the batch, if any.
@@ -572,7 +572,7 @@ private:
     /// Submissions (prepared draws) kept alive until stage B reaches the position.
     std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
     // Before draw_pipe: destroyed after its thread, which may record the batch (idle handler).
-    std::shared_ptr<SkinBatch> skin_batch; ///< BB_SKIN_BATCH=1 (vk_skin_batch.cpp)
+    std::shared_ptr<SkinBatch> skin_batch; ///< the batched skinning (vk_skin_batch.cpp)
     std::unique_ptr<DrawPipe> draw_pipe;
 };
 
