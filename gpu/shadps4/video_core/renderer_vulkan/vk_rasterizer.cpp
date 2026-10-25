@@ -261,10 +261,12 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     if (DrawPipeWanted()) {
         constant_ring = std::make_unique<ConstantRing>(instance, scheduler);
         draw_pipe = std::make_unique<DrawPipe>(&RunDrawPacket, this);
+        InitSkinBatch();
     }
     // bbport: this thread joins the texture binding helper before it changes image state.
     runtime.SetImageAccessHook(&JoinBindHelper, this);
     scheduler.SetSubmitCallback([this](Vulkan::SubmitInfo& info) {
+        FlushSkinBatchForSubmit();
         runtime.FlushBarriers();
         buffer_cache.SubmitPendingArenaBinds(info);
     });
@@ -558,6 +560,7 @@ struct TaskPacket {
     PacketKind kind;
     u32 size;
     Rasterizer::OrderedTask task;
+    bool passes_skin_batch; ///< a fence write: may run before the held skinning batch
 };
 struct DrawPacket {
     PacketKind kind;
@@ -953,7 +956,8 @@ void Rasterizer::RetireSubmission() {
     }
 }
 
-bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 toggle) {
+bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 toggle,
+                            bool passes_skin_batch) {
     if (!UseDrawPipe() || BbToggle::Disabled(toggle)) {
         DrainDrawPipe(DrawPipe::ReasonRasterizer);
         task(*this, static_cast<const u8*>(data));
@@ -961,7 +965,7 @@ bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 to
     }
     const u32 total = sizeof(TaskPacket) + AlignPacket(size);
     u8* out = draw_pipe->Begin(total);
-    *reinterpret_cast<TaskPacket*>(out) = {PacketKind::Task, size, task};
+    *reinterpret_cast<TaskPacket*>(out) = {PacketKind::Task, size, task, passes_skin_batch};
     std::memcpy(out + sizeof(TaskPacket), data, size);
     draw_pipe->Commit(total);
     return true;
@@ -971,6 +975,9 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
     auto& self = *static_cast<Rasterizer*>(context);
     if (*reinterpret_cast<const PacketKind*>(data) == PacketKind::Task) {
         const auto& task = *reinterpret_cast<const TaskPacket*>(data);
+        if (!task.passes_skin_batch) {
+            self.FlushSkinBatch(0, reinterpret_cast<u64>(task.task)); // the batch first
+        }
         task.task(self, data + sizeof(TaskPacket));
         return;
     }
@@ -1069,6 +1076,10 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
         }
     }
     ASSERT(static_cast<u32>(in - data) == size);
+    if (!cs || indirect) {
+        // Direct dispatches decide in DispatchRecord (the skinning batch's own join it).
+        self.FlushSkinBatch(0, packet.kind == PacketKind::Special ? 1 : 2);
+    }
     stage_regs = &regs;
     self.pipe_cb_extent = packet.cb_extent;
     self.pipe_db_extent = packet.db_extent;
@@ -1974,6 +1985,11 @@ void Rasterizer::DispatchDirect() {
 }
 
 void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
+    // The skinning batch: other dispatches record it first, its own join it.
+    const bool skin_job = IsSkinBatchShader(pipeline->GetStage(Shader::SwStage::Compute).pgm_hash);
+    if (!skin_job) {
+        FlushSkinBatch(0, pipeline->GetStage(Shader::SwStage::Compute).pgm_hash);
+    }
     FrameCapture::Poll();
     gbuffer_draw = false;
 
@@ -2035,7 +2051,11 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         }
     }
 
-    if (!BindResources(pipeline)) {
+    bool skin_bound = false;
+    if (skin_job && AddSkinJob(pipeline, cs_program, skin_bound)) {
+        return;
+    }
+    if (!skin_bound && !BindResources(pipeline)) {
         return;
     }
     NoteSmallWrittenBuffers(cs);

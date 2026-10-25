@@ -101,16 +101,18 @@ public:
     std::array<u64, NumReasons> drains_by_reason{};
     std::array<u64, NumReasons> cycles_by_reason{};
 
-    /// Stage A: waits until stage B has run every committed packet.
+    /// Stage A: waits until stage B has run every committed packet and recorded the work it
+    /// held back (SetHeld).
     void Drain(u32 reason = ReasonRasterizer) {
-        if (consumed.load(std::memory_order_acquire) == head) {
+        if (Done()) {
             return;
         }
         ++drains;
         const u32 slot = reason < NumReasons ? reason : ReasonRasterizer;
         ++drains_by_reason[slot];
+        drain_requested.store(true, std::memory_order_seq_cst);
         const u64 start = BbCpu::Cycles();
-        for (u32 spins = 0; consumed.load(std::memory_order_acquire) != head; ++spins) {
+        for (u32 spins = 0; !Done(); ++spins) {
             if (spins < 4096) {
                 BbCpu::Pause();
             } else if (spins < 4096 + 32) {
@@ -118,14 +120,17 @@ public:
             } else {
                 // Linux fork: sleep until stage B moves on. Yielding in a loop kept a core busy:
                 // on the Steam Deck (8 threads) that time belongs to the game's job workers.
+                // The flag, then the count, then the condition (seq_cst): stage B either sees
+                // the flag after its store (and counts) or this check sees its store.
                 drainer_waiting.store(true, std::memory_order_seq_cst);
-                const u64 seen = consumed.load(std::memory_order_seq_cst);
-                if (seen != head) {
-                    consumed.wait(seen, std::memory_order_seq_cst);
+                const u32 seen = drain_wake.load(std::memory_order_seq_cst);
+                if (!Done()) {
+                    drain_wake.wait(seen, std::memory_order_seq_cst);
                 }
                 drainer_waiting.store(false, std::memory_order_relaxed);
             }
         }
+        drain_requested.store(false, std::memory_order_relaxed);
         const u64 waited = BbCpu::Cycles() - start;
         drain_cycles += waited;
         cycles_by_reason[slot] += waited;
@@ -140,7 +145,24 @@ public:
     }
 
     [[nodiscard]] bool Idle() const noexcept {
-        return consumed.load(std::memory_order_acquire) == head;
+        return Done();
+    }
+
+    /// Stage B work held back between packets (the skinning batch, vk_skin_batch.cpp; from
+    /// revvv991's uncharted-android). The handler records it: stage B runs it when stage A
+    /// drains and before it sleeps (any other packet records it first itself). Set before
+    /// packets flow.
+    using IdleHandler = void (*)(void* context);
+    void SetIdleHandler(IdleHandler idle) noexcept {
+        idle_handler = idle;
+    }
+    /// Stage B: whether work is held back (set while running the packet, before its position
+    /// is published, so a drain sees it).
+    void SetHeld(bool held) noexcept {
+        held_work.store(held, std::memory_order_seq_cst);
+        if (!held) {
+            WakeDrain();
+        }
     }
 
     /// Statistics (stage A): packets, drains that had to wait, cycles waited, cycles stage B
@@ -157,6 +179,11 @@ private:
 
     static constexpr u32 Align(u32 size) {
         return (size + 63) & ~63u;
+    }
+
+    [[nodiscard]] bool Done() const noexcept {
+        return consumed.load(std::memory_order_seq_cst) == head &&
+               !held_work.load(std::memory_order_seq_cst);
     }
 
     void WaitForSpace(u64 at, u64 size) {
@@ -188,8 +215,16 @@ private:
                     if (stop.stop_requested()) {
                         return;
                     }
+                    // Held work goes out at once when stage A drains.
+                    if (held_work.load(std::memory_order_relaxed) &&
+                        drain_requested.load(std::memory_order_acquire)) {
+                        idle_handler(context);
+                    }
                     BbCpu::Pause();
                     if (!(spins & 255) && std::chrono::steady_clock::now() >= spin_until) {
+                        if (held_work.load(std::memory_order_relaxed)) {
+                            idle_handler(context); // not across a sleep
+                        }
                         const u32 seen = wake.load(std::memory_order_seq_cst);
                         sleeping.store(true, std::memory_order_seq_cst);
                         if (published.load(std::memory_order_seq_cst) == at &&
@@ -218,8 +253,12 @@ private:
     /// Stage B: progress, and a wake-up for a sleeping Drain() (seq_cst against its flag).
     void Consumed(u64 at) {
         consumed.store(at, std::memory_order_seq_cst);
+        WakeDrain();
+    }
+    void WakeDrain() noexcept {
         if (drainer_waiting.load(std::memory_order_seq_cst)) {
-            consumed.notify_one();
+            drain_wake.fetch_add(1, std::memory_order_seq_cst);
+            drain_wake.notify_one();
         }
     }
 
@@ -231,7 +270,11 @@ private:
     u32 pending_size = 0;
     alignas(64) std::atomic<u64> published{0};
     alignas(64) std::atomic<u64> consumed{0};
-    std::atomic<bool> drainer_waiting{false}; ///< Linux fork: Drain() sleeps on `consumed`
+    std::atomic<bool> drainer_waiting{false}; ///< Linux fork: Drain() sleeps on drain_wake
+    std::atomic<u32> drain_wake{0};
+    std::atomic<bool> held_work{false};       ///< stage B
+    std::atomic<bool> drain_requested{false}; ///< stage A: a drain is waiting
+    IdleHandler idle_handler = nullptr;
     alignas(64) std::atomic<u32> wake{0};
     std::atomic<bool> sleeping{false};
     std::atomic<u32> stage_b_tid{0};

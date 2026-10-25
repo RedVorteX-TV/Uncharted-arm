@@ -1774,7 +1774,11 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
                 const auto* fence_packet = reinterpret_cast<const PM4CmdReleaseMem*>(header);
                 if (fence_packet->data_sel.Value() != DataSelect::GdsMemStore) {
                     const ComputeFence fence{*fence_packet, queue.pipe_id};
-                    rasterizer->RunInOrder(&RunComputeReleaseMem, &fence, sizeof(fence));
+                    // A fence write only: it may pass the held skinning batch (written when the
+                    // recording reaches it, not when the GPU is done; the batch took its inputs
+                    // when it bound them).
+                    rasterizer->RunInOrder(&RunComputeReleaseMem, &fence, sizeof(fence),
+                                           BbToggle::PipelinedTasks, true);
                     break;
                 }
                 rasterizer->DrainDrawPipe(static_cast<u32>(opcode));

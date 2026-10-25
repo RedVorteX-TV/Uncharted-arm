@@ -124,8 +124,10 @@ public:
     /// thread while the draw pipeline is in use (PipelinedTasks), else here after a drain.
     using OrderedTask = void (*)(Rasterizer& rasterizer, const u8* data);
     /// Returns true when the task was handed to the recording thread (not run yet).
+    /// `passes_skin_batch`: a fence write only, it may run before the held skinning batch is
+    /// recorded (vk_skin_batch.cpp).
     bool RunInOrder(OrderedTask task, const void* data, u32 size,
-                    u64 toggle = BbToggle::PipelinedTasks);
+                    u64 toggle = BbToggle::PipelinedTasks, bool passes_skin_batch = false);
     /// Stage A: the draw pipe position after the last handed-over packet, and whether the
     /// recording thread has run everything before a position.
     [[nodiscard]] u64 DrawPipeHead() const {
@@ -268,6 +270,19 @@ private:
                   const IndirectDraw* indirect = nullptr);
     /// Everything of a direct dispatch after the pipeline selection (GPU thread or stage B).
     void DispatchRecord(const ComputePipeline* pipeline);
+    /// Batched skinning (vk_skin_batch.cpp, BB_SKIN_BATCH=1; from revvv991's uncharted-android):
+    /// the skinning dispatches collected on stage B and recorded as one dispatch. AddSkinJob:
+    /// false when the dispatch takes the regular path (the batch is recorded first; `bound`: its
+    /// resources are bound already). FlushSkinBatch: records the batch, if any.
+    void InitSkinBatch();
+    [[nodiscard]] bool IsSkinBatchShader(u64 hash) const noexcept;
+    bool AddSkinJob(const ComputePipeline* pipeline, const AmdGpu::ComputeProgram& program,
+                    bool& bound);
+    /// `cause` (statistics): what ended the batch: a task function, a shader hash, or 0.
+    void FlushSkinBatch(u32 reason = 0, u64 cause = 0);
+    static void FlushSkinBatchIdle(void* rasterizer);
+    void FlushSkinBatchForSubmit();
+    struct SkinBatch;
     /// The compute registers of the dispatch being recorded.
     const AmdGpu::ComputeProgram& CsRegs() const;
     static void RunDrawPacket(void* rasterizer, const u8* packet, u32 size);
@@ -556,6 +571,8 @@ private:
     std::unique_ptr<ConstantRing> constant_ring;
     /// Submissions (prepared draws) kept alive until stage B reaches the position.
     std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
+    // Before draw_pipe: destroyed after its thread, which may record the batch (idle handler).
+    std::shared_ptr<SkinBatch> skin_batch; ///< BB_SKIN_BATCH=1 (vk_skin_batch.cpp)
     std::unique_ptr<DrawPipe> draw_pipe;
 };
 
