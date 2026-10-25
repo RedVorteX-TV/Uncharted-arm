@@ -24,6 +24,9 @@ void SetCurrentThreadPriority(ThreadPriority new_priority);
 
 void SetCurrentThreadName(const char* name);
 
+/// bbport: the host GPU threads on BB_RENDER_CPUS (pinned) or on any CPU (Linux).
+void SetRenderAffinity(bool pinned);
+
 void SetThreadName(void* thread, const char* name);
 
 bool AccurateSleep(std::chrono::nanoseconds duration, std::chrono::nanoseconds* remaining,

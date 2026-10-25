@@ -189,8 +189,14 @@ void Liverpool::Process(std::stop_token stoken) {
                 queue.front_started = false;
 
                 --num_submits;
-                std::scoped_lock lock2{submit_mutex};
-                submit_cv.notify_all();
+                // Only the retirement that empties the queue can satisfy a waiter (WaitGpuIdle:
+                // num_submits == 0). From revvv991's uncharted-android: waking on every one of
+                // the ~100 submissions of a frame cost a futex call here and a context switch of
+                // the guest's submission thread there (4300 switches/s in U3).
+                if (num_submits == 0) {
+                    std::scoped_lock lock2{submit_mutex};
+                    submit_cv.notify_all();
+                }
             }
         }
 
@@ -1774,7 +1780,11 @@ Liverpool::Task Liverpool::ProcessCompute(std::span<const u32> acb, u32 vqid) {
                 const auto* fence_packet = reinterpret_cast<const PM4CmdReleaseMem*>(header);
                 if (fence_packet->data_sel.Value() != DataSelect::GdsMemStore) {
                     const ComputeFence fence{*fence_packet, queue.pipe_id};
-                    rasterizer->RunInOrder(&RunComputeReleaseMem, &fence, sizeof(fence));
+                    // A fence write only: it may pass the held skinning batch (written when the
+                    // recording reaches it, not when the GPU is done; the batch took its inputs
+                    // when it bound them).
+                    rasterizer->RunInOrder(&RunComputeReleaseMem, &fence, sizeof(fence),
+                                           BbToggle::PipelinedTasks, true);
                     break;
                 }
                 rasterizer->DrainDrawPipe(static_cast<u32>(opcode));

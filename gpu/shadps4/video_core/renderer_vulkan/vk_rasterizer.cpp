@@ -261,10 +261,12 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     if (DrawPipeWanted()) {
         constant_ring = std::make_unique<ConstantRing>(instance, scheduler);
         draw_pipe = std::make_unique<DrawPipe>(&RunDrawPacket, this);
+        InitSkinBatch();
     }
     // bbport: this thread joins the texture binding helper before it changes image state.
     runtime.SetImageAccessHook(&JoinBindHelper, this);
     scheduler.SetSubmitCallback([this](Vulkan::SubmitInfo& info) {
+        FlushSkinBatchForSubmit();
         runtime.FlushBarriers();
         buffer_cache.SubmitPendingArenaBinds(info);
     });
@@ -558,6 +560,7 @@ struct TaskPacket {
     PacketKind kind;
     u32 size;
     Rasterizer::OrderedTask task;
+    bool passes_skin_batch; ///< a fence write: may run before the held skinning batch
 };
 struct DrawPacket {
     PacketKind kind;
@@ -707,6 +710,36 @@ bool Rasterizer::PendingWriteOverlaps(VAddr address, u64 size) {
     return false;
 }
 
+namespace {
+// Stream dedupe (BB_STREAM_DEDUPE=0 turns it off; from revvv991's uncharted-android, where U2's
+// palace copied 1.37 GB/s of constants into the ring, 80% of them bytes already there). Stage A
+// only.
+struct StreamDedupe {
+    struct Entry {
+        VAddr address;
+        u64 hash;
+        u64 position; ///< ring position of the copy
+        u64 offset;   ///< ring offset of the copy
+        u64 size;
+    };
+    std::array<Entry, 8192> table{};
+
+    Entry& Slot(VAddr address, u64 size) {
+        const u64 key = (address ^ (size << 40)) * 0x9E3779B97F4A7C15ull;
+        return table[key >> (64 - 13)];
+    }
+};
+StreamDedupe g_stream_dedupe;
+
+bool StreamDedupeEnabled() {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_STREAM_DEDUPE");
+        return !(env && env[0] == '0');
+    }();
+    return enabled;
+}
+} // namespace
+
 void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
                            boost::container::static_vector<RingBinding, Shader::NUM_BUFFERS>& out) {
     const PreparedStage* prepared_stage = nullptr;
@@ -730,6 +763,23 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     }();
     const auto copy = [&](u32 index, const void* source, VAddr address, u64 size,
                           u64 full_size) {
+        // Stream dedupe (from revvv991's uncharted-android): bytes (hashed) the same as this
+        // address's copy in the ring's current epoch bind that copy instead of copying again.
+        StreamDedupe::Entry* entry = nullptr;
+        u64 hash = 0;
+        if (!source && StreamDedupeEnabled() && memory->IsHostMapped(address, size)) {
+            hash = XXH3_64bits(reinterpret_cast<const void*>(address), size);
+            entry = &g_stream_dedupe.Slot(address, size);
+            if (entry->address == address && entry->size == size && entry->hash == hash &&
+                entry->position >= constant_ring->EpochStart() &&
+                !BbToggle::Disabled(BbToggle::StreamDedupe)) {
+                out.push_back({index, static_cast<u32>(size), entry->offset, address,
+                               static_cast<u32>(full_size)});
+                BbStats::constant_reused.fetch_add(1, std::memory_order_relaxed);
+                BbStats::constant_reused_bytes.fetch_add(size, std::memory_order_relaxed);
+                return;
+            }
+        }
         const auto offset = constant_ring->Allocate(size, alignment);
         if (!offset) {
             return;
@@ -737,6 +787,9 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
         u8* dst = constant_ring->Data(*offset);
         if (source) {
             std::memcpy(dst, source, size);
+        } else if (entry) {
+            std::memcpy(dst, reinterpret_cast<const void*>(address), size); // mapped
+            *entry = {address, hash, constant_ring->LastAllocation(), *offset, size};
         } else {
             memory->CopySparseMemory(address, dst, size);
         }
@@ -832,6 +885,10 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     u32 num_stages = 0;
     u32 size = sizeof(DrawPacket) + AlignPacket(num_blocks * sizeof(u16)) +
                num_blocks * AmdGpu::RegDirty::BlockWords * sizeof(u32);
+    if (constant_ring && StreamDedupeEnabled()) {
+        constant_ring->EnableEpochs();
+        constant_ring->NextEpochIfFull();
+    }
     for (const auto* stage : stages) {
         if (stage) {
             auto& ring = rings[num_stages];
@@ -953,7 +1010,8 @@ void Rasterizer::RetireSubmission() {
     }
 }
 
-bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 toggle) {
+bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 toggle,
+                            bool passes_skin_batch) {
     if (!UseDrawPipe() || BbToggle::Disabled(toggle)) {
         DrainDrawPipe(DrawPipe::ReasonRasterizer);
         task(*this, static_cast<const u8*>(data));
@@ -961,7 +1019,7 @@ bool Rasterizer::RunInOrder(OrderedTask task, const void* data, u32 size, u64 to
     }
     const u32 total = sizeof(TaskPacket) + AlignPacket(size);
     u8* out = draw_pipe->Begin(total);
-    *reinterpret_cast<TaskPacket*>(out) = {PacketKind::Task, size, task};
+    *reinterpret_cast<TaskPacket*>(out) = {PacketKind::Task, size, task, passes_skin_batch};
     std::memcpy(out + sizeof(TaskPacket), data, size);
     draw_pipe->Commit(total);
     return true;
@@ -971,6 +1029,9 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
     auto& self = *static_cast<Rasterizer*>(context);
     if (*reinterpret_cast<const PacketKind*>(data) == PacketKind::Task) {
         const auto& task = *reinterpret_cast<const TaskPacket*>(data);
+        if (!task.passes_skin_batch) {
+            self.FlushSkinBatch(0, reinterpret_cast<u64>(task.task)); // the batch first
+        }
         task.task(self, data + sizeof(TaskPacket));
         return;
     }
@@ -1069,6 +1130,10 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
         }
     }
     ASSERT(static_cast<u32>(in - data) == size);
+    if (!cs || indirect) {
+        // Direct dispatches decide in DispatchRecord (the skinning batch's own join it).
+        self.FlushSkinBatch(0, packet.kind == PacketKind::Special ? 1 : 2);
+    }
     stage_regs = &regs;
     self.pipe_cb_extent = packet.cb_extent;
     self.pipe_db_extent = packet.db_extent;
@@ -1974,6 +2039,11 @@ void Rasterizer::DispatchDirect() {
 }
 
 void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
+    // The skinning batch: other dispatches record it first, its own join it.
+    const bool skin_job = IsSkinBatchShader(pipeline->GetStage(Shader::SwStage::Compute).pgm_hash);
+    if (!skin_job) {
+        FlushSkinBatch(0, pipeline->GetStage(Shader::SwStage::Compute).pgm_hash);
+    }
     FrameCapture::Poll();
     gbuffer_draw = false;
 
@@ -2035,7 +2105,11 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
         }
     }
 
-    if (!BindResources(pipeline)) {
+    bool skin_bound = false;
+    if (skin_job && AddSkinJob(pipeline, cs_program, skin_bound)) {
+        return;
+    }
+    if (!skin_bound && !BindResources(pipeline)) {
         return;
     }
     NoteSmallWrittenBuffers(cs);

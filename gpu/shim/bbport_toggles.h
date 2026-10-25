@@ -70,6 +70,9 @@ enum : std::uint64_t {
     // when nothing moves. Static-camera flicker of railings/window bars p99.9 -45% (2026-10-03).
     TaaKeepNearerHistory = 1ull << 55,
     SceneMipBias = 1ull << 57, ///< negative LOD bias of G-buffer samplers at reduced scene sizes
+    SkinBatch = 1ull << 59, ///< the batched skinning (BB_SKIN_BATCH=1, vk_skin_batch.cpp)
+    RenderCpus = 1ull << 60,  ///< the host GPU threads on BB_RENDER_CPUS (common/thread.cpp)
+    StreamDedupe = 1ull << 61, ///< constant copies bound again (Rasterizer::CollectRingBindings)
     // Bits 20-29 are used as raw debug toggles by the camera/object motion and the upscaler.
 };
 inline bool Disabled(std::uint64_t bit) {
@@ -93,6 +96,8 @@ inline std::atomic<std::uint64_t> gpu_late_deliveries{0};
 /// copies, bytes, and copies by size (<= 256 B, <= 1 KB, <= 4 KB, larger).
 inline std::atomic<std::uint64_t> constant_copies{0}, constant_bytes{0};
 inline std::array<std::atomic<std::uint64_t>, 4> constant_sizes{};
+/// ... and those bound again from an earlier copy with the same bytes (stream dedupe).
+inline std::atomic<std::uint64_t> constant_reused{0}, constant_reused_bytes{0};
 inline std::atomic<std::int64_t> hot_pages{0};
 /// Stall diagnostics (BB_FRAME_STATS): per-frame deltas printed for frames over 40 ms.
 inline std::atomic<std::uint64_t> images_registered{0};

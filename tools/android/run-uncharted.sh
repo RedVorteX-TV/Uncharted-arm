@@ -167,6 +167,18 @@ while :; do
             # a frame each waited for the guest copies (40% of the GPU command thread's time); with
             # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
             export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
+            # Measurement build: the batched skinning (needs the draw pipeline) and GPU time per
+            # pass every 5 s; the host GPU threads on the Thor's fast cores (3-7). Every 40 s the
+            # render-thread pinning and the constant dedupe switch off and on again (toggles
+            # 1 << 60 and 1 << 61, "Runtime: disabled optimizations mask=" in the log).
+            export BB_SKIN_BATCH=${BB_SKIN_BATCH:-1}
+            export BB_GPU_PROFILE=${BB_GPU_PROFILE:-1}
+            export BB_RENDER_CPUS=${BB_RENDER_CPUS:-3-7}
+            export BB_TOGGLE_FILE="$TMPDIR/toggles"
+            mkdir -p "$TMPDIR"; echo 0 > "$BB_TOGGLE_FILE"
+            ( while kill -0 $$ 2>/dev/null; do
+                  sleep 40; echo 3458764513820540928 > "$BB_TOGGLE_FILE"; sleep 40; echo 0 > "$BB_TOGGLE_FILE"
+              done ) &
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
