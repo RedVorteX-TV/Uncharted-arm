@@ -188,6 +188,17 @@ while :; do
         done
         if [ "$count" -ge 4 ]; then export BB_RENDER_CPUS=$fast; echo "Render threads: CPUs $fast"; fi
     fi
+    # Measurement build: the draw pipeline (and with it the batched skinning) at every render
+    # resolution; every 40 s it switches off and on again (toggle 1 << 37, "Runtime: disabled
+    # optimizations mask=" in the log), with GPU time per pass every 5 s.
+    export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1} BB_GPU_PROFILE=${BB_GPU_PROFILE:-1}
+    if [ -z "${BB_TOGGLE_FILE:-}" ]; then
+        export BB_TOGGLE_FILE="$TMPDIR/toggles"
+        mkdir -p "$TMPDIR"; echo 0 > "$BB_TOGGLE_FILE"
+        ( while kill -0 $$ 2>/dev/null; do
+              sleep 40; echo 137438953472 > "$BB_TOGGLE_FILE"; sleep 40; echo 0 > "$BB_TOGGLE_FILE"
+          done ) &
+    fi
     # BB_GAME_CPUS: the CPUs the game may run on (taskset -c list), e.g. 2-7.
     [ -n "${BB_GAME_CPUS:-}" ] && set -- /system/bin/taskset -c "$BB_GAME_CPUS" "$@"
     rm -f "$loadexec"
