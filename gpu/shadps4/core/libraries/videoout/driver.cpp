@@ -533,10 +533,14 @@ void VideoOutDriver::Flip(const Request& req) {
                 }
                 const double per_frame = frames ? 1.0 / frames : 0.0;
                 std::printf("Constants: %.0f KB/frame in %.0f copies (%.0f up to 256 B, %.0f up to "
-                            "1 KB, %.0f up to 4 KB, %.0f larger)\n",
+                            "1 KB, %.0f up to 4 KB, %.0f larger); %.0f KB/frame in %.0f bound again\n",
                             BbStats::constant_bytes.exchange(0) / 1024.0 * per_frame,
                             copies * per_frame, sizes[0] * per_frame, sizes[1] * per_frame,
-                            sizes[2] * per_frame, sizes[3] * per_frame);
+                            sizes[2] * per_frame, sizes[3] * per_frame,
+                            BbStats::constant_reused_bytes.exchange(0) / 1024.0 * per_frame,
+                            BbStats::constant_reused.exchange(0) * per_frame);
+                // The host GPU threads on BB_RENDER_CPUS unless toggle 60 (common/thread.cpp).
+                Common::SetRenderAffinity(!BbToggle::Disabled(BbToggle::RenderCpus));
             }
             static u32 memory_windows = 0;
             if (memory_windows++ % 6 == 0) {
