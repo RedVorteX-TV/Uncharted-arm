@@ -156,35 +156,64 @@ final class Strings {
         put("saves_none", "There are no saves yet", "Todavía no hay partidas guardadas");
         put("saves_not_zip", "That file has no saves (a zip with a savedata folder)",
             "Ese archivo no tiene partidas (un zip con una carpeta savedata)");
-        put("gfx", "Graphics patches", "Parches gráficos");
-        put("gfx_note", "Optional changes to the game's own graphics settings, from the Bachata S4 catalog. "
-                + "Each one is checked against your game's files and skipped if it does not match. They lower "
-                + "image quality; measure the gain in your device before keeping them. Applied at the next start.",
-            "Cambios opcionales en los ajustes gráficos del propio juego, del catálogo de Bachata S4. Cada uno se "
-                + "comprueba con los archivos de tu juego y se omite si no coincide. Bajan la calidad de imagen; "
-                + "mide la mejora en tu dispositivo antes de dejarlos. Se aplican al siguiente arranque.");
+        put("gfx", "Graphics effects", "Efectos gráficos");
+        put("gfx_note", "The game's own effects, all on as in the original game. Switching one off "
+                + "applies a patch from the Bachata S4 catalog to your game's executable (version 1.00 or 1.02, "
+                + "checked before it is applied): less GPU work, a plainer picture. Measure the gain on your "
+                + "device before keeping it. Applied at the next start.",
+            "Los efectos del propio juego, todos activados como en el original. Al desactivar uno se "
+                + "aplica un parche del catálogo de Bachata S4 al ejecutable de tu juego (versión 1.00 o 1.02, "
+                + "comprobado antes de aplicarlo): menos trabajo para la GPU, una imagen más sencilla. Mide la "
+                + "mejora en tu dispositivo antes de dejarlo. Se aplica al siguiente arranque.");
         put("gfx_shadows", "Shadow cascades", "Cascadas de sombras");
         put("gfx_shadows_hint", "Fewer shadow maps: less GPU work, shadows end closer.",
             "Menos mapas de sombras: menos trabajo de GPU, las sombras acaban más cerca.");
         put("gfx_shadows_0", "Original", "Original");
         put("gfx_shadows_2", "2", "2");
         put("gfx_shadows_1", "1", "1");
-        put("gfx_skip_logos", "Skip startup logos", "Saltar los logos de inicio");
-        put("gfx_no_water_reflections", "No water reflections", "Sin reflejos del agua");
-        put("gfx_no_ssao", "No ambient occlusion (SSAO)", "Sin oclusión ambiental (SSAO)");
-        put("gfx_no_fog", "No fog", "Sin niebla");
-        put("gfx_no_volumetric", "No volumetric lights", "Sin luces volumétricas");
-        put("gfx_no_motion_blur", "No motion blur", "Sin desenfoque de movimiento");
-        put("gfx_no_dof", "No depth of field", "Sin profundidad de campo");
-        put("gfx_no_bloom", "No bloom", "Sin resplandor (bloom)");
-        put("gfx_no_aa", "No anti-aliasing", "Sin antialiasing");
-        put("gfx_no_aniso", "No anisotropic filtering", "Sin filtrado anisotrópico");
-        put("gfx_no_dynamic_lights", "No dynamic lights", "Sin luces dinámicas");
-        put("gfx_no_sun_ao", "No sunlight ambient occlusion", "Sin oclusión ambiental del sol");
-        put("gfx_draw_distance_40", "Draw distance 40 m", "Distancia de dibujado 40 m");
-        put("gfx_draw_distance_40_hint", "Extreme: distant scenery disappears.",
-            "Extremo: el escenario lejano desaparece.");
-        put("gfx_off", "Turn all off", "Desactivar todos");
+        put("fx_logos", "Startup logos (Uncharted 1 and 2)", "Logos de inicio (Uncharted 1 y 2)");
+        put("fx_logos_hint", "Off: the games start without the studio logos. Not available for Uncharted 3.",
+            "Desactivado: los juegos arrancan sin los logos de los estudios. No disponible para Uncharted 3.");
+        put("fx_water_reflections", "Water reflections", "Reflejos del agua");
+        put("fx_ssao", "Ambient occlusion (SSAO)", "Oclusión ambiental (SSAO)");
+        put("fx_fog", "Fog", "Niebla");
+        put("fx_volumetric", "Volumetric lights", "Luces volumétricas");
+        put("fx_motion_blur", "Motion blur", "Desenfoque de movimiento");
+        put("fx_dof", "Depth of field", "Profundidad de campo");
+        put("fx_bloom", "Bloom", "Resplandor (bloom)");
+        put("fx_aa", "The game's anti-aliasing", "Antialiasing del juego");
+        put("fx_aniso", "Anisotropic filtering", "Filtrado anisotrópico");
+        put("fx_dynamic_lights", "Dynamic lights", "Luces dinámicas");
+        put("fx_sun_ao", "Sunlight ambient occlusion", "Oclusión ambiental del sol");
+        put("fx_draw_distance", "Full draw distance", "Distancia de dibujado completa");
+        put("fx_draw_distance_hint", "Off: 40 m, extreme; distant scenery disappears.",
+            "Desactivado: 40 m, extremo; el escenario lejano desaparece.");
+        put("gfx_original", "Restore the original effects", "Restaurar los efectos originales");
+        put("upscaling", "Upscaling", "Escalado");
+        put("upscaling_hint", "FSR 1 enlarges the frame alone: sharp, no anti-aliasing, almost free. FSR 3.1 and "
+                + "GSR 2 (Snapdragon Game Super Resolution, made for Adreno GPUs) rebuild each frame with the game's "
+                + "depth and motion: they smooth edges and, with a quality below Native, draw fewer pixels and "
+                + "rebuild 1920 × 1080. GSR 2 costs less GPU time than FSR 3.1.",
+            "FSR 1 solo amplía la imagen: nítida, sin antialiasing, casi gratis. FSR 3.1 y GSR 2 (Snapdragon Game "
+                + "Super Resolution, hecho para GPU Adreno) reconstruyen cada fotograma con la profundidad y el "
+                + "movimiento del juego: suavizan los bordes y, con una calidad por debajo de Nativa, dibujan menos "
+                + "píxeles y reconstruyen 1920 × 1080. GSR 2 gasta menos GPU que FSR 3.1.");
+        put("upscaling_off", "Off (bilinear)", "Desactivado (bilineal)");
+        put("upscaling_taa", "TAA (anti-aliasing only)", "TAA (solo antialiasing)");
+        put("quality", "Quality (FSR 3.1 and GSR 2)", "Calidad (FSR 3.1 y GSR 2)");
+        put("quality_hint", "Native: only anti-aliasing, at the render resolution above. The others set the render "
+                + "size themselves and upscale it to 1920 × 1080, with the HUD and menus at 1920 × 1080: Quality "
+                + "1280 × 720, Balanced 1136 × 636, Performance 960 × 540, Ultra Performance 640 × 360. Then the "
+                + "render resolution above is not used.",
+            "Nativa: solo antialiasing, a la resolución de render de arriba. Las demás eligen ellas mismas el tamaño "
+                + "de render y lo escalan a 1920 × 1080, con el HUD y los menús a 1920 × 1080: Calidad 1280 × 720, "
+                + "Equilibrado 1136 × 636, Rendimiento 960 × 540, Ultra rendimiento 640 × 360. Entonces la "
+                + "resolución de render de arriba no se usa.");
+        put("quality_0", "Native", "Nativa");
+        put("quality_1", "Quality", "Calidad");
+        put("quality_2", "Balanced", "Equilibrado");
+        put("quality_3", "Performance", "Rendimiento");
+        put("quality_4", "Ultra Performance", "Ultra rendimiento");
         put("touch_style", "On-screen controller style", "Estilo del mando en pantalla");
         put("touch_style_hint", "Classic: the PlayStation colours on the face buttons. PS5: white symbols, as on a "
                 + "DualSense.", "Clásico: los colores de PlayStation en los botones de acción. PS5: símbolos blancos, "

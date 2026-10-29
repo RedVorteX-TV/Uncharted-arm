@@ -28,22 +28,42 @@ void say(const std::string& line) {
     std::fflush(stdout);
 }
 
-// The game at 960x540 (render resolution 540p, run-uncharted.sh): render-960x540-2.bin (0.1.7:
-// without the movie decoder's size; the 0.1.6 render-960x540.bin had it), or render-960x540.txt
-// with the reason.
-void write_render_540p(const Bytes& elf, const std::string& out) {
+// The game at width x height (scripts/render_res.py's patch, without the movie decoder's size):
+// render-WxH-2.bin, or render-WxH.txt with the reason. 960x540 is the 540p render resolution
+// (the 0.1.6 render-960x540.bin had the decoder's size); 1280x720, 1136x636 and 640x360 are the
+// upscaling presets' sizes (Quality, Balanced, Ultra Performance; Performance is 960x540), which
+// run-uncharted.sh upscales to 1920x1080 with FSR 3.1 or GSR 2.
+constexpr std::pair<u32, u32> RENDER_SIZES[] = {{960, 540}, {1280, 720}, {1136, 636}, {640, 360}};
+
+void write_render_size(const Bytes& elf, const std::string& out, u32 width, u32 height) {
+    const std::string name = "render-" + std::to_string(width) + "x" + std::to_string(height);
     std::string error;
-    auto writes = render_size_writes(elf, 960, 540, error, false);
+    auto writes = render_size_writes(elf, width, height, error, false);
     if (error.empty()) {
         Bytes blob = render_720p_patch(writes);
-        OutFile f(path_join(out, "render-960x540-2.bin"));
+        OutFile f(path_join(out, name + "-2.bin"));
         f.write(blob.data(), blob.size());
         f.close();
-        say("Render 540p: " + std::to_string(writes.size()) + " size values patched");
+        say("Render " + name.substr(7) + ": " + std::to_string(writes.size()) + " size values patched");
     } else {
-        write_text_file(path_join(out, "render-960x540.txt"), error + "\n");
-        say("Render 540p: " + error);
+        write_text_file(path_join(out, name + ".txt"), error + "\n");
+        say("Render " + name.substr(7) + ": " + error);
     }
+}
+
+void write_render_sizes(const Bytes& elf, const std::string& out) {
+    for (const auto& [w, h] : RENDER_SIZES) write_render_size(elf, out, w, h);
+}
+
+/// The files write_render_sizes writes.
+std::vector<std::string> render_size_files() {
+    std::vector<std::string> names;
+    for (const auto& [w, h] : RENDER_SIZES) {
+        const std::string name = "render-" + std::to_string(w) + "x" + std::to_string(h);
+        names.push_back(name + "-2.bin");
+        names.push_back(name + ".txt");
+    }
+    return names;
 }
 
 // prepare.prepare(): the BBPROBE2 image in memory (the Python writes it to boot.bin, eboot.elf, entry.bin and
@@ -70,7 +90,7 @@ Boot prepare(const std::string& game, const std::string& out, const std::string&
             say("Render 720p: " + error);
         }
     }
-    write_render_540p(s.elf, out);
+    write_render_sizes(s.elf, out);
     write_graphics_patches(s, exe, out);
     std::vector<Phdr> loads;
     for (auto& p : s.ph)
@@ -289,12 +309,13 @@ int run(const std::string& game, const std::string& data, const std::string& exe
                 say("Game image: existing image matches selected game");
                 // Images prepared before the 540p patch or the graphics patches existed get them
                 // on their own.
-                const bool r540 = !is_file(path_join(data, "render-960x540-2.bin")) && !is_file(path_join(data, "render-960x540.txt"));
+                // (0.1.7: the upscaling presets' sizes, 640x360 the last.)
+                const bool r540 = !is_file(path_join(data, "render-640x360-2.bin")) && !is_file(path_join(data, "render-640x360.txt"));
                 const bool gfx = !is_file(path_join(data, "graphics-1.txt"));
                 if (r540 || gfx) {
                     MappedFile source = read_file(path_join(game, exe));
                     SelfInfo self = parse_self(source.view());
-                    if (r540) write_render_540p(self.elf, data);
+                    if (r540) write_render_sizes(self.elf, data);
                     if (gfx) write_graphics_patches(self, exe, data);
                 }
                 return 0;
@@ -316,7 +337,9 @@ int run(const std::string& game, const std::string& data, const std::string& exe
             raise_errno(errno, path_join(work, "boot-linked.bin"));
         if (rename(path_join(work, "content.bin").c_str(), path_join(data, "content.bin").c_str()) < 0)
             raise_errno(errno, path_join(work, "content.bin"));
-        for (const char* name : {"render-720p.bin", "render-720p.txt", "render-960x540.bin", "render-960x540-2.bin", "render-960x540.txt"}) {
+        std::vector<std::string> renders = render_size_files();
+        for (const char* name : {"render-720p.bin", "render-720p.txt", "render-960x540.bin"}) renders.push_back(name);
+        for (const std::string& name : renders) {
             unlink(path_join(data, name).c_str());
             if (is_file(path_join(work, name))) rename(path_join(work, name).c_str(), path_join(data, name).c_str());
         }

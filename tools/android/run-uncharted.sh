@@ -159,7 +159,37 @@ while :; do
     # own PS4 720p mode; else render_540p=1, the whole game at 960x540 (HUD, menus and movies too;
     # bb-prepare writes render-960x540-2.bin after scripts/render_res.py); else 1080p.
     unset BB_SCENE_SIZE BB_MOVIE_SIZE BB_VDEC_CONTENT BB_RENDER_RES BB_OUTPUT_RES BB_UI_COMPOSITE_PS BB_UI_TONEMAP_PS
-    if [ "$(setting render_720p)" = 1 ]; then
+    # Upscaling presets (bbport.ini upscaler=fsr3 or gsr2 with preset=1..4, the launcher and the
+    # in-game menu; as run.py's, after BilalReloaded's Uncharted PC port): the game draws at
+    # 1920x1080 / 1.5, 1.7, 2 or 3 (bb-prepare's render-WxH-2.bin), the upscaler brings each frame
+    # to 1920x1080 at the copy into the display buffer (pixel shader 749bbec9; Uncharted 3's
+    # prompts after its tonemap, 484cdbf5) and the HUD and menus are drawn at 1920x1080. They
+    # replace the render resolution below.
+    # No choice yet (bbport.ini without upscaler=): off, as the launcher shows it (the renderer's
+    # own default is FSR 3.1 at the render resolution).
+    if [ -z "$(setting upscaler)" ] && [ -z "${BB_UPSCALER+set}" ]; then export BB_UPSCALER=off; fi
+    upscale_size=
+    case "$(setting upscaler)" in
+        fsr3|gsr2)
+            case "$(setting preset)" in
+                1) upscale_size=1280x720 ;;
+                2) upscale_size=1136x636 ;;
+                3) upscale_size=960x540 ;;
+                4) upscale_size=640x360 ;;
+            esac ;;
+    esac
+    if [ -n "$upscale_size" ] && [ ! -f "$data/render-$upscale_size-2.bin" ]; then
+        echo "Upscaling preset: $upscale_size not available for $exe ($(cat "$data/render-$upscale_size.txt" 2>/dev/null))"
+        upscale_size=
+    fi
+    if [ -n "$upscale_size" ]; then
+        set -- "$@" --patches "$data/render-$upscale_size-2.bin"
+        export BB_SCENE_SIZE=$upscale_size BB_RENDER_RES=$upscale_size BB_OUTPUT_RES=1920x1080
+        export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
+        export BB_VDEC_CONTENT=$upscale_size
+        export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
+        echo "Render resolution: $upscale_size, upscaled to 1920x1080 ($(setting upscaler) preset $(setting preset))"
+    elif [ "$(setting render_720p)" = 1 ]; then
         if [ -f "$data/render-720p.bin" ]; then set -- "$@" --patches "$data/render-720p.bin"
         else echo "Render 720p: not available for $exe ($(cat "$data/render-720p.txt" 2>/dev/null)); rendering at 1080p"; fi
     elif [ "$(setting render_540p)" = 1 ]; then
@@ -176,14 +206,17 @@ while :; do
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
-    # The launcher's graphics patches (launcher.ini gfx_<id>=1, gfx_shadows=0/2/1 cascades; from the
-    # Bachata S4+ catalog): bb-prepare wrote gfx-<id>.bin for those whose original bytes match this
+    # The launcher's graphics settings (launcher.ini; the Bachata S4+ catalog's patches): an effect
+    # switched off there (fx_<effect>=0; on, the game's own, by default) and gfx_shadows=2/1
+    # cascades. bb-prepare wrote gfx-<id>.bin for the patches whose original bytes match this
     # executable (graphics-1.txt). Each is optional (--extra-patches: a write that does not fit is
     # skipped, the game still starts).
     gfx_on=
-    for id in skip_logos no_water_reflections no_ssao no_fog no_volumetric no_motion_blur no_dof \
-              no_bloom no_aa no_aniso no_dynamic_lights no_sun_ao draw_distance_40; do
-        [ "$(choice gfx_$id)" = 1 ] && gfx_on="$gfx_on $id"
+    for pair in logos:skip_logos water_reflections:no_water_reflections ssao:no_ssao fog:no_fog \
+                volumetric:no_volumetric motion_blur:no_motion_blur dof:no_dof bloom:no_bloom aa:no_aa \
+                aniso:no_aniso dynamic_lights:no_dynamic_lights sun_ao:no_sun_ao \
+                draw_distance:draw_distance_40; do
+        [ "$(choice fx_${pair%%:*})" = 0 ] && gfx_on="$gfx_on ${pair#*:}"
     done
     case "$(choice gfx_shadows)" in
         2) gfx_on="$gfx_on shadows_2" ;;

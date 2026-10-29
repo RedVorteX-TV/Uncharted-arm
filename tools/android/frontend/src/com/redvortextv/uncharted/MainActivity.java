@@ -275,10 +275,9 @@ public final class MainActivity extends Activity {
 
     // ---------------------------------------------------------------------------------------------
     // The launcher
-    /** The launcher's graphics patches (run-uncharted.sh, in the same order). */
-    private static final String[] GFX_PATCHES = {"skip_logos", "no_water_reflections", "no_ssao", "no_fog",
-        "no_volumetric", "no_motion_blur", "no_dof", "no_bloom", "no_aa", "no_aniso", "no_dynamic_lights", "no_sun_ao",
-        "draw_distance_40"};
+    /** The game's effects the launcher can switch off (run-uncharted.sh, in the same order). */
+    private static final String[] GFX_EFFECTS = {"logos", "water_reflections", "ssao", "fog", "volumetric",
+        "motion_blur", "dof", "bloom", "aa", "aniso", "dynamic_lights", "sun_ao", "draw_distance"};
 
     private void buildLauncher() {
         launcherView = new ScrollView(this);
@@ -352,7 +351,25 @@ public final class MainActivity extends Activity {
                 bbport.set("render_720p", value.equals("720"));
                 bbport.set("render_540p", value.equals("540"));
             });
-        switchRow(bbport, "fsr1", true, Strings.get("fsr1"), Strings.get("fsr1_hint"));
+        // Upscaling (bbport.ini upscaler, fsr1 and preset, shared with the in-game menu): FSR 1 or
+        // bilinear scaling to the screen, or a temporal upscaler (FSR 3.1, GSR 2) with its quality
+        // preset (run-uncharted.sh: below Native the game draws smaller and is upscaled to 1080p).
+        valueRow(Strings.get("upscaling"), Strings.get("upscaling_hint"),
+            new String[]{"off", "fsr1", "fsr3", "gsr2", "taa"},
+            new String[]{Strings.get("upscaling_off"), "FSR 1", "FSR 3.1", "GSR 2", Strings.get("upscaling_taa")},
+            () -> {
+                String u = bbport.get("upscaler", "off");
+                if (u.equals("fsr3") || u.equals("gsr2") || u.equals("taa")) return u;
+                return bbport.on("fsr1", true) ? "fsr1" : "off";
+            },
+            value -> {
+                boolean temporal = value.equals("fsr3") || value.equals("gsr2") || value.equals("taa");
+                bbport.set("upscaler", temporal ? value : "off");
+                bbport.set("fsr1", !value.equals("off"));
+            });
+        cyclerRow(bbport, "preset", Strings.get("quality"), Strings.get("quality_hint"),
+            new String[]{"0", "1", "2", "3", "4"}, new String[]{Strings.get("quality_0"), Strings.get("quality_1"),
+                Strings.get("quality_2"), Strings.get("quality_3"), Strings.get("quality_4")}, "0");
         cyclerRow(bbport, "fps_limit", Strings.get("frame_rate"), Strings.get("frame_rate_hint"),
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
                 Strings.get("fps_45"), Strings.get("fps_60"), Strings.get("fps_0")}, "40");
@@ -367,17 +384,18 @@ public final class MainActivity extends Activity {
             new String[]{"2", "3", "4"}, new String[]{"2×", "3×", "4×"}, "2");
         actionRow(Strings.get("lsfg_dll"), lsfgSummary(), this::askLsfgDll).setTag("lsfg");
 
-        // Graphics patches (launcher.ini gfx_*, run-uncharted.sh; patches/graphics_patches.json)
+        // Graphics effects (launcher.ini fx_*, gfx_shadows; run-uncharted.sh, patches/graphics_patches.json):
+        // the game's own, on by default; an effect switched off applies its patch.
         section(Strings.get("gfx"));
         TextView gfxNote = text(Strings.get("gfx_note"), 12, MUTED); gfxNote.setPadding(dp(4), 0, dp(4), dp(8));
         launcherBody.addView(gfxNote);
         cyclerRow(launcher, "gfx_shadows", Strings.get("gfx_shadows"), Strings.get("gfx_shadows_hint"),
             new String[]{"0", "2", "1"}, new String[]{Strings.get("gfx_shadows_0"), Strings.get("gfx_shadows_2"),
                 Strings.get("gfx_shadows_1")}, "0");
-        for (String key : GFX_PATCHES)
-            switchRow(launcher, "gfx_" + key, false, Strings.get("gfx_" + key), Strings.has("gfx_" + key + "_hint") ? Strings.get("gfx_" + key + "_hint") : null);
-        actionRow(Strings.get("gfx_off"), null, () -> {
-            for (String key : GFX_PATCHES) launcher.set("gfx_" + key, false);
+        for (String key : GFX_EFFECTS)
+            switchRow(launcher, "fx_" + key, true, Strings.get("fx_" + key), Strings.has("fx_" + key + "_hint") ? Strings.get("fx_" + key + "_hint") : null);
+        actionRow(Strings.get("gfx_original"), null, () -> {
+            for (String key : GFX_EFFECTS) launcher.set("fx_" + key, true);
             launcher.set("gfx_shadows", "0");
             refreshRows(launcherBody);
         });
@@ -552,6 +570,7 @@ public final class MainActivity extends Activity {
     /** Every launcher setting back to what runs best on an ARM handheld (the Linux launcher's button). */
     private void applyRecommended() {
         bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
+        bbport.set("upscaler", "off"); bbport.set("preset", "0");
         bbport.set("render_540p", false);
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"}) launcher.set(key, true);
         launcher.set("game_rate", "60");
