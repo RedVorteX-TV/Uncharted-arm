@@ -1130,19 +1130,19 @@ void TextureCache::GarbageCollectImages() {
         // GPU-written ones back. Compare with the driver's current budget instead.
         // BB_GC_BUDGET_MB=N: this rule with a fixed budget on any GPU (tests on a desktop).
 #ifdef __ANDROID__
-        // Android: the GPU's memory is the system's RAM, shared with the game and the rest of
-        // the phone. The budget follows MemAvailable, zram use and memory stalls (BbGcBudget,
-        // from ducvd89/Bloodborne-Android via erickmendes22's uncharted-android); the driver's
-        // budget kept the cache at its limit on 8 GB phones. BB_GC_BUDGET_MB=0: the driver's.
-        const u64 forced_budget =
-            BbGcBudget::Bytes(total_used_memory, instance.GetDeviceMemoryBudgetNow());
+        // Android: the RAM watcher (BbGcBudget, from ducvd89/Bloodborne-Android via
+        // erickmendes22's uncharted-android) only says when the phone is short of memory; idle
+        // textures then go sooner (below). It does not set the limits: the usage compared here
+        // is all of the GPU heaps, the buffers backing guest memory too (2.6 GB on the Thor with
+        // 300-450 MB of images), and a budget from free RAM kept the collector over its critical
+        // mark for good, evicting textures in use (prueba 7).
+        BbGcBudget::Bytes(total_used_memory, 0);
         BbGcBudget::ReportUsage(total_used_memory);
-#else
+#endif
         static const u64 forced_budget = [] {
             const char* env = std::getenv("BB_GC_BUDGET_MB");
             return env ? std::strtoull(env, nullptr, 10) << 20 : 0;
         }();
-#endif
         if (instance.IsIntegrated() || forced_budget) {
             const u64 budget = forced_budget ? forced_budget : instance.GetDeviceMemoryBudgetNow();
             if (budget != 0) {

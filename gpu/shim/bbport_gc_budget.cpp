@@ -107,7 +107,7 @@ void Watch() {
         is_short.store(decision.short_memory, std::memory_order_relaxed);
         const auto now = clock::now();
         if (current != logged && now - last_log >= std::chrono::seconds(5)) {
-            std::printf("Texture cache: memory budget %llu -> %llu MB (MemAvailable %llu MB, swap "
+            std::printf("RAM watcher: level %llu -> %llu MB (MemAvailable %llu MB, swap "
                         "%.0f%% of %llu MB used%s)\n",
                         (unsigned long long)(logged >> 20), (unsigned long long)(current >> 20),
                         (unsigned long long)(m.available >> 20), swap_used,
@@ -141,11 +141,11 @@ u64 Bytes(u64 usage_now, u64 driver_budget) {
         }
         start_bytes = mb * MiB;
         budget.store(start_bytes, std::memory_order_relaxed);
-        std::printf("Texture cache: memory budget %llu MB at start (MemAvailable %llu MB, in use %llu MB)\n",
+        std::printf("RAM watcher: on, level %llu MB (MemAvailable %llu MB, GPU heaps %llu MB)\n",
                     (unsigned long long)mb,(unsigned long long)available_mb,
                     (unsigned long long)(usage_now>>20));
         const char* adapt = std::getenv("BB_GC_ADAPT");
-        if (!(adapt && adapt[0] == '0') && start_bytes > FloorMiB * MiB) {
+        if (!(adapt && adapt[0] == '0') && start_bytes >= FloorMiB * MiB) {
             std::thread(Watch).detach();
         }
         return true;
