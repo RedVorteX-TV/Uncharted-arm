@@ -432,10 +432,10 @@ public final class MainActivity extends Activity {
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
         // Android performance hints (run-uncharted.sh: BB_ADPF, BB_ADPF_EFFICIENT); the profiles set it.
-        // A saved "performance" (pruebas 11-12) counts as on: efficiency.
+        // Off unless the player turns it on. A saved "performance" (pruebas 11-12) counts as on.
         if ("performance".equals(launcher.get("adpf", ""))) launcher.set("adpf", "efficiency");
         cyclerRow(launcher, "adpf", Strings.get("adpf"), Strings.get("adpf_hint"),
-            new String[]{"efficiency", "off"}, new String[]{Strings.get("on"), Strings.get("off")}, "efficiency");
+            new String[]{"off", "efficiency"}, new String[]{Strings.get("off"), Strings.get("on")}, "off");
 
         // System
         section(Strings.get("system"));
@@ -620,7 +620,7 @@ public final class MainActivity extends Activity {
         switch (id) {
             case "low":       return new String[]{"540", "fsr1", "0", "30", "60", "1"};
             case "medium":    return new String[]{"540", "fsr1", "0", "30", "60", "0"};
-            case "high":      return new String[]{"1080", "gsr2", "1", "60", "auto", "0"};
+            case "high":      return new String[]{"720", "fsr1", "0", "60", "auto", "0"};
             case "battery":   return new String[]{"720", "fsr1", "0", "40", "120", "0"};
             default:          return null;
         }

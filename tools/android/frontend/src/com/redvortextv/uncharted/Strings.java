@@ -92,8 +92,8 @@ final class Strings {
             "960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.");
         put("profile_medium_desc", "960 × 540 with FSR 1, the game's own effects, 30 FPS.",
             "960 × 540 con FSR 1, los efectos originales del juego, 30 FPS.");
-        put("profile_high_desc", "1280 × 720 upscaled to 1080p with GSR 2, the game's own effects, 60 FPS. For high-end devices.",
-            "1280 × 720 escalado a 1080p con GSR 2, los efectos originales del juego, 60 FPS. Para gama alta.");
+        put("profile_high_desc", "1280 × 720 with FSR 1, the game's own effects, 60 FPS. For high-end devices.",
+            "1280 × 720 con FSR 1, los efectos originales del juego, 60 FPS. Para gama alta.");
         put("profile_battery_desc", "For powerful devices, to save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. "
                 + "Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).",
             "Para dispositivos potentes, ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. "

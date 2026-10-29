@@ -73,12 +73,13 @@ case $(setting preset) in 0|1|2|3|4) ;; *) printf 'preset=0\n' >> "$BB_CONFIG" ;
 # Batched skinning (vk_skin_batch.cpp) runs with the two-stage draw pipeline: on at every render
 # resolution unless the launcher's switch is off (then the pipeline only at 540p, unbatched).
 if [ "$(choice arm_skin_batch)" = 0 ]; then export BB_SKIN_BATCH=0; else export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}; fi
-# Android performance hints (launcher.ini adpf): on (the default; Android 15+ is asked to prefer
-# efficiency, so it does not drive the clocks to the top for frames that miss the target) or off
-# (CPU frequency tools such as ClusterTune: both set the clocks).
+# Android performance hints (launcher.ini adpf): off by default (CPU frequency tools such as
+# ClusterTune set the clocks too); adpf=efficiency (or a saved performance) turns them on, with
+# Android 15+ asked to prefer efficiency so it does not drive the clocks to the top for frames
+# that miss the target.
 case "$(choice adpf)" in
-    off) export BB_ADPF=0 ;;
-    *) export BB_ADPF_EFFICIENT=${BB_ADPF_EFFICIENT:-1} ;;
+    efficiency|performance) export BB_ADPF_EFFICIENT=${BB_ADPF_EFFICIENT:-1} ;;
+    *) export BB_ADPF=${BB_ADPF:-0} ;;
 esac
 # The launcher's "Performance statistics in the log": frame, thread, GPU wait and memory statistics.
 [ "$(choice perf_stats)" = 1 ] && export BB_FRAME_STATS=1 BB_THREAD_STATS=1
