@@ -142,26 +142,47 @@ def prepare(game, exe, out):
     stamp.write_text(source, encoding='utf-8')
 
 
-def config_flag(env, name):
-    """A 0/1 setting of bbport.ini (the in-game menu and the launchers write it), read again at
-    each start so "Save and restart" picks it up."""
+def config_value(env, name):
+    """A setting of bbport.ini (the in-game menu and the launchers write it), read again at each
+    start so "Save and restart" picks it up; None when absent (the last line of a key wins)."""
     try:
         text = Path(env.get('BB_CONFIG', '')).read_text(encoding='utf-8', errors='replace')
     except OSError:
-        return False
+        return None
     value = None
     for line in text.splitlines():
         key, _, rest = line.partition('=')
         if key.strip() == name:
             value = rest.strip()
-    return value == '1'
+    return value
 
 
-def render_720p(env):
+def config_flag(env, name):
+    """A 0/1 setting of bbport.ini (config_value)."""
+    return config_value(env, name) == '1'
+
+
+def ini_upscale_preset(env, key=''):
+    """ARM port: the upscaling preset of bbport.ini (the ARM launcher and the in-game menu:
+    preset=1..4 with a temporal upscaler, upscaler= or BB_UPSCALER): quality, balanced, performance
+    or ultra, '' for none. It sets the render size instead of render_720p / render_540p.
+    BB_UPSCALE_QUALITY[_U1/_U2/_U3] (the x86-64 launcher) is read by render_resolution()."""
+    if (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') if key else '') or env.get('BB_UPSCALE_QUALITY'):
+        return ''
+    upscaler = (env.get('BB_UPSCALER') or config_value(env, 'upscaler') or '').strip().lower()
+    if upscaler not in TEMPORAL_UPSCALERS:
+        return ''
+    return {'1': 'quality', '2': 'balanced', '3': 'performance', '4': 'ultra'}.get(
+        config_value(env, 'preset') or '', '')
+
+
+def render_720p(env, key=''):
     """BB_RENDER_720P (the launcher's Steam Deck mode), else the in-game menu's choice in bbport.ini
-    (render_720p=1, ARM port)."""
+    (render_720p=1, ARM port), unless a bbport.ini upscaling preset sets the size."""
     if env.get('BB_RENDER_720P') in ('0', '1'):
         return env['BB_RENDER_720P'] == '1'
+    if ini_upscale_preset(env, key):
+        return False
     return config_flag(env, 'render_720p')
 
 
@@ -170,6 +191,7 @@ def render_720p(env):
 # with FSR 1) bring each frame up to it before the HUD and menus are drawn at the output size
 # (TemporalUpscaler::OnComposite). After BilalReloaded's Uncharted PC port.
 UPSCALE_SCALES = {'quality': 1.5, 'balanced': 1.7, 'performance': 2.0, 'ultra': 3.0}
+TEMPORAL_UPSCALERS = ('fsr3', 'gsr2', 'fsr4', 'fsr411', 'dlss')
 COMPOSITE_PS = '749bbec9'  # the copy of the finished frame into the display buffer (all three games)
 TONEMAP_PS = '484cdbf5'    # the draw finishing the frame (Uncharted 3 draws prompts into it after)
 
@@ -201,21 +223,23 @@ def render_resolution(env, exe, out, image):
         return image
     # The 720p mode (Steam Deck mode, ARM's render_720p) renders at 720p its own way
     # (scripts/render_720p.py).
-    if render_720p(env):
+    if render_720p(env, key):
         if env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION'):
             print('Render resolution: not used with the 720p mode (the game renders at 1280x720)')
         return image
     size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
     # 960x540 (bbport.ini render_540p: the in-game menu and the ARM launcher): the whole game at
     # that size, scaled to the screen like the 720p mode, whatever resolution the launcher sends.
-    render_540p = config_flag(env, 'render_540p')
+    ini_preset = ini_upscale_preset(env, key)
+    preset = ini_preset or (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or
+                            env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
+    render_540p = config_flag(env, 'render_540p') and not ini_preset
     if render_540p:
         if size and size != '960x540':
             print(f'Render resolution: 960x540 (render_540p) instead of {size}')
         size = '960x540'
     output = parse_size(size) if size not in ('', 'native', 'off', '0') else None
     output = output or (1920, 1080)
-    preset = (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
     scale = None if render_540p else UPSCALE_SCALES.get(preset)
     if scale and env.get('BB_UPSCALER', '').lower() == 'none':
         print('Upscaling preset: needs the camera tracking (BB_UPSCALER=none): drawing at the output size')
@@ -384,7 +408,7 @@ def main():
         # Linux fork: BB_RENDER_720P=1 (Steam Deck mode) renders the game at 1280x720 through its
         # own 720p video settings (scripts/render_720p.py). An executable whose settings are not
         # found starts at its usual 1080p.
-        if render_720p(env):
+        if render_720p(env, next((k for k, v in EXECUTABLES.items() if v == exe), '')):
             patches = out / 'render-720p.bin'
             script = ['--script'] if getattr(sys, 'frozen', False) else []
             made = subprocess.run([sys.executable, *script, str(PORT / 'scripts' / 'render_720p.py'),
@@ -398,6 +422,11 @@ def main():
         # catalog): the ones whose original bytes match this executable (scripts/graphics_patches.py),
         # applied after the others; a write that does not fit is skipped (--extra-patches).
         graphics = env.get('BB_GRAPHICS_PATCHES', '').split()
+        # Below 1080p with the movies in a corner of 1080p frames (BB_VDEC_CONTENT, 540p): the
+        # game's movie textures and chroma plane at the decoder's 1920x1088 (the catalog's
+        # movies_below_1080p); without them the movies were green and enlarged.
+        if env.get('BB_VDEC_CONTENT'):
+            graphics.append('movies_below_1080p')
         if graphics:
             patches = out / 'graphics.bin'
             script = ['--script'] if getattr(sys, 'frozen', False) else []

@@ -470,7 +470,7 @@ def apply_defaults(ns):
 # the frame rate limit are shared with the in-game menu through bbport.ini (ARM_INI).
 # Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
 ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
-                'render_res': '720', 'scaler': 'fsr1', 'check_updates': False,
+                'render_res': '720', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'check_updates': False,
                 'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True,
                 'arm_skin_batch': True, 'lsfg_dll': '',
                 'game_rate': '60'}
@@ -497,32 +497,39 @@ ARM_COMPATIBILITY = (
      'devices. On low and mid-range devices it can run slower: try the game with it on and off and keep the '
      'faster one. Turn off as well if characters stretch, flicker or lose parts.'),
 )
-# Settings > Graphics patches (patches/graphics_patches.json, from the Bachata S4 catalog): changes
-# to the games' own graphics settings, all off; run.py applies the chosen ones (BB_GRAPHICS_PATCHES)
-# whose original bytes match the executable. Not part of the recommended settings.
-ARM_GRAPHICS_PATCHES = (
-    ('skip_logos', 'Skip startup logos', None),
-    ('no_water_reflections', 'No water reflections', None),
-    ('no_ssao', 'No ambient occlusion (SSAO)', None),
-    ('no_fog', 'No fog', None),
-    ('no_volumetric', 'No volumetric lights', None),
-    ('no_motion_blur', 'No motion blur', None),
-    ('no_dof', 'No depth of field', None),
-    ('no_bloom', 'No bloom', None),
-    ('no_aa', 'No anti-aliasing', None),
-    ('no_aniso', 'No anisotropic filtering', None),
-    ('no_dynamic_lights', 'No dynamic lights', None),
-    ('no_sun_ao', 'No sunlight ambient occlusion', None),
-    ('draw_distance_40', 'Draw distance 40 m', 'Extreme: distant scenery disappears.'),
+# Settings > Graphics effects (patches/graphics_patches.json, from the Bachata S4 catalog): the
+# games' own effects, on by default; one switched off applies its patch (run.py
+# BB_GRAPHICS_PATCHES) when the original bytes match the executable (versions 1.00 and 1.02).
+# Not part of the recommended settings. (setting, patch id applied when off, title, hint)
+ARM_GRAPHICS_EFFECTS = (
+    ('fx_logos', 'skip_logos', 'Startup logos (Uncharted 1 and 2)',
+     'Off: the games start without the studio logos. Not available for Uncharted 3.'),
+    ('fx_water_reflections', 'no_water_reflections', 'Water reflections', None),
+    ('fx_ssao', 'no_ssao', 'Ambient occlusion (SSAO)', None),
+    ('fx_fog', 'no_fog', 'Fog', None),
+    ('fx_volumetric', 'no_volumetric', 'Volumetric lights', None),
+    ('fx_motion_blur', 'no_motion_blur', 'Motion blur', None),
+    ('fx_dof', 'no_dof', 'Depth of field', None),
+    ('fx_bloom', 'no_bloom', 'Bloom', None),
+    ('fx_aa', 'no_aa', "The game's anti-aliasing", None),
+    ('fx_aniso', 'no_aniso', 'Anisotropic filtering', None),
+    ('fx_dynamic_lights', 'no_dynamic_lights', 'Dynamic lights', None),
+    ('fx_sun_ao', 'no_sun_ao', 'Sunlight ambient occlusion', None),
+    ('fx_draw_distance', 'draw_distance_40', 'Full draw distance', 'Off: 40 m, extreme; distant scenery disappears.'),
 )
 ARM_SHADOW_CASCADES = [('0', 'Original'), ('2', '2 cascades'), ('1', '1 cascade')]
-ARM_GRAPHICS_DEFAULTS = dict({'gfx_' + key: False for key, _t, _h in ARM_GRAPHICS_PATCHES}, gfx_shadows='0')
+ARM_GRAPHICS_DEFAULTS = dict({key: True for key, _id, _t, _h in ARM_GRAPHICS_EFFECTS}, gfx_shadows='0')
 # The sidebar's credit line for this port (the Linux fork's own stays above it).
 ARM_CREDIT = 'ARM port by RedVorteX-TV'
 ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
                    ('60', '60 FPS'), ('0', 'No limit')]
 ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
-ARM_INI = ('fps_limit', 'render_720p', 'render_540p', 'fsr1')
+ARM_INI = ('fps_limit', 'render_720p', 'render_540p', 'fsr1', 'upscaler', 'preset')
+# Settings > Upscaler on ARM: FSR 1 (or bilinear) to the screen and the temporal upscalers in one
+# list, with Snapdragon GSR 2 (made for Adreno GPUs). The upscaler and its quality preset go to
+# bbport.ini (upscaler=, preset=), shared with the in-game menu: run.py reads them at each start.
+ARM_GSR2 = ('gsr2', 'Snapdragon GSR 2 (Adreno)')
+ARM_PRESETS = ['off', 'quality', 'balanced', 'performance', 'ultra']  # bbport.ini preset=0..4
 # The size the games render at (bbport.ini render_720p / render_540p, shared with the in-game
 # menu): 720p is the game's own PS4 mode (scripts/render_720p.py), 540p the whole game at 960x540
 # (scripts/render_res.py), for GPUs that 720p is still too much for.
@@ -544,12 +551,22 @@ def apply_arm_defaults(ns):
     ns['FRAME_RATES'][:] = ARM_FRAME_RATES
     for name, key in (('ANTI_ALIASING', 'anti_aliasing'), ('FRAME_GENERATION', 'frame_generation')):
         ns[name][:] = [(value, text) for value, text in ns[name] if value not in ARM_UNAVAILABLE[key]]
+    if ARM_GSR2 not in ns['ANTI_ALIASING']:
+        at = next((i + 1 for i, (value, _t) in enumerate(ns['ANTI_ALIASING']) if value == 'fsr3'),
+                  len(ns['ANTI_ALIASING']))
+        ns['ANTI_ALIASING'].insert(at, ARM_GSR2)
     if ARM_LSFG not in ns['FRAME_GENERATION']:
         ns['FRAME_GENERATION'].append(ARM_LSFG)
     ns['FRAME_GEN_MULTIPLIERS'][:] = ARM_FRAME_GEN_MULTIPLIERS
     ROW_HINTS['Frame generation'] = ('FSR 3 or Lossless Scaling\'s LSFG, which uses your own Lossless.dll '
                                      '(chosen below). Smoother motion, a little more input latency.')
     ROW_HINTS['Frame rate'] = 'A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.'
+    ROW_HINTS['Upscaler'] = ('FSR 1 enlarges the frame alone (sharp, no anti-aliasing); Off is bilinear. FSR 3.1 and '
+                             'Snapdragon GSR 2 rebuild each frame with depth and motion; GSR 2 costs less GPU time. '
+                             'TAA only smooths edges. Also in the in-game menu.')
+    ROW_HINTS['Quality'] = ('For FSR 3.1 and GSR 2. Native: anti-aliasing at the render resolution. Quality 1280 x 720, '
+                            'Balanced 1136 x 636, Performance 960 x 540, Ultra Performance 640 x 360, upscaled to the '
+                            'resolution; the render resolution is then not used.')
     ROW_HINTS['Window size'] = ('Only for windowed mode: in fullscreen the game fills the screen. The resolution the '
                                 'games render at is "Render resolution" above.')
 
@@ -571,9 +588,16 @@ def arm_ini_values(settings):
     if rate not in [value for value, _text in ARM_FRAME_RATES]:
         rate = ARM_DEFAULTS['frame_rate']
     res = arm_render_res(settings)
+    method = str(settings.get('anti_aliasing') or 'fsr1')
+    if method in ARM_UNAVAILABLE['anti_aliasing']:
+        method = 'fsr1'
+    preset = str(settings.get('upscale_preset') or 'off')
     return {'fps_limit': rate, 'render_720p': '1' if res == '720' else '0',
             'render_540p': '1' if res == '540' else '0',
-            'fsr1': '1' if str(settings.get('scaler') or 'fsr1') == 'fsr1' else '0'}
+            # FSR 1 scales to the screen for every method but Off (bilinear).
+            'fsr1': '0' if method == 'off' else '1',
+            'upscaler': 'off' if method in ('off', 'fsr1') else method,
+            'preset': str(ARM_PRESETS.index(preset)) if preset in ARM_PRESETS else '0'}
 
 
 def arm_settings_from_ini(text):
@@ -591,10 +615,19 @@ def arm_settings_from_ini(text):
         elif key in ('render_720p', 'render_540p') and value in ('0', '1'):
             flags[key] = value == '1'
         elif key == 'fsr1' and value in ('0', '1'):
-            out['scaler'] = 'fsr1' if value == '1' else 'bilinear'
-    if flags:  # as run.py reads them: 720p first
+            flags['fsr1'] = value == '1'
+        elif key == 'upscaler':
+            flags['upscaler'] = value
+        elif key == 'preset' and value in ('0', '1', '2', '3', '4'):
+            out['upscale_preset'] = ARM_PRESETS[int(value)]
+    if 'render_720p' in flags or 'render_540p' in flags:  # as run.py reads them: 720p first
         out['render_res'] = ('720' if flags.get('render_720p') else
                              '540' if flags.get('render_540p') else '1080')
+    upscaler = flags.get('upscaler')
+    if upscaler in ('fsr3', 'gsr2', 'taa'):
+        out['anti_aliasing'] = upscaler
+    elif upscaler == 'off' or 'fsr1' in flags:
+        out['anti_aliasing'] = 'fsr1' if flags.get('fsr1', True) else 'off'
     return out
 
 
@@ -603,14 +636,13 @@ def arm_environment(settings, env):
     the limit come from bbport.ini, so that the in-game menu's changes hold after a restart; what
     these GPUs cannot run falls back to off."""
     env['BB_VBLANK_HZ'] = '120' if str(settings.get('game_rate') or '60') == '120' else '60'
-    for name in ('BB_FPS_LIMIT', 'BB_RENDER_720P', 'BB_FSR1'):
+    for name in ('BB_FPS_LIMIT', 'BB_RENDER_720P', 'BB_FSR1', 'BB_UPSCALER', 'BB_UPSCALE_QUALITY'):
         env.pop(name, None)
     for key, name, _title, _hint in ARM_COMPATIBILITY:
         if not settings.get(key, True):
             env[name] = '0'
-    for key, name in (('anti_aliasing', 'BB_UPSCALER'), ('frame_generation', 'BB_FRAME_GEN')):
-        if str(settings.get(key) or 'off') in ARM_UNAVAILABLE[key]:
-            env[name] = 'off'
+    if str(settings.get('frame_generation') or 'off') in ARM_UNAVAILABLE['frame_generation']:
+        env['BB_FRAME_GEN'] = 'off'
     if str(settings.get('lsfg_dll') or '').strip():
         env['BB_LSFG_DLL'] = str(settings['lsfg_dll']).strip()
     graphics = arm_graphics_patches(settings)
@@ -621,8 +653,9 @@ def arm_environment(settings, env):
 
 
 def arm_graphics_patches(settings):
-    """The graphics patch ids these settings choose (run.py BB_GRAPHICS_PATCHES)."""
-    ids = [key for key, _title, _hint in ARM_GRAPHICS_PATCHES if settings.get('gfx_' + key)]
+    """The graphics patch ids these settings choose (run.py BB_GRAPHICS_PATCHES): the effects
+    switched off, and fewer shadow cascades."""
+    ids = [patch for key, patch, _title, _hint in ARM_GRAPHICS_EFFECTS if not settings.get(key, True)]
     shadows = str(settings.get('gfx_shadows') or '0')
     if shadows in ('2', '1'):
         ids.append('shadows_' + shadows)
@@ -1492,15 +1525,15 @@ def launcher_class(base, ns):
                                 'Browse local files). It is not included with the port. Then choose LSFG as '
                                 'the frame generation, here or in the in-game menu.'))
             if ARM:
-                self.section(f, _('Graphics patches'))
-                self.note(f, _('Optional changes to the games\' own graphics settings, from the Bachata S4 catalog. '
-                               'Each one is checked against your game\'s files and skipped if it does not match. '
-                               'They lower image quality; measure the gain on your device before keeping them. '
-                               'Applied at the next start.'), top=2)
+                self.section(f, _('Graphics effects'))
+                self.note(f, _('The games\' own effects, all on as in the original games. Switching one off applies '
+                               'a patch from the Bachata S4 catalog to your game\'s executable (version 1.00 or 1.02, '
+                               'checked before it is applied): less GPU work, a plainer picture. Measure the gain on '
+                               'your device before keeping it. Applied at the next start.'), top=2)
                 self.row(f, _('Shadow cascades'), self.choice(f, 'gfx_shadows', ARM_SHADOW_CASCADES, 30),
                          _('Fewer shadow maps: less GPU work, shadows end closer.'))
-                for key, title, hint in ARM_GRAPHICS_PATCHES:
-                    self.check(f, 'gfx_' + key, _(title), _(hint) if hint else None)
+                for key, _patch, title, hint in ARM_GRAPHICS_EFFECTS:
+                    self.check(f, key, _(title), _(hint) if hint else None)
             self.section(f, _('Console'))
             self.row(f, _('Language'), self.choice(f, 'language', ns['LANGUAGES'], 30))
             name = self.ttk.Entry(f, textvariable=self.var('player_name'), width=30)
@@ -1738,7 +1771,7 @@ def launcher_class(base, ns):
         # ---- ARM: recommended settings, language restart ----------------------------------------
         def arm_recommended(self):
             """The ARM defaults on the Settings page and the Compatibility switches, saved."""
-            values = dict(ARM_DEFAULTS, window_size='1920x1080', anti_aliasing='off', frame_generation='off',
+            values = dict(ARM_DEFAULTS, window_size='1920x1080', frame_generation='off',
                           sharpening=ns['APP_DEFAULTS']['sharpening'])
             values.pop('lsfg_dll')  # the player's file stays chosen
             for key, value in values.items():

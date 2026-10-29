@@ -62,6 +62,23 @@ class UpscalePresets(unittest.TestCase):
         self.assertNotIn('BB_MOVIE_SIZE', env)
         self.assertIn(DECODER_1080P, self.patched)
 
+    def test_preset_from_bbport_ini(self):
+        # ARM: GSR 2 (or FSR 3.1) with preset=3 in bbport.ini: 960x540 upscaled to 1920x1080, the
+        # 720p and 540p modes left aside.
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
+                             ini='render_720p=1\nrender_540p=0\nupscaler=gsr2\npreset=3\n')
+        self.assertEqual(env['BB_RENDER_RES'], '960x540')
+        self.assertEqual(env['BB_OUTPUT_RES'], '1920x1080')
+        import sys
+        sys.path.insert(0, str(ROOT))
+        import run
+        self.assertFalse(run.render_720p({'BB_CONFIG': '/nonexistent'} | env, 'u3'))
+        # Native (preset=0) or no temporal upscaler: the render resolution again.
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
+                             ini='render_540p=1\nupscaler=off\npreset=3\n')
+        self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertNotIn('BB_RENDER_RES', env)
+
     def test_720p_wins_over_540p(self):
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
                              ini='render_720p=1\nrender_540p=1\n')
