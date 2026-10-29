@@ -275,9 +275,10 @@ public final class MainActivity extends Activity {
 
     // ---------------------------------------------------------------------------------------------
     // The launcher
-    /** The game's effects the launcher can switch off (run-uncharted.sh, in the same order). */
-    private static final String[] GFX_EFFECTS = {"logos", "water_reflections", "ssao", "fog", "volumetric",
-        "motion_blur", "dof", "bloom", "aa", "aniso", "dynamic_lights", "sun_ao", "draw_distance"};
+    /** The launcher's graphics patches (run-uncharted.sh, in the same order). */
+    private static final String[] GFX_PATCHES = {"skip_logos", "no_water_reflections", "no_ssao", "no_fog",
+        "no_volumetric", "no_motion_blur", "no_dof", "no_bloom", "no_aa", "no_aniso", "no_dynamic_lights", "no_sun_ao",
+        "draw_distance_40"};
 
     private void buildLauncher() {
         launcherView = new ScrollView(this);
@@ -384,18 +385,18 @@ public final class MainActivity extends Activity {
             new String[]{"2", "3", "4"}, new String[]{"2×", "3×", "4×"}, "2");
         actionRow(Strings.get("lsfg_dll"), lsfgSummary(), this::askLsfgDll).setTag("lsfg");
 
-        // Graphics effects (launcher.ini fx_*, gfx_shadows; run-uncharted.sh, patches/graphics_patches.json):
-        // the game's own, on by default; an effect switched off applies its patch.
+        // Graphics patches (launcher.ini gfx_<id>, gfx_shadows; run-uncharted.sh, patches/graphics_patches.json):
+        // all off by default, the game as it is.
         section(Strings.get("gfx"));
         TextView gfxNote = text(Strings.get("gfx_note"), 12, MUTED); gfxNote.setPadding(dp(4), 0, dp(4), dp(8));
         launcherBody.addView(gfxNote);
         cyclerRow(launcher, "gfx_shadows", Strings.get("gfx_shadows"), Strings.get("gfx_shadows_hint"),
             new String[]{"0", "2", "1"}, new String[]{Strings.get("gfx_shadows_0"), Strings.get("gfx_shadows_2"),
                 Strings.get("gfx_shadows_1")}, "0");
-        for (String key : GFX_EFFECTS)
-            switchRow(launcher, "fx_" + key, true, Strings.get("fx_" + key), Strings.has("fx_" + key + "_hint") ? Strings.get("fx_" + key + "_hint") : null);
-        actionRow(Strings.get("gfx_original"), null, () -> {
-            for (String key : GFX_EFFECTS) launcher.set("fx_" + key, true);
+        for (String key : GFX_PATCHES)
+            switchRow(launcher, "gfx_" + key, false, Strings.get("gfx_" + key), Strings.has("gfx_" + key + "_hint") ? Strings.get("gfx_" + key + "_hint") : null);
+        actionRow(Strings.get("gfx_off"), null, () -> {
+            for (String key : GFX_PATCHES) launcher.set("gfx_" + key, false);
             launcher.set("gfx_shadows", "0");
             refreshRows(launcherBody);
         });

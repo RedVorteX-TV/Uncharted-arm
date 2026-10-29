@@ -156,39 +156,38 @@ final class Strings {
         put("saves_none", "There are no saves yet", "Todavía no hay partidas guardadas");
         put("saves_not_zip", "That file has no saves (a zip with a savedata folder)",
             "Ese archivo no tiene partidas (un zip con una carpeta savedata)");
-        put("gfx", "Graphics effects", "Efectos gráficos");
-        put("gfx_note", "The game's own effects, all on as in the original game. Switching one off "
-                + "applies a patch from the Bachata S4 catalog to your game's executable (version 1.00 or 1.02, "
-                + "checked before it is applied): less GPU work, a plainer picture. Measure the gain on your "
-                + "device before keeping it. Applied at the next start.",
-            "Los efectos del propio juego, todos activados como en el original. Al desactivar uno se "
-                + "aplica un parche del catálogo de Bachata S4 al ejecutable de tu juego (versión 1.00 o 1.02, "
-                + "comprobado antes de aplicarlo): menos trabajo para la GPU, una imagen más sencilla. Mide la "
-                + "mejora en tu dispositivo antes de dejarlo. Se aplica al siguiente arranque.");
+        put("gfx", "Graphics patches", "Parches gráficos");
+        put("gfx_note", "Optional patches from the Bachata S4 catalog, all off: the game as it is. One switched on "
+                + "changes the game's own graphics settings (versions 1.00 and 1.02, checked against your executable "
+                + "before it is applied): less GPU work, a plainer picture. Measure the gain on your device before "
+                + "keeping it. Applied at the next start.",
+            "Parches opcionales del catálogo de Bachata S4, todos desactivados: el juego tal como es. Al activar uno se "
+                + "cambian los ajustes gráficos del propio juego (versiones 1.00 y 1.02, comprobado con tu ejecutable "
+                + "antes de aplicarlo): menos trabajo para la GPU, una imagen más sencilla. Mide la mejora en tu "
+                + "dispositivo antes de dejarlo. Se aplica al siguiente arranque.");
         put("gfx_shadows", "Shadow cascades", "Cascadas de sombras");
         put("gfx_shadows_hint", "Fewer shadow maps: less GPU work, shadows end closer.",
             "Menos mapas de sombras: menos trabajo de GPU, las sombras acaban más cerca.");
         put("gfx_shadows_0", "Original", "Original");
         put("gfx_shadows_2", "2", "2");
         put("gfx_shadows_1", "1", "1");
-        put("fx_logos", "Startup logos (Uncharted 1 and 2)", "Logos de inicio (Uncharted 1 y 2)");
-        put("fx_logos_hint", "Off: the games start without the studio logos. Not available for Uncharted 3.",
-            "Desactivado: los juegos arrancan sin los logos de los estudios. No disponible para Uncharted 3.");
-        put("fx_water_reflections", "Water reflections", "Reflejos del agua");
-        put("fx_ssao", "Ambient occlusion (SSAO)", "Oclusión ambiental (SSAO)");
-        put("fx_fog", "Fog", "Niebla");
-        put("fx_volumetric", "Volumetric lights", "Luces volumétricas");
-        put("fx_motion_blur", "Motion blur", "Desenfoque de movimiento");
-        put("fx_dof", "Depth of field", "Profundidad de campo");
-        put("fx_bloom", "Bloom", "Resplandor (bloom)");
-        put("fx_aa", "The game's anti-aliasing", "Antialiasing del juego");
-        put("fx_aniso", "Anisotropic filtering", "Filtrado anisotrópico");
-        put("fx_dynamic_lights", "Dynamic lights", "Luces dinámicas");
-        put("fx_sun_ao", "Sunlight ambient occlusion", "Oclusión ambiental del sol");
-        put("fx_draw_distance", "Full draw distance", "Distancia de dibujado completa");
-        put("fx_draw_distance_hint", "Off: 40 m, extreme; distant scenery disappears.",
-            "Desactivado: 40 m, extremo; el escenario lejano desaparece.");
-        put("gfx_original", "Restore the original effects", "Restaurar los efectos originales");
+        put("gfx_skip_logos", "Skip startup logos (Uncharted 1 and 2)", "Saltar los logos de inicio (Uncharted 1 y 2)");
+        put("gfx_skip_logos_hint", "Not available for Uncharted 3.", "No disponible para Uncharted 3.");
+        put("gfx_no_water_reflections", "No water reflections", "Sin reflejos del agua");
+        put("gfx_no_ssao", "No ambient occlusion (SSAO)", "Sin oclusión ambiental (SSAO)");
+        put("gfx_no_fog", "No fog", "Sin niebla");
+        put("gfx_no_volumetric", "No volumetric lights", "Sin luces volumétricas");
+        put("gfx_no_motion_blur", "No motion blur", "Sin desenfoque de movimiento");
+        put("gfx_no_dof", "No depth of field", "Sin profundidad de campo");
+        put("gfx_no_bloom", "No bloom", "Sin resplandor (bloom)");
+        put("gfx_no_aa", "No game anti-aliasing", "Sin el antialiasing del juego");
+        put("gfx_no_aniso", "No anisotropic filtering", "Sin filtrado anisotrópico");
+        put("gfx_no_dynamic_lights", "No dynamic lights", "Sin luces dinámicas");
+        put("gfx_no_sun_ao", "No sunlight ambient occlusion", "Sin oclusión ambiental del sol");
+        put("gfx_draw_distance_40", "Draw distance 40 m", "Distancia de dibujado 40 m");
+        put("gfx_draw_distance_40_hint", "Extreme: distant scenery disappears.",
+            "Extremo: el escenario lejano desaparece.");
+        put("gfx_off", "Turn all off (the game as it is)", "Desactivar todos (el juego tal como es)");
         put("upscaling", "Upscaling", "Escalado");
         put("upscaling_hint", "FSR 1 enlarges the frame alone: sharp, no anti-aliasing, almost free. FSR 3.1 and "
                 + "GSR 2 (Snapdragon Game Super Resolution, made for Adreno GPUs) rebuild each frame with the game's "

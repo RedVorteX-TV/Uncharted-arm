@@ -208,17 +208,14 @@ while :; do
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
-    # The launcher's graphics settings (launcher.ini; the Bachata S4+ catalog's patches): an effect
-    # switched off there (fx_<effect>=0; on, the game's own, by default) and gfx_shadows=2/1
-    # cascades. bb-prepare wrote gfx-<id>.bin for the patches whose original bytes match this
-    # executable (graphics-2.txt). Each is optional (--extra-patches: a write that does not fit is
-    # skipped, the game still starts).
+    # The launcher's graphics patches (launcher.ini gfx_<id>=1, gfx_shadows=2/1 cascades; the
+    # Bachata S4+ catalog's): all off by default, the game as it is. bb-prepare wrote gfx-<id>.bin
+    # for the patches whose original bytes match this executable (graphics-2.txt). Each is optional
+    # (--extra-patches: a write that does not fit is skipped, the game still starts).
     gfx_on=
-    for pair in logos:skip_logos water_reflections:no_water_reflections ssao:no_ssao fog:no_fog \
-                volumetric:no_volumetric motion_blur:no_motion_blur dof:no_dof bloom:no_bloom aa:no_aa \
-                aniso:no_aniso dynamic_lights:no_dynamic_lights sun_ao:no_sun_ao \
-                draw_distance:draw_distance_40; do
-        [ "$(choice fx_${pair%%:*})" = 0 ] && gfx_on="$gfx_on ${pair#*:}"
+    for id in skip_logos no_water_reflections no_ssao no_fog no_volumetric no_motion_blur no_dof \
+              no_bloom no_aa no_aniso no_dynamic_lights no_sun_ao draw_distance_40; do
+        [ "$(choice gfx_$id)" = 1 ] && gfx_on="$gfx_on $id"
     done
     case "$(choice gfx_shadows)" in
         2) gfx_on="$gfx_on shadows_2" ;;
