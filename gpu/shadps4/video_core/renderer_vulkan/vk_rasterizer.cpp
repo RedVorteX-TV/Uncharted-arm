@@ -1594,6 +1594,10 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     PrepareRenderState(pipeline);
     if (upscaler->CompositeFrames()) {
         const auto* fragment = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        if (fragment && regs.color_buffers[0] &&
+            FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
+            upscaler->OnDisplayDraw(fragment->pgm_hash);
+        }
         if (fragment && upscaler->OnComposite(fragment->pgm_hash, cb_descs[0].first)) {
             bind_prepared = nullptr; // as after a draw: later dispatches bind without its sharps
             frame_start();           // the guest's copy is replaced by the upscale
