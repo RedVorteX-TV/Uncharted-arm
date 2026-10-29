@@ -267,6 +267,7 @@ bool TemporalUpscaler::ReactiveOn() const {
 
 void TemporalUpscaler::OnSceneColor(VideoCore::ImageId color) {
     scene_color = color;
+    scene_seen = true;
 }
 
 namespace {
@@ -2349,10 +2350,12 @@ void TemporalUpscaler::OnDisplayDraw(u64 ps_hash) {
             break;
         }
     }
-    // Counted only while the game draws a 3D scene (the velocity pass gave a camera): the logos,
-    // movies and the collection's menu draw into the display buffers without the frame copy,
-    // and counting them turned the presets off before any gameplay (prueba 7's GSR 2 log).
-    if (!camera_motion.Ready()) {
+    // Counted once the game has drawn a 3D scene (its scene colour was seen, or the velocity pass
+    // gave a camera): the logos, movies and the collection's menu draw into the display buffers
+    // without the frame copy, and counting them turned the presets off before any gameplay
+    // (prueba 7's GSR 2 log). The camera alone was not enough: without the velocity pass the
+    // check never ran and the black frames stayed (prueba 8, "No game anti-aliasing").
+    if (!scene_seen && !camera_motion.Ready()) {
         return;
     }
     if (++display_draws < 6000) {

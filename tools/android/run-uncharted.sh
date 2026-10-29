@@ -214,13 +214,18 @@ while :; do
         [ "$(choice gfx_$id)" = 1 ] && gfx_on="$gfx_on $id"
     done
     # FSR 3.1, GSR 2 and TAA take the camera from the motion blur's velocity pass, which "No motion
-    # blur" removes: they ran on no frame (the picture stayed FSR 1's). The patch waits for those.
+    # blur" removes: they ran on no frame (the picture stayed FSR 1's). "No game anti-aliasing"
+    # removes the game's final frame copy (pixel shader 749bbec9) the upscale starts from, and the
+    # velocity pass with it: the presets drew black frames (the Thor's flicker, GSR 2 and FSR 3.1;
+    # prueba 8 log). The upscalers are the anti-aliasing then. Both patches wait for those.
     case "$(setting upscaler)" in
         fsr3|gsr2|taa|fsr4|fsr411|dlss)
-            case " $gfx_on " in *" no_motion_blur "*)
-                gfx_on=$(printf '%s' "$gfx_on" | sed 's/ no_motion_blur//')
-                echo "Graphics patch no_motion_blur: not applied with the $(setting upscaler) upscaler (it needs the motion blur's camera pass)" ;;
-            esac ;;
+            for id in no_motion_blur no_aa; do
+                case " $gfx_on " in *" $id "*)
+                    gfx_on=$(printf '%s' "$gfx_on" | sed "s/ $id//")
+                    echo "Graphics patch $id: not applied with the $(setting upscaler) upscaler (it needs the game's camera pass and frame copy)" ;;
+                esac
+            done ;;
     esac
     case "$(choice gfx_shadows)" in
         2) gfx_on="$gfx_on shadows_2" ;;

@@ -183,6 +183,10 @@ final class Strings {
         put("gfx_no_dof", "No depth of field", "Sin profundidad de campo");
         put("gfx_no_bloom", "No bloom", "Sin resplandor (bloom)");
         put("gfx_no_aa", "No game anti-aliasing", "Sin el antialiasing del juego");
+        put("gfx_no_aa_hint", "Not applied with FSR 3.1, GSR 2 or TAA: they start from the game's final frame copy, "
+                + "which this removes, and they are the anti-aliasing then.",
+            "No se aplica con FSR 3.1, GSR 2 ni TAA: parten de la copia final del fotograma del juego, que esto quita, "
+                + "y ya hacen ellos de antialiasing.");
         put("gfx_no_aniso", "No anisotropic filtering", "Sin filtrado anisotrópico");
         put("gfx_no_dynamic_lights", "No dynamic lights", "Sin luces dinámicas");
         put("gfx_no_sun_ao", "No sunlight ambient occlusion", "Sin oclusión ambiental del sol");

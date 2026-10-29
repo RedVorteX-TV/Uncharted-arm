@@ -232,6 +232,7 @@ private:
     bool failed = false;
     u64 trigger_hash = 0x9a9cf8a9;
     VideoCore::ImageId scene_color{};
+    bool scene_seen = false; ///< bbport: a 3D scene was drawn this session (OnDisplayDraw)
     bool done_this_frame = false;
     u32 preset_file_frames = 0; ///< BB_PRESET_FILE polling
     int applied_output = -1;
