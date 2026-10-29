@@ -396,7 +396,8 @@ public final class MainActivity extends Activity {
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
                 Strings.get("fps_45"), Strings.get("fps_60"), Strings.get("fps_0")}, "40");
         cyclerRow(launcher, "game_rate", Strings.get("game_rate"), Strings.get("game_rate_hint"),
-            new String[]{"60", "120"}, new String[]{"60 Hz", Strings.get("game_rate_120")}, "60");
+            new String[]{"60", "120", "auto"}, new String[]{"60 Hz", Strings.get("game_rate_120"),
+                Strings.get("game_rate_auto")}, "60");
         // Frame generation (bbport.ini, like the in-game menu); LSFG with the player's own Lossless.dll
         // FSR 3 frame generation shows no effect on Android yet: not offered (a saved choice goes off).
         if ("fsr3".equals(bbport.get("frame_gen"))) bbport.set("frame_gen", "off");
@@ -614,11 +615,36 @@ public final class MainActivity extends Activity {
         switch (id) {
             case "low":       return new String[]{"540", "fsr1", "0", "30", "60", "1"};
             case "medium":    return new String[]{"540", "fsr1", "0", "30", "60", "0"};
-            case "high":      return new String[]{"1080", "gsr2", "1", "60", "60", "0"};
-            case "high_perf": return new String[]{"1080", "gsr2", "1", "0", "120", "0"};
+            case "high":      return new String[]{"1080", "gsr2", "1", "60", "auto", "0"};
+            case "high_perf": return new String[]{"1080", "gsr2", "1", "0", "auto", "0"};
             case "battery":   return new String[]{"720", "fsr1", "0", "40", "120", "0"};
             default:          return null;
         }
+    }
+
+    private float displayHz = 60f;
+    /** The window asks for the screen's fastest mode at its current resolution when the game's
+     *  rate setting is 120 Hz or Automatic (Android otherwise keeps many apps at 60 Hz, and the
+     *  game's frames followed it), else for the 60 Hz one. Returns the rate asked for. */
+    private float requestRefreshRate() {
+        float rate = 60f;
+        try {
+            android.view.Display display = getWindowManager().getDefaultDisplay();
+            android.view.Display.Mode current = display.getMode(), chosen = current;
+            boolean fast = !launcher.get("game_rate", "60").equals("60");
+            for (android.view.Display.Mode mode : display.getSupportedModes()) {
+                if (mode.getPhysicalWidth() != current.getPhysicalWidth()
+                    || mode.getPhysicalHeight() != current.getPhysicalHeight()) continue;
+                boolean better = fast ? mode.getRefreshRate() > chosen.getRefreshRate()
+                                      : Math.abs(mode.getRefreshRate() - 60f) < Math.abs(chosen.getRefreshRate() - 60f);
+                if (better) chosen = mode;
+            }
+            WindowManager.LayoutParams attrs = getWindow().getAttributes();
+            attrs.preferredDisplayModeId = chosen.getModeId();
+            getWindow().setAttributes(attrs);
+            rate = chosen.getRefreshRate();
+        } catch (RuntimeException ignored) {}
+        return rate;
     }
 
     /** The display's highest refresh rate (Hz); 60 when unknown. */
@@ -739,6 +765,7 @@ public final class MainActivity extends Activity {
         if (!runtimeReady) { toast(Strings.get("installing_runtime")); return; }
         if (!displayReady) { startDisplay(); if (!displayReady) return; }
         if (gameDir == null || !isGame(new File(gameDir)) || !storageGranted()) { askGameFolder(); return; }
+        displayHz = requestRefreshRate();
         launcherView.setVisibility(View.GONE);
         handle.setVisibility(View.VISIBLE);
         status.setText(Strings.get("starting")); status.setVisibility(View.VISIBLE);
@@ -788,6 +815,9 @@ public final class MainActivity extends Activity {
                 int[] fit = fitSize(gameLayer.getWidth(), gameLayer.getHeight()); w = fit[0]; h = fit[1];
             }
             extra.add("BB_SCREEN_W=" + (w > 0 ? w : 1920)); extra.add("BB_SCREEN_H=" + (h > 0 ? h : 1080));
+            // The screen's rate for the game's vblank and frame limit (BbDisplayRefreshHz); the
+            // window asked for it in play() (requestRefreshRate).
+            extra.add("BB_DISPLAY_HZ=" + Math.round(displayHz));
             File gameLog = new File(BASE, "logs/android-game.log"), previous = new File(BASE, "logs/android-game.prev.log");
             gameLog.getParentFile().mkdirs();
             if (gameLog.length() > 0) { previous.delete(); gameLog.renameTo(previous); }

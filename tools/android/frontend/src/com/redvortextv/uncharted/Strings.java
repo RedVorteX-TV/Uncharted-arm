@@ -38,12 +38,15 @@ final class Strings {
             "FSR 1 mantiene los bordes nítidos al ampliar la imagen; el bilineal es más suave.");
         put("game_rate", "Game display rate", "Frecuencia del juego");
         put("game_rate_120", "120 Hz (120 Hz screens)", "120 Hz (pantallas de 120 Hz)");
+        put("game_rate_auto", "Automatic (fast)", "Automático (rápido)");
         put("game_rate_hint", "The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz "
-                + "screens (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz on a "
+                + "screens (a frame a little over 33 ms is not held until 50 ms). Automatic: a frame is shown as soon "
+                + "as it is ready, up to the screen's rate (at most 120 FPS); for 60 FPS and above. Keep 60 Hz on a "
                 + "60 Hz screen.",
             "La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en "
-                + "pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). "
-                + "Deja 60 Hz en una pantalla de 60 Hz.");
+                + "pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). Automático: cada "
+                + "fotograma se muestra en cuanto está listo, hasta la frecuencia de la pantalla (120 FPS como mucho); "
+                + "para 60 FPS o más. Deja 60 Hz en una pantalla de 60 Hz.");
         put("render_res", "Render resolution", "Resolución de render");
         put("render_res_hint", "The size the whole game draws at, scaled to the screen with FSR 1. 720p: the game's "
                 + "own PS4 720p mode, much faster than 1080p. 540p: for GPUs that 720p is still too much for "

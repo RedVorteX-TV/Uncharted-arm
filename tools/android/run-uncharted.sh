@@ -47,7 +47,15 @@ export BB_WINDOW_SIZE="${BB_SCREEN_W}x${BB_SCREEN_H}" BB_FULLSCREEN=1
 # The game's display rate stays 60 Hz; the FPS limit is fps_limit in bbport.ini (libbbgpu reads it,
 # the in-game menu changes it). launcher.ini game_rate=120 (120 Hz screens): a frame that misses
 # 33 ms is shown at 41.7 ms instead of waiting for 50.
-if [ "$(choice game_rate)" = 120 ]; then export BB_VBLANK_HZ=120; else export BB_VBLANK_HZ=60; fi
+# game_rate=auto (the High and High performance profiles): the game's vblank at 480 Hz, so a
+# finished frame is shown within ~2 ms instead of waiting for the next 60 or 120 Hz tick (Uncharted
+# flips every second vblank: at 120 Hz it could not pass 60 FPS), with the frame limit at the
+# screen's rate (BB_DISPLAY_HZ from the app), at most 120: above that the games' timing breaks.
+case "$(choice game_rate)" in
+    120) export BB_VBLANK_HZ=120 ;;
+    auto) export BB_VBLANK_HZ=0 ;;
+    *) export BB_VBLANK_HZ=60 ;;
+esac
 case $(setting fps_limit) in 30|40|45|60|0) ;; *) printf 'fps_limit=40\n' >> "$BB_CONFIG" ;; esac
 case $(setting render_720p) in 0|1) ;; *) printf 'render_720p=1\n' >> "$BB_CONFIG" ;; esac
 case $(setting render_540p) in 0|1) ;; *) printf 'render_540p=0\n' >> "$BB_CONFIG" ;; esac
