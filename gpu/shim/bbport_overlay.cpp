@@ -213,7 +213,88 @@ void Menu() {
                "экономит батарею. 40 FPS — ровно 3 обновления экрана 120 Гц. Сразу."));
     }
 
-    ImGui::SeparatorText(T("Resolution", "Разрешение"));
+    // Uncharted ARM port: one list for the scaling (FSR 1 or bilinear to the screen) and the
+    // temporal upscalers (FSR 3.1, GSR 2, ...), with their quality presets. A preset below Native
+    // makes the game draw at 1920x1080 / scale (run.py, run-uncharted.sh: the resolution patch on
+    // restart) and the upscaler bring each frame to 1920x1080; the HUD stays at 1920x1080.
+    ImGui::SeparatorText(T("Upscaling", "Масштабирование"));
+    struct Method {
+        const char* name;
+        int upscaler;
+        bool fsr1;
+    };
+    const Method methods[] = {
+        {T("Off (bilinear scaling)", "Выкл (билинейное)"), BbSettings::UpscalerOff, false},
+        {T("AMD FSR 1 (spatial)", "AMD FSR 1 (пространственное)"), BbSettings::UpscalerOff, true},
+        {"AMD FSR 3.1", BbSettings::UpscalerFsr3, true},
+        {"Snapdragon GSR 2", BbSettings::UpscalerGsr2, true},
+        {T("TAA (anti-aliasing only)", "TAA (только сглаживание)"), BbSettings::UpscalerTaa, true},
+        {"AMD FSR 4 (INT8)", BbSettings::UpscalerFsr4, true},
+        {"AMD FSR 4.1.1 (INT8)", BbSettings::UpscalerFsr411, true},
+        {"DLSS (NVIDIA RTX)", BbSettings::UpscalerDlss, true},
+    };
+    const char* unsupported = T("— not supported by this GPU", "— не поддерживается видеокартой");
+    const int upscaler = s.upscaler;
+    int method = 0;
+    for (int i = 0; i < int(sizeof(methods) / sizeof(*methods)); ++i) {
+        if (methods[i].upscaler == upscaler &&
+            (upscaler != BbSettings::UpscalerOff || methods[i].fsr1 == s.fsr1.load())) {
+            method = i;
+            break;
+        }
+    }
+    if (ImGui::BeginCombo(T("Method", "Метод"), methods[method].name)) {
+        for (int i = 0; i < int(sizeof(methods) / sizeof(*methods)); ++i) {
+            const int u = methods[i].upscaler;
+            const bool supported = u == BbSettings::UpscalerFsr4 ? s.fsr4_supported.load()
+                : u == BbSettings::UpscalerFsr411 ? s.fsr411_supported.load()
+                : u == BbSettings::UpscalerDlss   ? s.dlss_supported.load() : true;
+            if (!supported) {
+                continue; // FSR 4 and DLSS: only on the GPUs that run them
+            }
+            if (ImGui::Selectable(methods[i].name, i == method)) {
+                Store(s.upscaler, u, true);
+                Store(s.fsr1, methods[i].fsr1, true);
+            }
+        }
+        ImGui::EndCombo();
+    }
+    const bool temporal_scaler = upscaler != BbSettings::UpscalerOff && upscaler != BbSettings::UpscalerTaa;
+    Hint(T("FSR 1 enlarges the frame alone: sharp, no anti-aliasing, almost free. FSR 3.1 and GSR 2 "
+           "(Snapdragon Game Super Resolution, made for Adreno GPUs) rebuild each frame with the "
+           "game's depth and motion: they smooth edges and, below Native, draw fewer pixels and "
+           "rebuild 1920x1080. GSR 2 costs less GPU time than FSR 3.1. TAA only smooths edges. "
+           "The method applies on the next frame.",
+           "FSR 1 только растягивает кадр: чётко, без сглаживания. FSR 3.1 и GSR 2 восстанавливают "
+           "кадр по глубине и движению: сглаживают и ниже Native рисуют меньше пикселей. TAA только "
+           "сглаживает. Метод применяется со следующего кадра."));
+    {
+        static const char* presets[] = {
+            T("Native (anti-aliasing at the render resolution)", "Native (сглаживание)"),
+            T("Quality (1280 x 720 to 1080p)", "Качество (1280 x 720)"),
+            T("Balanced (1136 x 636 to 1080p)", "Баланс (1136 x 636)"),
+            T("Performance (960 x 540 to 1080p)", "Производительность (960 x 540)"),
+            T("Ultra Performance (640 x 360 to 1080p)", "Ультра (640 x 360)")};
+        static_assert(sizeof(presets) / sizeof(*presets) == BbSettings::PresetCount);
+        const int preset = std::clamp(s.preset.load(), 0, BbSettings::PresetCount - 1);
+        ImGui::BeginDisabled(!temporal_scaler);
+        if (ImGui::BeginCombo(T("Quality", "Качество"), presets[preset])) {
+            for (int i = 0; i < BbSettings::PresetCount; ++i) {
+                if (ImGui::Selectable(presets[i], i == preset)) {
+                    Store(s.preset, i, true);
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndDisabled();
+        Hint(T("For FSR 3.1 and GSR 2. Native: they only smooth edges at the render resolution below. "
+               "The others choose the render size themselves (1920x1080 divided by 1.5, 1.7, 2 or 3) "
+               "and upscale to 1920x1080, with the HUD and menus at 1920x1080. Applies when the game "
+               "restarts.",
+               "Для FSR 3.1 и GSR 2. Native: только сглаживание. Остальные сами выбирают размер "
+               "рендера и масштабируют до 1920x1080. После перезапуска."));
+    }
+    const bool preset_scaling = temporal_scaler && s.preset != BbSettings::NativeAA;
     // The size the whole game renders at, on restart: its own 1080p, its own PS4 720p mode
     // (render_720p, scripts/render_720p.py) or 960x540 (render_540p, scripts/render_res.py).
     {
@@ -222,6 +303,7 @@ void Menu() {
             T("1280 x 720 (the game's PS4 720p mode)", "1280 x 720 (режим 720p PS4)"),
             T("960 x 540 (slower GPUs)", "960 x 540 (слабые GPU)")};
         const int current = s.render_720p ? 1 : s.render_540p ? 2 : 0;
+        ImGui::BeginDisabled(preset_scaling);
         if (ImGui::BeginCombo(T("Render resolution", "Разрешение рендера"), sizes[current])) {
             for (int i = 0; i < 3; ++i) {
                 if (ImGui::Selectable(sizes[i], i == current)) {
@@ -231,52 +313,23 @@ void Menu() {
             }
             ImGui::EndCombo();
         }
+        ImGui::EndDisabled();
     }
-    Hint(T("The size the whole game draws at (scene, effects, UI and movies); the frame is then "
-           "enlarged to the screen. 1280x720 is the game's own PS4 720p mode: much faster on "
-           "handhelds, a little softer. 960x540 is for GPUs that 720p is still too much for, softer "
-           "again. Applies when the game restarts.",
-           "Размер, в котором рисуется вся игра; кадр растягивается на экран. 1280x720 — режим "
-           "720p PS4. 960x540 — для GPU, которым мало 720p. После перезапуска."));
-    if (s.render_720p != s.startup_render_720p || s.render_540p != s.startup_render_540p) {
+    Hint(preset_scaling
+             ? T("Set by the quality above while FSR 3.1 or GSR 2 upscale.",
+                 "Задаётся качеством выше, пока работает FSR 3.1 или GSR 2.")
+             : T("The size the whole game draws at (scene, effects, UI and movies); the frame is then "
+                 "enlarged to the screen with the method above. 1280x720 is the game's own PS4 720p "
+                 "mode: much faster on handhelds, a little softer. 960x540 is for GPUs that 720p is "
+                 "still too much for. Applies when the game restarts.",
+                 "Размер, в котором рисуется вся игра; кадр растягивается на экран. 1280x720 — режим "
+                 "720p PS4. 960x540 — для GPU, которым мало 720p. После перезапуска."));
+    if (s.render_720p != s.startup_render_720p || s.render_540p != s.startup_render_540p ||
+        (s.preset != s.startup_preset && (temporal_scaler || s.startup_preset != BbSettings::NativeAA))) {
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
                            T("Applies when the game restarts (Save and restart, below)",
                              "Применится после перезапуска (кнопка ниже)"));
     }
-    Checkbox(T("FSR 1 (sharp scaling to the screen)", "FSR 1 (чёткое масштабирование)"), s.fsr1);
-    Hint(T("How a frame smaller than the screen (the 1280x720 mode on a 1080p screen) is enlarged: "
-           "AMD FSR 1 keeps edges sharp, off uses a softer bilinear scaling. Costs a fraction of a "
-           "millisecond. Applies immediately.",
-           "Как кадр меньше экрана растягивается: AMD FSR 1 сохраняет чёткость, без него — "
-           "мягкое билинейное. Доли миллисекунды. Сразу."));
-
-    ImGui::SeparatorText(T("Anti-aliasing", "Сглаживание"));
-    const char* upscalers[] = {T("Off (the game's own)", "Выкл (сглаживание игры)"), "FSR 3.1",
-                               "FSR 4 (INT8)", "FSR 4.1.1 (INT8)", "TAA", "DLSS (NVIDIA RTX)"};
-    const char* unsupported = T("— not supported by this GPU", "— не поддерживается видеокартой");
-    int upscaler = s.upscaler;
-    if (ImGui::BeginCombo(T("Method", "Метод"), upscalers[upscaler])) {
-        for (int i = 0; i < BbSettings::UpscalerCount; ++i) {
-            const bool supported = i == BbSettings::UpscalerFsr4 ? s.fsr4_supported.load()
-                : i == BbSettings::UpscalerFsr411 ? s.fsr411_supported.load()
-                : i == BbSettings::UpscalerDlss   ? s.dlss_supported.load() : true;
-            ImGui::BeginDisabled(!supported);
-            if (ImGui::Selectable(upscalers[i], i == upscaler)) {
-                Store(s.upscaler, i, true);
-            }
-            ImGui::EndDisabled();
-            if (!supported) {
-                ImGui::SameLine();
-                ImGui::TextDisabled("%s", unsupported);
-            }
-        }
-        ImGui::EndCombo();
-    }
-    Hint(T("Runs at the game's render resolution (launcher: Display) on the scene before "
-           "post-processing, with the game's own motion vectors, and replaces its edge smoothing. "
-           "Changes apply on the next frame.",
-           "Работает в родном 1920x1080 игры на сцене до постобработки, с векторами движения "
-           "самой игры, и заменяет её сглаживание. Применяется со следующего кадра."));
     if (const char* problem = s.dlss_problem.load(); problem && upscaler == BbSettings::UpscalerDlss) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.3f, 1.0f), "DLSS: %s", problem);
     }
@@ -481,6 +534,7 @@ void FpsCounter() {
     ImGui::Text(T("%.0f FPS  %.1f ms  %s", "%.0f FPS  %.1f мс  %s"), frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f,
                 frame_ms_avg,
                 s.upscaler == BbSettings::UpscalerFsr3   ? "FSR 3.1"
+                : s.upscaler == BbSettings::UpscalerGsr2 ? "GSR 2"
                 : s.upscaler == BbSettings::UpscalerFsr4 ? "FSR 4"
                 : s.upscaler == BbSettings::UpscalerFsr411 ? "FSR 4.1.1"
                 : s.upscaler == BbSettings::UpscalerTaa ? "TAA"
