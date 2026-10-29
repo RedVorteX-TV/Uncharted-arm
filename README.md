@@ -110,7 +110,11 @@ Built on the work of:
   upscaling presets (scripts/render_res.py, cutscene movie scaling in gpu/shim/bbport_movie.cpp).
 - [revvv991/uncharted-android](https://github.com/revvv991/uncharted-android) (GPL-2.0-or-later):
   the batched skinning (vk_skin_batch.cpp and its host shaders), the constant copies bound again,
-  the GPU threads on the fast cores and fewer wakeups of the game's submission thread.
+  the GPU threads on the fast cores and fewer wakeups of the game's submission thread; the movies
+  below 1080p and the blur scale below 1080p.
+- [Bachata S4](https://github.com/zenithblue-oss/shadps4-arm64) (GPL-2.0-or-later), through
+  [erickmendes22/uncharted-android](https://github.com/erickmendes22/uncharted-android): the
+  launcher's graphics patches (patches/graphics_patches.json).
 - [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) and
   [ARMSX2](https://github.com/ARMSX2/ARMSX2): the LSFG frame generation passes, from
   [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)'s

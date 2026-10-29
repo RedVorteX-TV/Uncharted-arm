@@ -156,6 +156,35 @@ final class Strings {
         put("saves_none", "There are no saves yet", "Todavía no hay partidas guardadas");
         put("saves_not_zip", "That file has no saves (a zip with a savedata folder)",
             "Ese archivo no tiene partidas (un zip con una carpeta savedata)");
+        put("gfx", "Graphics patches", "Parches gráficos");
+        put("gfx_note", "Optional changes to the game's own graphics settings, from the Bachata S4 catalog. "
+                + "Each one is checked against your game's files and skipped if it does not match. They lower "
+                + "image quality; measure the gain in your device before keeping them. Applied at the next start.",
+            "Cambios opcionales en los ajustes gráficos del propio juego, del catálogo de Bachata S4. Cada uno se "
+                + "comprueba con los archivos de tu juego y se omite si no coincide. Bajan la calidad de imagen; "
+                + "mide la mejora en tu dispositivo antes de dejarlos. Se aplican al siguiente arranque.");
+        put("gfx_shadows", "Shadow cascades", "Cascadas de sombras");
+        put("gfx_shadows_hint", "Fewer shadow maps: less GPU work, shadows end closer.",
+            "Menos mapas de sombras: menos trabajo de GPU, las sombras acaban más cerca.");
+        put("gfx_shadows_0", "Original", "Original");
+        put("gfx_shadows_2", "2", "2");
+        put("gfx_shadows_1", "1", "1");
+        put("gfx_skip_logos", "Skip startup logos", "Saltar los logos de inicio");
+        put("gfx_no_water_reflections", "No water reflections", "Sin reflejos del agua");
+        put("gfx_no_ssao", "No ambient occlusion (SSAO)", "Sin oclusión ambiental (SSAO)");
+        put("gfx_no_fog", "No fog", "Sin niebla");
+        put("gfx_no_volumetric", "No volumetric lights", "Sin luces volumétricas");
+        put("gfx_no_motion_blur", "No motion blur", "Sin desenfoque de movimiento");
+        put("gfx_no_dof", "No depth of field", "Sin profundidad de campo");
+        put("gfx_no_bloom", "No bloom", "Sin resplandor (bloom)");
+        put("gfx_no_aa", "No anti-aliasing", "Sin antialiasing");
+        put("gfx_no_aniso", "No anisotropic filtering", "Sin filtrado anisotrópico");
+        put("gfx_no_dynamic_lights", "No dynamic lights", "Sin luces dinámicas");
+        put("gfx_no_sun_ao", "No sunlight ambient occlusion", "Sin oclusión ambiental del sol");
+        put("gfx_draw_distance_40", "Draw distance 40 m", "Distancia de dibujado 40 m");
+        put("gfx_draw_distance_40_hint", "Extreme: distant scenery disappears.",
+            "Extremo: el escenario lejano desaparece.");
+        put("gfx_off", "Turn all off", "Desactivar todos");
         put("touch_style", "On-screen controller style", "Estilo del mando en pantalla");
         put("touch_style_hint", "Classic: the PlayStation colours on the face buttons. PS5: white symbols, as on a "
                 + "DualSense.", "Clásico: los colores de PlayStation en los botones de acción. PS5: símbolos blancos, "
@@ -225,6 +254,8 @@ final class Strings {
         else if ("en".equals(language)) spanish = false;
         else spanish = "es".equals(Locale.getDefault().getLanguage());
     }
+
+    static boolean has(String key) { return TEXT.containsKey(key); }
 
     static String get(String key) {
         String[] t = TEXT.get(key);

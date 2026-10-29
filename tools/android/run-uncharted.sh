@@ -176,6 +176,24 @@ while :; do
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
+    # The launcher's graphics patches (launcher.ini gfx_<id>=1, gfx_shadows=0/2/1 cascades; from the
+    # Bachata S4+ catalog): bb-prepare wrote gfx-<id>.bin for those whose original bytes match this
+    # executable (graphics-1.txt). Each is optional (--extra-patches: a write that does not fit is
+    # skipped, the game still starts).
+    gfx_on=
+    for id in skip_logos no_water_reflections no_ssao no_fog no_volumetric no_motion_blur no_dof \
+              no_bloom no_aa no_aniso no_dynamic_lights no_sun_ao draw_distance_40; do
+        [ "$(choice gfx_$id)" = 1 ] && gfx_on="$gfx_on $id"
+    done
+    case "$(choice gfx_shadows)" in
+        2) gfx_on="$gfx_on shadows_2" ;;
+        1) gfx_on="$gfx_on shadows_1" ;;
+    esac
+    for id in $gfx_on; do
+        if [ -f "$data/gfx-$id.bin" ]; then set -- "$@" --extra-patches "$data/gfx-$id.bin"
+        else echo "Graphics patch $id: not available for $exe"; fi
+    done
+    [ -n "$gfx_on" ] && echo "Graphics patches:$gfx_on"
     # Uncharted 2's aiming and turret blur read tiny render results back: copied back without
     # waiting (BB_TINY_READBACK, upstream uncharted_pc 0.3.8; ~13% slower elsewhere, so U2 only).
     # Without it everything behind Drake stayed blurred while aiming.

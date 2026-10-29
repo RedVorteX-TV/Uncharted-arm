@@ -13,6 +13,7 @@
 #include <set>
 
 #include "boot.h"
+#include "graphics.h"
 #include "hash.h"
 #include "io.h"
 #include "ps4.h"
@@ -70,6 +71,7 @@ Boot prepare(const std::string& game, const std::string& out, const std::string&
         }
     }
     write_render_540p(s.elf, out);
+    write_graphics_patches(s, exe, out);
     std::vector<Phdr> loads;
     for (auto& p : s.ph)
         if (p.type == 1 || p.type == PT_SCE_RELRO) loads.push_back(p);
@@ -285,10 +287,15 @@ int run(const std::string& game, const std::string& data, const std::string& exe
                 text.pop_back();
             if (text == identity) {
                 say("Game image: existing image matches selected game");
-                // Images prepared before the 540p patch existed get it on their own.
-                if (!is_file(path_join(data, "render-960x540-2.bin")) && !is_file(path_join(data, "render-960x540.txt"))) {
+                // Images prepared before the 540p patch or the graphics patches existed get them
+                // on their own.
+                const bool r540 = !is_file(path_join(data, "render-960x540-2.bin")) && !is_file(path_join(data, "render-960x540.txt"));
+                const bool gfx = !is_file(path_join(data, "graphics-1.txt"));
+                if (r540 || gfx) {
                     MappedFile source = read_file(path_join(game, exe));
-                    write_render_540p(parse_self(source.view()).elf, data);
+                    SelfInfo self = parse_self(source.view());
+                    if (r540) write_render_540p(self.elf, data);
+                    if (gfx) write_graphics_patches(self, exe, data);
                 }
                 return 0;
             }
@@ -310,6 +317,13 @@ int run(const std::string& game, const std::string& data, const std::string& exe
         if (rename(path_join(work, "content.bin").c_str(), path_join(data, "content.bin").c_str()) < 0)
             raise_errno(errno, path_join(work, "content.bin"));
         for (const char* name : {"render-720p.bin", "render-720p.txt", "render-960x540.bin", "render-960x540-2.bin", "render-960x540.txt"}) {
+            unlink(path_join(data, name).c_str());
+            if (is_file(path_join(work, name))) rename(path_join(work, name).c_str(), path_join(data, name).c_str());
+        }
+        // The graphics patches (gfx-*.bin, graphics-1.txt).
+        std::vector<std::string> gfx = graphics_patch_files();
+        gfx.push_back("graphics-1.txt");
+        for (const std::string& name : gfx) {
             unlink(path_join(data, name).c_str());
             if (is_file(path_join(work, name))) rename(path_join(work, name).c_str(), path_join(data, name).c_str());
         }
