@@ -32,8 +32,9 @@ void say(const std::string& line) {
 // render-WxH-2.bin, or render-WxH.txt with the reason. 960x540 is the 540p render resolution
 // (the 0.1.6 render-960x540.bin had the decoder's size); 1280x720, 1136x636 and 640x360 are the
 // upscaling presets' sizes (Quality, Balanced, Ultra Performance; Performance is 960x540), which
-// run-uncharted.sh upscales to 1920x1080 with FSR 3.1 or GSR 2.
-constexpr std::pair<u32, u32> RENDER_SIZES[] = {{960, 540}, {1280, 720}, {1136, 636}, {640, 360}};
+// run-uncharted.sh upscales to 1920x1080 with FSR 3.1 or GSR 2; 832x468 is Balanced for a 1280x720
+// output (Quality 960x540, Performance 640x360 there).
+constexpr std::pair<u32, u32> RENDER_SIZES[] = {{960, 540}, {1280, 720}, {1136, 636}, {640, 360}, {832, 468}};
 
 void write_render_size(const Bytes& elf, const std::string& out, u32 width, u32 height) {
     const std::string name = "render-" + std::to_string(width) + "x" + std::to_string(height);
@@ -309,8 +310,8 @@ int run(const std::string& game, const std::string& data, const std::string& exe
                 say("Game image: existing image matches selected game");
                 // Images prepared before the 540p patch or the graphics patches existed get them
                 // on their own.
-                // (0.1.7: the upscaling presets' sizes, 640x360 the last.)
-                const bool r540 = !is_file(path_join(data, "render-640x360-2.bin")) && !is_file(path_join(data, "render-640x360.txt"));
+                // (0.1.7: the upscaling presets' sizes; 832x468, the 720p output's Balanced, the last.)
+                const bool r540 = !is_file(path_join(data, "render-832x468-2.bin")) && !is_file(path_join(data, "render-832x468.txt"));
                 const bool gfx = !is_file(path_join(data, "graphics-2.txt"));
                 if (r540 || gfx) {
                     MappedFile source = read_file(path_join(game, exe));

@@ -392,6 +392,10 @@ public final class MainActivity extends Activity {
         cyclerRow(bbport, "preset", Strings.get("quality"), Strings.get("quality_hint"),
             new String[]{"0", "1", "2", "3", "4"}, new String[]{Strings.get("quality_0"), Strings.get("quality_1"),
                 Strings.get("quality_2"), Strings.get("quality_3"), Strings.get("quality_4")}, "0");
+        // Where FSR 3.1 and GSR 2 bring the frames (launcher.ini upscale_out; run-uncharted.sh): 1080p,
+        // or 720p with the presets counted from it (less GPU; the screen gets the 720p frame scaled).
+        cyclerRow(launcher, "upscale_out", Strings.get("upscale_out"), Strings.get("upscale_out_hint"),
+            new String[]{"1080", "720"}, new String[]{"1920 × 1080", "1280 × 720"}, "1080");
         cyclerRow(bbport, "fps_limit", Strings.get("frame_rate"), Strings.get("frame_rate_hint"),
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
                 Strings.get("fps_45"), Strings.get("fps_60"), Strings.get("fps_0")}, "40");

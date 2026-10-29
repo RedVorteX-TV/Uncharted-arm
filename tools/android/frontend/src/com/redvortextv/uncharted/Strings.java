@@ -101,6 +101,15 @@ final class Strings {
         put("profile_done", "Profile %s applied and saved.", "Perfil %s aplicado y guardado.");
         put("profile_battery_60hz", "High autonomy applied with 30 FPS: 40 FPS needs a 120 Hz screen and this one goes up to 60 Hz.",
             "Alta autonomía aplicada a 30 FPS: los 40 FPS requieren pantalla de 120 Hz y esta llega a 60 Hz.");
+        put("upscale_out", "Upscaling output", "Salida del escalado");
+        put("upscale_out_hint", "The resolution FSR 3.1 and GSR 2 bring the game to; the quality presets count from it. "
+                + "At 1280 × 720 (Native 1280 × 720, Quality 960 × 540, Balanced 832 × 468, Performance 640 × 360) the "
+                + "upscaler, HUD and menus cost much less GPU; the screen shows that image scaled, a little softer at "
+                + "1080p. Applies on the next game start.",
+            "La resolución a la que FSR 3.1 y GSR 2 llevan el juego; los presets de calidad se cuentan desde ella. "
+                + "A 1280 × 720 (Nativa 1280 × 720, Calidad 960 × 540, Equilibrado 832 × 468, Rendimiento 640 × 360) el "
+                + "escalado, el HUD y los menús gastan mucha menos GPU; la pantalla muestra esa imagen escalada, algo más "
+                + "blanda a 1080p. Se aplica al iniciar el juego.");
         put("fps_40", "40 FPS", "40 FPS");
         put("fps_45", "45 FPS", "45 FPS");
         put("fps_60", "60 FPS", "60 FPS");

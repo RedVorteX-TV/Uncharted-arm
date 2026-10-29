@@ -183,15 +183,29 @@ while :; do
     # to 1920x1080 at the copy into the display buffer (pixel shader 749bbec9; Uncharted 3's
     # prompts after its tonemap, 484cdbf5) and the HUD and menus are drawn at 1920x1080. They
     # replace the render resolution below.
-    upscale_size= movie_patch=
+    # upscale_out=720 (the launcher's "Upscaling output"): the upscaler brings the frames to
+    # 1280x720 instead, HUD and menus are drawn at 1280x720 and the presenter scales that to the
+    # screen; the presets count from 720p (Native AA 1280x720, Quality 960x540, Balanced 832x468,
+    # Performance and Ultra Performance 640x360), as erickmendes22's uncharted-android does.
+    upscale_size= movie_patch= upscale_out=1920x1080
     case "$(setting upscaler)" in
         fsr3|gsr2)
-            case "$(setting preset)" in
-                1) upscale_size=1280x720 ;;
-                2) upscale_size=1136x636 ;;
-                3) upscale_size=960x540 ;;
-                4) upscale_size=640x360 ;;
-            esac ;;
+            if [ "$(choice upscale_out)" = 720 ]; then
+                upscale_out=1280x720
+                case "$(setting preset)" in
+                    0) upscale_size=1280x720 ;;
+                    1) upscale_size=960x540 ;;
+                    2) upscale_size=832x468 ;;
+                    3|4) upscale_size=640x360 ;;
+                esac
+            else
+                case "$(setting preset)" in
+                    1) upscale_size=1280x720 ;;
+                    2) upscale_size=1136x636 ;;
+                    3) upscale_size=960x540 ;;
+                    4) upscale_size=640x360 ;;
+                esac
+            fi ;;
     esac
     if [ -n "$upscale_size" ] && [ ! -f "$data/render-$upscale_size-2.bin" ]; then
         echo "Upscaling preset: $upscale_size not available for $exe ($(cat "$data/render-$upscale_size.txt" 2>/dev/null))"
@@ -199,11 +213,11 @@ while :; do
     fi
     if [ -n "$upscale_size" ]; then
         set -- "$@" --patches "$data/render-$upscale_size-2.bin"
-        export BB_SCENE_SIZE=$upscale_size BB_RENDER_RES=$upscale_size BB_OUTPUT_RES=1920x1080
+        export BB_SCENE_SIZE=$upscale_size BB_RENDER_RES=$upscale_size BB_OUTPUT_RES=$upscale_out
         export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
         export BB_VDEC_CONTENT=$upscale_size
         movie_patch=1
-        echo "Render resolution: $upscale_size, upscaled to 1920x1080 ($(setting upscaler) preset $(setting preset))"
+        echo "Render resolution: $upscale_size, upscaled to $upscale_out ($(setting upscaler) preset $(setting preset))"
     elif [ "$(setting render_720p)" = 1 ]; then
         if [ -f "$data/render-720p.bin" ]; then set -- "$@" --patches "$data/render-720p.bin"
         else echo "Render 720p: not available for $exe ($(cat "$data/render-720p.txt" 2>/dev/null)); rendering at 1080p"; fi
