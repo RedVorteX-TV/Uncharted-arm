@@ -889,6 +889,27 @@ static void patch_collection_skip(uint64_t image_size) {
     memcpy(image+jump+1,&rel,4);
     printf("Collection menu: skipped once, U1's front end opens first\n");
 }
+
+static void install_signature_fixes(Segment *segments, uint64_t ns) {
+    size_t count=0;
+    const RuntimeGuestFix *fixes=runtime_guest_fixes(&count);
+    for (size_t i=0; i<count; ++i) {
+        const RuntimeGuestFix *fix=&fixes[i];
+        size_t matches=0, length=0; uint64_t found=0;
+        for (uint64_t j=0; j<ns && matches<2; ++j) {
+            if (!(segments[j].flags&1)) continue;
+            size_t at=0;
+            size_t n=runtime_find_guest_fix(image+segments[j].address, segments[j].size,
+                                            fix->pattern, &at, &length);
+            if (n && !matches) found=segments[j].address+at;
+            matches+=n;
+        }
+        if (matches!=1 || fix->offset>length || fix->moved>length-fix->offset ||
+            !mapped(segments,ns,found+fix->offset,fix->moved)) continue;
+        memcpy(image+found+fix->offset,fix->patch,fix->moved);
+        printf("Callbacks: %s at %#" PRIx64 " (unique signature patch)\n",fix->name,found+fix->offset);
+    }
+}
 static void install_game_callbacks(Segment *segments, uint64_t ns, uint64_t image_size) {
     size_t count=0;
     const RuntimeGuestCallback *callbacks=runtime_guest_callbacks(&count);
@@ -1294,6 +1315,7 @@ int main(int argc, char **argv) {
     {
         uint64_t image_end=0;
         for (uint64_t s=0;s<ns;++s) if (segments[s].address+segments[s].size>image_end) image_end=segments[s].address+segments[s].size;
+        install_signature_fixes(segments, ns);
         install_game_callbacks(segments, ns, image_end);
         patch_collection_skip(image_end);
         patch_eop_tick_wait(image_end);
