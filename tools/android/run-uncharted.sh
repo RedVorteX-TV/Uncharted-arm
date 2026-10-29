@@ -188,7 +188,6 @@ while :; do
         export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
         export BB_VDEC_CONTENT=$upscale_size
         movie_patch=1
-        export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
         echo "Render resolution: $upscale_size, upscaled to 1920x1080 ($(setting upscaler) preset $(setting preset))"
     elif [ "$(setting render_720p)" = 1 ]; then
         if [ -f "$data/render-720p.bin" ]; then set -- "$@" --patches "$data/render-720p.bin"

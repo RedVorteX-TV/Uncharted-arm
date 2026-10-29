@@ -1787,6 +1787,30 @@ void TemporalUpscaler::RunUiOnly(VideoCore::ImageId color_id, VideoCore::ImageId
     ui_depth = depth_id;
 }
 
+namespace {
+/// bbport: what the scaled presets did, printed every 5 s for the first minute (diagnosis of the
+/// Thor's flicker): composite draws, frames upscaled, frames stretched without the upscaler and why.
+struct ScaledStats {
+    u32 composites = 0, no_source = 0, not_display = 0, upscaled = 0, stretched = 0, no_camera = 0,
+        size_mismatch = 0, tonemaps = 0;
+    std::chrono::steady_clock::time_point since = std::chrono::steady_clock::now();
+    void Report() {
+        static int reports = 0;
+        const auto now = std::chrono::steady_clock::now();
+        if (reports >= 12 || now - since < std::chrono::seconds(5)) return;
+        ++reports;
+        std::printf("Upscaler: 5 s: %u composites (%u without a source frame, %u not into a display "
+                    "buffer), %u tonemap draws; %u frames upscaled, %u stretched (%u without the "
+                    "camera, %u with depth and colour of different sizes)\n",
+                    composites, no_source, not_display, tonemaps, upscaled, stretched, no_camera,
+                    size_mismatch);
+        *this = ScaledStats{};
+        since = now;
+    }
+};
+ScaledStats scaled_stats;
+} // namespace
+
 void TemporalUpscaler::RunScaled() {
     if (auto* profiler = GpuProfiler::Get()) {
         const char* label = BbSettings::Get().upscaler == BbSettings::UpscalerTaa
@@ -1801,6 +1825,12 @@ void TemporalUpscaler::RunScaled() {
     const auto [w, h] = SceneSize(iw, ih);
     const u32 ow = target_width, oh = target_height;
     if (depth.info.size.width != iw || depth.info.size.height != ih || w > ow || h > oh) {
+        ++scaled_stats.size_mismatch;
+        static int reported = 0;
+        if (reported++ < 3) {
+            std::printf("Upscaler: frame %ux%u (scene %ux%u) and depth %ux%u differ: not upscaled\n",
+                        iw, ih, w, h, depth.info.size.width, depth.info.size.height);
+        }
         return;
     }
     // TAA resolves at the render size (tw x th); FSR 1 (or a bilinear stretch) brings it to the
@@ -2165,6 +2195,7 @@ void TemporalUpscaler::UpscaleToUi(VideoCore::ImageId source) {
     if (Active() && !failed && camera_motion.Ready()) {
         RunScaled();
     } else if (Active() && !failed) {
+        ++scaled_stats.no_camera;
         // bbport: why the upscaler did not run (the frame is scaled by FSR 1 or bilinear instead).
         static int reported = 0;
         if (reported < 3) {
@@ -2175,6 +2206,11 @@ void TemporalUpscaler::UpscaleToUi(VideoCore::ImageId source) {
         }
     }
     auto& ldr = texture_cache.GetImage(ldr_target);
+    if (ui_phase) {
+        ++scaled_stats.upscaled;
+    } else {
+        ++scaled_stats.stretched;
+    }
     if (!ui_phase) {
         EnsureUiResources(target_width, target_height, LdrFormat(ldr.info.pixel_format),
                           vk::Format::eD32SfloatS8Uint);
@@ -2302,6 +2338,7 @@ bool TemporalUpscaler::OnComposite(u64 ps_hash, VideoCore::ImageId color) {
         UpscaleToUi(tonemap_target);
     }
     if (tonemap_ps && ps_hash == tonemap_ps && !ui_phase) {
+        ++scaled_stats.tonemaps;
         tonemap_target = color;
         tonemap_pending = true;
         return false;
@@ -2309,14 +2346,18 @@ bool TemporalUpscaler::OnComposite(u64 ps_hash, VideoCore::ImageId color) {
     if (ps_hash != composite_ps) {
         return false;
     }
+    ++scaled_stats.composites;
+    scaled_stats.Report();
     const auto& target = texture_cache.GetImage(color);
     const VAddr address = target.info.guest_address;
     if (!FrameCapture::IsDisplayBuffer(address)) {
+        ++scaled_stats.not_display;
         return false;
     }
     if (!ui_phase) {
         // No tonemap this frame: the copy's source, as it is.
         if (!ldr_target) {
+            ++scaled_stats.no_source;
             return false;
         }
         UpscaleToUi(ldr_target);
