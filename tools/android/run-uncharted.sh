@@ -168,7 +168,7 @@ while :; do
     # No choice yet (bbport.ini without upscaler=): off, as the launcher shows it (the renderer's
     # own default is FSR 3.1 at the render resolution).
     if [ -z "$(setting upscaler)" ] && [ -z "${BB_UPSCALER+set}" ]; then export BB_UPSCALER=off; fi
-    upscale_size=
+    upscale_size= movie_patch=
     case "$(setting upscaler)" in
         fsr3|gsr2)
             case "$(setting preset)" in
@@ -187,6 +187,7 @@ while :; do
         export BB_SCENE_SIZE=$upscale_size BB_RENDER_RES=$upscale_size BB_OUTPUT_RES=1920x1080
         export BB_UI_COMPOSITE_PS=749bbec9 BB_UI_TONEMAP_PS=484cdbf5
         export BB_VDEC_CONTENT=$upscale_size
+        movie_patch=1
         export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
         echo "Render resolution: $upscale_size, upscaled to 1920x1080 ($(setting upscaler) preset $(setting preset))"
     elif [ "$(setting render_720p)" = 1 ]; then
@@ -199,6 +200,7 @@ while :; do
             # The movies: 1080p frames with the picture in their top-left 960x540, the part the
             # game shows at 540p (Videodec2, from revvv991's uncharted-android).
             export BB_VDEC_CONTENT=960x540
+            movie_patch=1
             # At 540p the Thor waits for its CPU, not its GPU: Uncharted 2's ~1300 compute fences
             # a frame each waited for the guest copies (40% of the GPU command thread's time); with
             # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
@@ -209,7 +211,7 @@ while :; do
     # The launcher's graphics settings (launcher.ini; the Bachata S4+ catalog's patches): an effect
     # switched off there (fx_<effect>=0; on, the game's own, by default) and gfx_shadows=2/1
     # cascades. bb-prepare wrote gfx-<id>.bin for the patches whose original bytes match this
-    # executable (graphics-1.txt). Each is optional (--extra-patches: a write that does not fit is
+    # executable (graphics-2.txt). Each is optional (--extra-patches: a write that does not fit is
     # skipped, the game still starts).
     gfx_on=
     for pair in logos:skip_logos water_reflections:no_water_reflections ssao:no_ssao fog:no_fog \
@@ -227,6 +229,14 @@ while :; do
         else echo "Graphics patch $id: not available for $exe"; fi
     done
     [ -n "$gfx_on" ] && echo "Graphics patches:$gfx_on"
+    # Below 1080p with the movies in a corner of 1080p frames (BB_VDEC_CONTENT): the game's movie
+    # textures and chroma plane at the decoder's 1920x1088 (the Bachata catalog's movie texture
+    # lines, revvv991's chroma plane line; patches/graphics_patches.json movies_below_1080p).
+    # Without them the movies were green and enlarged.
+    if [ -n "$movie_patch" ]; then
+        if [ -f "$data/gfx-movies_below_1080p.bin" ]; then set -- "$@" --extra-patches "$data/gfx-movies_below_1080p.bin"
+        else echo "Movies below 1080p: no movie texture patch for $exe (graphics-2.txt)"; fi
+    fi
     # Uncharted 2's aiming and turret blur read tiny render results back: copied back without
     # waiting (BB_TINY_READBACK, upstream uncharted_pc 0.3.8; ~13% slower elsewhere, so U2 only).
     # Without it everything behind Drake stayed blurred while aiming.

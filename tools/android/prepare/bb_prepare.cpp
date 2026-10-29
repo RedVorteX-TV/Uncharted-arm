@@ -311,7 +311,7 @@ int run(const std::string& game, const std::string& data, const std::string& exe
                 // on their own.
                 // (0.1.7: the upscaling presets' sizes, 640x360 the last.)
                 const bool r540 = !is_file(path_join(data, "render-640x360-2.bin")) && !is_file(path_join(data, "render-640x360.txt"));
-                const bool gfx = !is_file(path_join(data, "graphics-1.txt"));
+                const bool gfx = !is_file(path_join(data, "graphics-2.txt"));
                 if (r540 || gfx) {
                     MappedFile source = read_file(path_join(game, exe));
                     SelfInfo self = parse_self(source.view());
@@ -343,9 +343,9 @@ int run(const std::string& game, const std::string& data, const std::string& exe
             unlink(path_join(data, name).c_str());
             if (is_file(path_join(work, name))) rename(path_join(work, name).c_str(), path_join(data, name).c_str());
         }
-        // The graphics patches (gfx-*.bin, graphics-1.txt).
+        // The graphics patches (gfx-*.bin, graphics-2.txt).
         std::vector<std::string> gfx = graphics_patch_files();
-        gfx.push_back("graphics-1.txt");
+        gfx.push_back("graphics-2.txt");
         for (const std::string& name : gfx) {
             unlink(path_join(data, name).c_str());
             if (is_file(path_join(work, name))) rename(path_join(work, name).c_str(), path_join(data, name).c_str());

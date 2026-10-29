@@ -90,7 +90,7 @@ void write_graphics_patches(const SelfInfo& self, const std::string& exe, const 
         f.close();
         report += id + ": " + patch.version + "\n";
     }
-    write_text_file(path_join(out, "graphics-1.txt"), report);
+    write_text_file(path_join(out, "graphics-2.txt"), report);
     std::printf("Graphics patches: %zu of %zu available for %s\n", matches.size(), known.size(), exe.c_str());
     std::fflush(stdout);
 }
