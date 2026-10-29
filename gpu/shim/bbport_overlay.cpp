@@ -119,6 +119,9 @@ float base_scale = 1.0f;
 // Present rate for the FPS counter.
 std::chrono::steady_clock::time_point last_present{};
 float frame_ms_avg = 0.0f, last_present_ms = 0.0f;
+// The game's own frames alone (frame generation shows more than the game makes).
+std::chrono::steady_clock::time_point last_original{};
+float game_ms_avg = 0.0f;
 
 void SetOpen(bool value) {
     if (menu_open.exchange(value) == value) {
@@ -598,8 +601,23 @@ void FpsCounter() {
                      ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
                      ImGuiWindowFlags_NoFocusOnAppearing);
     const auto& s = BbSettings::Get();
-    ImGui::Text(T("%.0f FPS  %.1f ms  %s", "%.0f FPS  %.1f мс  %s"), frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f,
-                frame_ms_avg,
+    // Frame generation: the game's rate and what reaches the screen, "30→60 FPS LSFG 2x" (after
+    // erickmendes22's uncharted-android b2c25e9); only while it does show more than the game makes.
+    const float output_fps = frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f;
+    const float game_fps = game_ms_avg > 0.0f ? 1000.0f / game_ms_avg : 0.0f;
+    const int frame_gen = s.frame_gen.load();
+    if (frame_gen != BbSettings::FrameGenOff && game_fps > 0.0f && output_fps > game_fps * 1.2f) {
+        char generated[48];
+        if (frame_gen == BbSettings::FrameGenLsfg) {
+            std::snprintf(generated, sizeof(generated), "LSFG %dx", s.frame_gen_multiplier.load());
+        } else {
+            std::snprintf(generated, sizeof(generated), "%s", BbSettings::FrameGenName(frame_gen));
+        }
+        ImGui::Text(T("%.0f\u2192%.0f FPS  %s", "%.0f\u2192%.0f FPS  %s"), game_fps, output_fps,
+                    generated);
+    }
+    ImGui::Text(T("%.0f FPS  %.1f ms  %s", "%.0f FPS  %.1f мс  %s"), frame_gen != BbSettings::FrameGenOff && game_fps > 0.0f ? game_fps : output_fps,
+                frame_gen != BbSettings::FrameGenOff && game_ms_avg > 0.0f ? game_ms_avg : frame_ms_avg,
                 s.upscaler == BbSettings::UpscalerFsr3   ? "FSR 3.1"
                 : s.upscaler == BbSettings::UpscalerGsr2 ? "GSR 2"
                 : s.upscaler == BbSettings::UpscalerFsr4 ? "FSR 4"
@@ -845,8 +863,15 @@ void SetTextEntry(bool active, const std::string& prompt, const std::string& tex
 }
 
 // Called for every presented frame: the interval for the FPS readout and BB_FPS_LOG.
-void NotePresent() {
+void NotePresent(bool original) {
     const auto now = std::chrono::steady_clock::now();
+    if (original) {
+        const float game_ms = std::chrono::duration<float, std::milli>(now - last_original).count();
+        last_original = now;
+        if (game_ms > 0.0f && game_ms < 1000.0f) {
+            game_ms_avg = game_ms_avg == 0.0f ? game_ms : game_ms_avg * 0.95f + game_ms * 0.05f;
+        }
+    }
     const float ms = std::chrono::duration<float, std::milli>(now - last_present).count();
     last_present = now;
     last_present_ms = ms;
