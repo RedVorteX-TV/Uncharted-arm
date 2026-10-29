@@ -366,7 +366,7 @@ public final class MainActivity extends Activity {
         profileNoteView = profileNote;
         // Render resolution (bbport.ini, shared with the in-game menu): 1080p, the game's 720p mode
         // (render_720p) or the whole game at 960x540 (render_540p).
-        valueRow(Strings.get("render_res"), Strings.get("render_res_hint"), new String[]{"1080", "720", "540"},
+        View renderRes = valueRow(Strings.get("render_res"), Strings.get("render_res_hint"), new String[]{"1080", "720", "540"},
             new String[]{"1920 × 1080", "1280 × 720", "960 × 540"},
             () -> bbport.on("render_720p", true) ? "720" : bbport.on("render_540p", false) ? "540" : "1080",
             value -> {
@@ -389,12 +389,12 @@ public final class MainActivity extends Activity {
                 bbport.set("upscaler", temporal ? value : "off");
                 bbport.set("fsr1", !value.equals("off"));
             });
-        cyclerRow(bbport, "preset", Strings.get("quality"), Strings.get("quality_hint"),
+        View quality = cyclerRow(bbport, "preset", Strings.get("quality"), Strings.get("quality_hint"),
             new String[]{"0", "1", "2", "3", "4"}, new String[]{Strings.get("quality_0"), Strings.get("quality_1"),
                 Strings.get("quality_2"), Strings.get("quality_3"), Strings.get("quality_4")}, "0");
         // Where FSR 3.1 and GSR 2 bring the frames (launcher.ini upscale_out; run-uncharted.sh): 1080p,
         // or 720p with the presets counted from it (less GPU; the screen gets the 720p frame scaled).
-        cyclerRow(launcher, "upscale_out", Strings.get("upscale_out"), Strings.get("upscale_out_hint"),
+        View upscaleOut = cyclerRow(launcher, "upscale_out", Strings.get("upscale_out"), Strings.get("upscale_out_hint"),
             new String[]{"1080", "720"}, new String[]{"1920 × 1080", "1280 × 720"}, "1080");
         cyclerRow(bbport, "fps_limit", Strings.get("frame_rate"), Strings.get("frame_rate_hint"),
             new String[]{"30", "40", "45", "60", "0"}, new String[]{Strings.get("fps_30"), Strings.get("fps_40"),
@@ -407,9 +407,16 @@ public final class MainActivity extends Activity {
         if ("fsr3".equals(bbport.get("frame_gen"))) bbport.set("frame_gen", "off");
         cyclerRow(bbport, "frame_gen", Strings.get("frame_gen"), Strings.get("frame_gen_hint"),
             new String[]{"off", "lsfg"}, new String[]{Strings.get("frame_gen_off"), "LSFG"}, "off");
-        cyclerRow(bbport, "frame_gen_multiplier", Strings.get("frame_gen_multiplier"), Strings.get("frame_gen_multiplier_hint"),
+        View multiplier = cyclerRow(bbport, "frame_gen_multiplier", Strings.get("frame_gen_multiplier"), Strings.get("frame_gen_multiplier_hint"),
             new String[]{"2", "3", "4"}, new String[]{"2×", "3×", "4×"}, "2");
-        actionRow(Strings.get("lsfg_dll"), lsfgSummary(), this::askLsfgDll).setTag("lsfg");
+        View lsfgDll = actionRow(Strings.get("lsfg_dll"), lsfgSummary(), this::askLsfgDll);
+        lsfgDll.setTag("lsfg");
+        // Settings that another one makes ineffective are shown locked and pale (refreshDependents).
+        dependsOn(quality, this::temporalUpscaler);
+        dependsOn(upscaleOut, this::temporalUpscaler);
+        dependsOn(renderRes, () -> !upscalePresetActive());
+        dependsOn(multiplier, () -> bbport.get("frame_gen", "off").equals("lsfg"));
+        dependsOn(lsfgDll, () -> bbport.get("frame_gen", "off").equals("lsfg"));
 
         // Graphics patches (launcher.ini gfx_<id>, gfx_shadows; run-uncharted.sh, patches/graphics_patches.json):
         // all off by default, the game as it is.
@@ -419,8 +426,13 @@ public final class MainActivity extends Activity {
         cyclerRow(launcher, "gfx_shadows", Strings.get("gfx_shadows"), Strings.get("gfx_shadows_hint"),
             new String[]{"0", "2", "1"}, new String[]{Strings.get("gfx_shadows_0"), Strings.get("gfx_shadows_2"),
                 Strings.get("gfx_shadows_1")}, "0");
-        for (String key : GFX_PATCHES)
-            switchRow(launcher, "gfx_" + key, false, Strings.get("gfx_" + key), Strings.has("gfx_" + key + "_hint") ? Strings.get("gfx_" + key + "_hint") : null);
+        for (String key : GFX_PATCHES) {
+            View patch = switchRow(launcher, "gfx_" + key, false, Strings.get("gfx_" + key), Strings.has("gfx_" + key + "_hint") ? Strings.get("gfx_" + key + "_hint") : null);
+            // run-uncharted.sh leaves these out with FSR 3.1, GSR 2 and TAA (they need the passes).
+            if (key.equals("no_motion_blur") || key.equals("no_aa"))
+                dependsOn(patch, () -> !bbport.get("upscaler", "off").matches("fsr3|gsr2|taa"));
+        }
+        refreshDependents();
         actionRow(Strings.get("gfx_off"), null, () -> {
             for (String key : GFX_PATCHES) launcher.set("gfx_" + key, false);
             launcher.set("gfx_shadows", "0");
@@ -605,10 +617,38 @@ public final class MainActivity extends Activity {
     // Profiles (the launcher's graphics section): ids, then each profile's settings. skip_logos and
     // the compatibility switches are left as the player has them.
     private View profileRow, profileNoteView;
-    /** After a single setting changed: the profile row and its description follow. */
+    /** After a single setting changed: the profile row and its description follow, and so do the
+     *  locked rows. */
     private void refreshProfile() {
         for (View v : new View[]{profileRow, profileNoteView})
             if (v != null && v.getTag() instanceof Runnable) ((Runnable) v.getTag()).run();
+        refreshDependents();
+    }
+
+    /** Rows that only take effect while a condition holds (another setting's value). */
+    private final List<android.util.Pair<View, java.util.function.BooleanSupplier>> dependents = new ArrayList<>();
+    private void dependsOn(View row, java.util.function.BooleanSupplier active) {
+        dependents.add(android.util.Pair.create(row, active));
+    }
+    /** Locked and pale while the setting it depends on makes it ineffective: no clicks, no D-pad stop. */
+    private void refreshDependents() {
+        for (android.util.Pair<View, java.util.function.BooleanSupplier> d : dependents) {
+            boolean on = d.second.getAsBoolean();
+            d.first.setEnabled(on);
+            d.first.setFocusable(on);
+            d.first.setClickable(on);
+            d.first.setAlpha(on ? 1f : 0.38f);
+        }
+    }
+    private boolean temporalUpscaler() {
+        String u = bbport.get("upscaler", "off");
+        return u.equals("fsr3") || u.equals("gsr2");
+    }
+    /** FSR 3.1 or GSR 2 with a preset that sets the render size (run-uncharted.sh upscale_size). */
+    private boolean upscalePresetActive() {
+        if (!temporalUpscaler()) return false;
+        String preset = bbport.get("preset", "0");
+        return !preset.equals("0") || launcher.get("upscale_out", "1080").equals("720");
     }
     private static final String[] PROFILES = {"custom", "low", "medium", "high", "battery"};
     /** The graphics patches a profile sets (all of GFX_PATCHES but skip_logos, which is not a graphics effect). */
@@ -708,6 +748,7 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshRows(View view) {
+        if (view == launcherBody) refreshDependents();
         if (view.getTag() instanceof Runnable) ((Runnable) view.getTag()).run();
         if (view instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) view;
