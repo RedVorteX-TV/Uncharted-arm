@@ -290,6 +290,10 @@ private:
     void CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
                              boost::container::static_vector<RingBinding, Shader::NUM_BUFFERS>& out);
     void PrintPipeStats();
+    /// Below 1080p: the scale of the collection's blur steps and depth of field profile (0: none;
+    /// from revvv991's uncharted-android, BB_BLUR_SCALE=0 off).
+    float PostBlurScale(const Shader::Info& stage) const;
+    float DofBlurScale(const Shader::Info& stage) const;
     /// The registers of the draw being recorded: stage B's copy there, else Liverpool's.
     const AmdGpu::Regs& Regs() const;
     AmdGpu::CbDbExtent CbExtent(u32 index) const;

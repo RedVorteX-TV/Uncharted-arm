@@ -15,5 +15,7 @@ Bytes render_720p_patch(const std::vector<std::pair<u64, Bytes>>& writes);
 /// scripts/render_res.py's display settings patch below 1080p (the memory table needs no change
 /// there): the stores of the display settings code get `width` x `height` (and the fields derived
 /// from it), as (image offset, bytes) writes for the prepared ELF; empty with `error` set.
+/// `movie_decoder`: the movie decoder's maximum frame size too (off for 540p: the picture goes
+/// into a corner of 1080p frames, BB_VDEC_CONTENT).
 std::vector<std::pair<u64, Bytes>> render_size_writes(const Bytes& elf, u32 width, u32 height,
-                                                      std::string& error);
+                                                      std::string& error, bool movie_decoder = true);

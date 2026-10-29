@@ -94,6 +94,9 @@ struct Values {
     std::atomic<bool> fsr4_auto_exposure{true};
     std::atomic<bool> fsr4_invert_jitter{false};
     std::atomic<int> active_render_width{1920}, active_render_height{1080};
+    /// The game's display buffer size (sceVideoOutRegisterBuffers): 1920x1080, or the patched
+    /// render resolution's (960x540, 1280x720).
+    std::atomic<int> game_display_width{1920}, game_display_height{1080};
     /// Applied at start (patches.py); the menu shows when a restart is needed.
     std::atomic<bool> effects[EffectCount]{};
     std::atomic<int> model_lod{0}; ///< -2 highest .. 2 lowest, 0 the game's

@@ -154,15 +154,18 @@ while :; do
     [ -n "$guest_argv" ] && set -- "$@" --guest-argv "$guest_argv"
     # Render resolution (bbport.ini, the launcher and the in-game menu): render_720p=1, the game's
     # own PS4 720p mode; else render_540p=1, the whole game at 960x540 (HUD, menus and movies too;
-    # bb-prepare writes render-960x540.bin after scripts/render_res.py); else 1080p.
-    unset BB_SCENE_SIZE BB_MOVIE_SIZE BB_RENDER_RES BB_OUTPUT_RES BB_UI_COMPOSITE_PS BB_UI_TONEMAP_PS
+    # bb-prepare writes render-960x540-2.bin after scripts/render_res.py); else 1080p.
+    unset BB_SCENE_SIZE BB_MOVIE_SIZE BB_VDEC_CONTENT BB_RENDER_RES BB_OUTPUT_RES BB_UI_COMPOSITE_PS BB_UI_TONEMAP_PS
     if [ "$(setting render_720p)" = 1 ]; then
         if [ -f "$data/render-720p.bin" ]; then set -- "$@" --patches "$data/render-720p.bin"
         else echo "Render 720p: not available for $exe ($(cat "$data/render-720p.txt" 2>/dev/null)); rendering at 1080p"; fi
     elif [ "$(setting render_540p)" = 1 ]; then
-        if [ -f "$data/render-960x540.bin" ]; then
-            set -- "$@" --patches "$data/render-960x540.bin"
+        if [ -f "$data/render-960x540-2.bin" ]; then
+            set -- "$@" --patches "$data/render-960x540-2.bin"
             export BB_SCENE_SIZE=960x540
+            # The movies: 1080p frames with the picture in their top-left 960x540, the part the
+            # game shows at 540p (Videodec2, from revvv991's uncharted-android).
+            export BB_VDEC_CONTENT=960x540
             # At 540p the Thor waits for its CPU, not its GPU: Uncharted 2's ~1300 compute fences
             # a frame each waited for the guest copies (40% of the GPU command thread's time); with
             # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
@@ -170,16 +173,27 @@ while :; do
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi
+    # Uncharted 2's aiming and turret blur read tiny render results back: copied back without
+    # waiting (BB_TINY_READBACK, upstream uncharted_pc 0.3.8; ~13% slower elsewhere, so U2 only).
+    # Without it everything behind Drake stayed blurred while aiming.
+    case "$exe" in
+        big2*) export BB_TINY_READBACK=1 ;;
+        *) export BB_TINY_READBACK=0 ;;
+    esac
     # BB_RENDER_CPUS: the host GPU threads (command processor, draw recording, Vulkan recorder,
     # presentation) off the slowest cores when at least four faster ones remain (the Thor: 3-7).
     # From revvv991's uncharted-android: Android put those threads on the slow cores while the
     # game's job workers held the fast ones. BB_RENDER_CPUS= (empty) leaves them anywhere.
     if [ -z "${BB_RENDER_CPUS+set}" ]; then
-        slowest=
+        slowest= fastest=0
         for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/cpuinfo_max_freq; do
             read -r khz < "$f" 2>/dev/null || continue
             [ -z "$slowest" ] || [ "$khz" -lt "$slowest" ] && slowest=$khz
+            [ "$khz" -gt "$fastest" ] && fastest=$khz
         done
+        # Only when the slowest are little cores (under 3/4 of the fastest clock, as revvv991's
+        # uncharted-android: the Thor's run at 0.63, a Snapdragon 8 Elite's slower ones at 0.82).
+        [ -n "$slowest" ] && [ $((slowest * 4)) -ge $((fastest * 3)) ] && slowest=$fastest
         fast= count=0
         for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/cpuinfo_max_freq; do
             read -r khz < "$f" 2>/dev/null || continue

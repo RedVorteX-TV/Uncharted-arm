@@ -19,6 +19,9 @@
 
 #include <algorithm>
 #include <cstring>
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 
 namespace Libraries::Videodec2 {
 
@@ -64,6 +67,181 @@ void NoteDecode(bool picture, double decode, double convert, double fit, double 
     s.decode = s.convert = s.fit = s.copy = s.worst = 0;
     s.since = now;
 }
+/// BB_VDEC_CONTENT=<w>x<h> (from revvv991's uncharted-android): frames keep the stream's size and
+/// the picture is scaled into their top-left w x h, the rest black. Uncharted's movie player maps
+/// the movie's own size (1920x1080, from the stream) 1:1 onto its display buffer: at 960x540 it
+/// shows the top-left 960x540 of the frame, so that corner holds the whole movie. (Patching the
+/// decoder's maximum size to 960x540 instead, as the 720p mode does for 1280x720, gave grey
+/// pictures with coloured stripes.)
+bool EnvContentSize(u32& width, u32& height) {
+    static const std::pair<u32, u32> size = [] {
+        const char* env = std::getenv("BB_VDEC_CONTENT");
+        unsigned w = 0, h = 0;
+        if (!env || std::sscanf(env, "%ux%u", &w, &h) != 2 || w < 64 || h < 64) {
+            return std::pair<u32, u32>{0, 0};
+        }
+        return std::pair<u32, u32>{w & ~1u, h & ~1u};
+    }();
+    width = size.first;
+    height = size.second;
+    return width > 0;
+}
+
+// From revvv991's uncharted-android (videodec2_impl.cpp, GPL-2.0-or-later), as there:
+#if defined(__aarch64__)
+/// g2-arm64: an area filter for the exact ratios below 1080p, 16 output pixels at a time.
+struct Wide {
+    uint16x8_t lo, hi;
+};
+
+/// 2 * major + minor, widened.
+inline Wide Weigh21(uint8x16_t major, uint8x16_t minor) {
+    return {vaddw_u8(vshll_n_u8(vget_low_u8(major), 1), vget_low_u8(minor)),
+            vaddw_high_u8(vshll_high_n_u8(major, 1), minor)};
+}
+
+inline Wide Weigh21(Wide major, Wide minor) {
+    return {vaddq_u16(vshlq_n_u16(major.lo, 1), minor.lo),
+            vaddq_u16(vshlq_n_u16(major.hi, 1), minor.hi)};
+}
+
+/// x / 9, rounded (x <= 9 * 255): (x * 7282 + 2^15) >> 16 by the doubling multiply.
+inline uint8x16_t Div9(Wide x) {
+    return vcombine_u8(vqmovun_s16(vqrdmulhq_n_s16(vreinterpretq_s16_u16(x.lo), 3641)),
+                       vqmovun_s16(vqrdmulhq_n_s16(vreinterpretq_s16_u16(x.hi), 3641)));
+}
+
+/// 3:2 - 16 groups of 3 pixels in 3 rows: 2 rows of 2 pixels each. An output pixel covers one
+/// source pixel and half of the next on each axis (weights 2 and 1, sum / 9).
+inline void Area32(const u8* r0, const u8* r1, const u8* r2, uint8x16x2_t& top,
+                   uint8x16x2_t& bottom) {
+    const uint8x16x3_t a = vld3q_u8(r0), b = vld3q_u8(r1), c = vld3q_u8(r2);
+    Wide up[3], down[3];
+    for (int k = 0; k < 3; ++k) {
+        up[k] = Weigh21(a.val[k], b.val[k]);
+        down[k] = Weigh21(c.val[k], b.val[k]);
+    }
+    top.val[0] = Div9(Weigh21(up[0], up[1]));
+    top.val[1] = Div9(Weigh21(up[2], up[1]));
+    bottom.val[0] = Div9(Weigh21(down[0], down[1]));
+    bottom.val[1] = Div9(Weigh21(down[2], down[1]));
+}
+
+/// 2:1 - 16 pairs of pixels in 2 rows: the mean of each 2x2.
+inline uint8x16_t Area21(const u8* r0, const u8* r1) {
+    const uint8x16x2_t a = vld2q_u8(r0), b = vld2q_u8(r1);
+    const uint16x8_t lo = vaddq_u16(vaddl_u8(vget_low_u8(a.val[0]), vget_low_u8(a.val[1])),
+                                    vaddl_u8(vget_low_u8(b.val[0]), vget_low_u8(b.val[1])));
+    const uint16x8_t hi =
+        vaddq_u16(vaddl_high_u8(a.val[0], a.val[1]), vaddl_high_u8(b.val[0], b.val[1]));
+    return vcombine_u8(vrshrn_n_u16(lo, 2), vrshrn_n_u16(hi, 2));
+}
+
+/// 3:1 - 16 groups of 3 pixels in 3 rows: the mean of each 3x3.
+inline uint8x16_t Area31(const u8* r0, const u8* r1, const u8* r2) {
+    const uint8x16x3_t rows[3] = {vld3q_u8(r0), vld3q_u8(r1), vld3q_u8(r2)};
+    Wide sum{vdupq_n_u16(0), vdupq_n_u16(0)};
+    for (const uint8x16x3_t& row : rows) {
+        for (int k = 0; k < 3; ++k) {
+            sum.lo = vaddw_u8(sum.lo, vget_low_u8(row.val[k]));
+            sum.hi = vaddw_high_u8(sum.hi, row.val[k]);
+        }
+    }
+    return Div9(sum);
+}
+#endif
+
+/// g2-arm64: the decoder's 4:2:0 picture (src) into the NV12 frame's top-left width x height,
+/// made smaller by an exact 3:2, 2:1 or 3:1 (1080p into 720p, 540p, 360p) with an area filter.
+/// sws_scale's bilinear filter took 8 ms of the 16.7 a 60 FPS movie frame has for 720p on the
+/// G2 (issue #6). False for another format, ratio or size: the caller scales with sws then.
+bool AreaDownscale(const AVFrame& src, AVFrame& dst, s32 width, s32 height) {
+#if defined(__aarch64__)
+    if (src.format != AV_PIX_FMT_YUV420P) {
+        return false;
+    }
+    const s32 w = src.width, h = src.height;
+    const int ratio = width * 3 == w * 2 && height * 3 == h * 2 ? 32
+                      : width * 2 == w && height * 2 == h       ? 21
+                      : width * 3 == w && height * 3 == h       ? 31
+                                                                : 0;
+    const s32 block = ratio == 21 ? 32 : 48, rows = ratio == 21 ? 2 : 3;
+    if (!ratio || w % (2 * block) || h % (2 * rows)) {
+        return false; // whole blocks in the chroma planes too
+    }
+    const u8* const y_plane = src.data[0];
+    const u8* const u_plane = src.data[1];
+    const u8* const v_plane = src.data[2];
+    const s32 ys = src.linesize[0], us = src.linesize[1], vs = src.linesize[2];
+    u8* const luma = dst.data[0];
+    u8* const chroma = dst.data[1];
+    const s32 ls = dst.linesize[0], cs = dst.linesize[1];
+    if (ratio == 32) {
+        for (s32 y = 0; y < h; y += 3) {
+            const u8* r = y_plane + y * ys;
+            u8* d = luma + (y / 3 * 2) * ls;
+            for (s32 x = 0; x < w; x += 48) {
+                uint8x16x2_t top, bottom;
+                Area32(r + x, r + ys + x, r + 2 * ys + x, top, bottom);
+                vst2q_u8(d + x / 3 * 2, top);
+                vst2q_u8(d + ls + x / 3 * 2, bottom);
+            }
+        }
+        for (s32 y = 0; y < h / 2; y += 3) {
+            const u8* u = u_plane + y * us;
+            const u8* v = v_plane + y * vs;
+            u8* d = chroma + (y / 3 * 2) * cs;
+            for (s32 x = 0; x < w / 2; x += 48) {
+                uint8x16x2_t ut, ub, vt, vb;
+                Area32(u + x, u + us + x, u + 2 * us + x, ut, ub);
+                Area32(v + x, v + vs + x, v + 2 * vs + x, vt, vb);
+                vst4q_u8(d + x / 3 * 4,
+                         (uint8x16x4_t{{ut.val[0], vt.val[0], ut.val[1], vt.val[1]}}));
+                vst4q_u8(d + cs + x / 3 * 4,
+                         (uint8x16x4_t{{ub.val[0], vb.val[0], ub.val[1], vb.val[1]}}));
+            }
+        }
+    } else if (ratio == 21) {
+        for (s32 y = 0; y < h; y += 2) {
+            const u8* r = y_plane + y * ys;
+            u8* d = luma + (y / 2) * ls;
+            for (s32 x = 0; x < w; x += 32) {
+                vst1q_u8(d + x / 2, Area21(r + x, r + ys + x));
+            }
+        }
+        for (s32 y = 0; y < h / 2; y += 2) {
+            const u8* u = u_plane + y * us;
+            const u8* v = v_plane + y * vs;
+            u8* d = chroma + (y / 2) * cs;
+            for (s32 x = 0; x < w / 2; x += 32) {
+                vst2q_u8(d + x,
+                         (uint8x16x2_t{{Area21(u + x, u + us + x), Area21(v + x, v + vs + x)}}));
+            }
+        }
+    } else {
+        for (s32 y = 0; y < h; y += 3) {
+            const u8* r = y_plane + y * ys;
+            u8* d = luma + (y / 3) * ls;
+            for (s32 x = 0; x < w; x += 48) {
+                vst1q_u8(d + x / 3, Area31(r + x, r + ys + x, r + 2 * ys + x));
+            }
+        }
+        for (s32 y = 0; y < h / 2; y += 3) {
+            const u8* u = u_plane + y * us;
+            const u8* v = v_plane + y * vs;
+            u8* d = chroma + (y / 3) * cs;
+            for (s32 x = 0; x < w / 2; x += 48) {
+                vst2q_u8(d + x / 3 * 2,
+                         (uint8x16x2_t{{Area31(u + x, u + us + x, u + 2 * us + x),
+                                        Area31(v + x, v + vs + x, v + 2 * vs + x)}}));
+            }
+        }
+    }
+    return true;
+#else
+    return false;
+#endif
+}
 } // namespace
 
 VdecDecoder::VdecDecoder(const OrbisVideodec2DecoderConfigInfo& config_info,
@@ -98,7 +276,57 @@ VdecDecoder::~VdecDecoder() {
     sws_freeContext(m_sws_context);
     sws_freeContext(m_scale_context);
     sws_freeContext(m_fit_context);
+    sws_freeContext(m_corner_context);
     av_frame_free(&m_scaled);
+    av_frame_free(&m_corner);
+}
+
+AVFrame* VdecDecoder::PictureInCorner(AVFrame& frame) {
+    u32 width = 0, height = 0;
+    if (!EnvContentSize(width, height) || width >= u32(frame.width) || height >= u32(frame.height) ||
+        (m_max_width && (u32(frame.width) > m_max_width || u32(frame.height) > m_max_height))) {
+        return nullptr;
+    }
+    // One frame for the decoder's life, black once: the picture goes to the same corner each time.
+    if (!m_corner || m_corner->width != frame.width || m_corner->height != frame.height) {
+        av_frame_free(&m_corner);
+        m_corner = av_frame_alloc();
+        m_corner->format = AV_PIX_FMT_NV12;
+        m_corner->width = frame.width;
+        m_corner->height = frame.height;
+        if (av_frame_get_buffer(m_corner, 0) < 0) {
+            av_frame_free(&m_corner);
+            return nullptr;
+        }
+        for (int y = 0; y < frame.height; ++y) {
+            std::memset(m_corner->data[0] + y * m_corner->linesize[0], 16, frame.width);
+        }
+        for (int y = 0; y < frame.height / 2; ++y) {
+            std::memset(m_corner->data[1] + y * m_corner->linesize[1], 128, frame.width);
+        }
+        std::printf("Videodec2: %dx%d frames with the picture at %ux%u in their top-left corner\n",
+                    frame.width, frame.height, width, height);
+    }
+    if (!AreaDownscale(frame, *m_corner, s32(width), s32(height))) {
+        m_corner_context = sws_getCachedContext(m_corner_context, frame.width, frame.height,
+                                                AVPixelFormat(frame.format), int(width), int(height),
+                                                AV_PIX_FMT_NV12, SWS_BILINEAR, nullptr, nullptr,
+                                                nullptr);
+        if (!m_corner_context || sws_scale(m_corner_context, frame.data, frame.linesize, 0,
+                                           frame.height, m_corner->data, m_corner->linesize) < 0) {
+            return nullptr;
+        }
+    }
+    AVFrame* reference = av_frame_alloc();
+    if (!reference || av_frame_ref(reference, m_corner) < 0) {
+        av_frame_free(&reference);
+        return nullptr;
+    }
+    reference->pts = frame.pts;
+    reference->pkt_dts = frame.pkt_dts < 0 ? 0 : frame.pkt_dts;
+    reference->sample_aspect_ratio = frame.sample_aspect_ratio;
+    reference->opaque = frame.opaque;
+    return reference;
 }
 
 s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
@@ -171,6 +399,10 @@ s32 VdecDecoder::Decode(const OrbisVideodec2InputData& input_data,
         LOG_ERROR(Lib_Vdec2, "Interlaced video output is not suported.");
     }
 
+    if (AVFrame* corner = PictureInCorner(*frame)) {
+        av_frame_free(&frame);
+        frame = corner;
+    }
     if (frame->format != AV_PIX_FMT_NV12) {
         AVFrame* nv12_frame = ConvertNV12Frame(*frame);
         ASSERT(nv12_frame);
@@ -228,6 +460,10 @@ s32 VdecDecoder::Flush(OrbisVideodec2FrameBuffer& frame_buffer,
         return ORBIS_VIDEODEC2_ERROR_API_FAIL;
     }
 
+    if (AVFrame* corner = PictureInCorner(*frame)) {
+        av_frame_free(&frame);
+        frame = corner;
+    }
     if (frame->format != AV_PIX_FMT_NV12) {
         AVFrame* nv12_frame = ConvertNV12Frame(*frame);
         ASSERT(nv12_frame);

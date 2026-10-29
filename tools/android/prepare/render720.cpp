@@ -137,7 +137,7 @@ Bytes render_720p_patch(const std::vector<std::pair<u64, Bytes>>& writes) {
 // 0x8(%reg); movl $1080, 0xc(%reg), from 0x40 bytes before it to 0x800 after) every store of a
 // size field gets the new value; the render target heaps keep their 1080p size.
 std::vector<std::pair<u64, Bytes>> render_size_writes(const Bytes& elf_bytes, u32 width, u32 height,
-                                                      std::string& error) {
+                                                      std::string& error, bool movie_decoder) {
     const u8* e = elf_bytes.data();
     const size_t n = elf_bytes.size();
     if (n < 0x40) { error = "not an ELF image"; return {}; }
@@ -193,8 +193,12 @@ std::vector<std::pair<u64, Bytes>> render_size_writes(const Bytes& elf_bytes, u3
         } else p++;
     }
     if (out.empty()) { error = "no size stores in the display settings code"; return {}; }
-    // The movie decoder's maximum frame size, as render_720p.py does: Videodec2 fits the 1080p
-    // movies to it, the size the game's movie textures have at this resolution.
+    // The movie decoder stays at 1080p: Videodec2 puts the picture into the frames' top-left
+    // width x height (BB_VDEC_CONTENT, run-uncharted.sh). Patching its maximum size to 960x540,
+    // as render_720p.py does for 1280x720, gave grey movies with coloured stripes.
+    if (!movie_decoder) {
+        return out;
+    }
     const std::vector<size_t> dec = decoders(e, n);
     if (dec.size() != 1) {
         error = "expected one movie decoder setup, found " + std::to_string(dec.size());

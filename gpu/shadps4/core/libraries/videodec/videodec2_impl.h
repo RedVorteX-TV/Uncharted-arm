@@ -28,6 +28,9 @@ public:
 
 private:
     AVFrame* ConvertNV12Frame(AVFrame& frame);
+    /// BB_VDEC_CONTENT: the frame at its own size with the picture scaled into its top-left
+    /// corner (a new reference), or null when that does not apply.
+    AVFrame* PictureInCorner(AVFrame& frame);
     /// Linux fork: a frame larger than the decoder's configured maximum, scaled down to fit it.
     AVFrame* FitToMaxSize(AVFrame& frame);
     /// Render resolution (BB_MOVIE_SIZE, bbport_movie.h): the frame also scaled to the display
@@ -45,6 +48,8 @@ private:
     AVFrame* m_scaled = nullptr;
     std::vector<u8> m_movie_copy;
     SwsContext* m_fit_context = nullptr;
+    SwsContext* m_corner_context = nullptr;
+    AVFrame* m_corner = nullptr; ///< BB_VDEC_CONTENT's frame, kept (PictureInCorner)
     u32 m_max_width = 0;
     u32 m_max_height = 0;
 };
