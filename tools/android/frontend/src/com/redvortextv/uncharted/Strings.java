@@ -99,11 +99,11 @@ final class Strings {
         put("arm_skin_batch", "Batched character skinning (all resolutions)",
             "Skinning de personajes por lotes (todas las resoluciones)");
         put("arm_skin_batch_hint", "Deforms the characters' meshes in one GPU job instead of ~1300 a frame, with "
-                + "the two-stage draw pipeline: much faster on the Thor. On low and mid-range devices it can run "
+                + "the two-stage draw pipeline: much faster on high-end devices. On low and mid-range devices it can run "
                 + "slower: try the game with it on and off and keep the faster one. Turn off as well if characters "
                 + "stretch, flicker or lose parts.",
             "Deforma las mallas de los personajes en un solo trabajo de GPU en vez de ~1300 por fotograma, con el "
-                + "doble carril de dibujo: mucho más rápido en la Thor. En dispositivos de gama baja o media puede "
+                + "doble carril de dibujo: mucho más rápido en dispositivos de gama alta. En dispositivos de gama baja o media puede "
                 + "ir peor: prueba el juego activado y desactivado y quédate con lo que vaya mejor. Desactívalo "
                 + "también si los personajes se estiran, parpadean o pierden partes.");
         put("arm_job_spin", "Let idle game threads sleep", "Dejar que los hilos inactivos del juego duerman");
