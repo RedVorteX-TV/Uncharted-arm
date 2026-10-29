@@ -5,6 +5,7 @@
 
 #include "shader_recompiler/info.h"
 #include "video_core/renderer_vulkan/vk_compute_pipeline.h"
+#include "bbport_driver_cache.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 
@@ -106,8 +107,10 @@ ComputePipeline::ComputePipeline(const Instance& instance, Scheduler& scheduler,
         .stage = shader_ci,
         .layout = *pipeline_layout,
     };
-    auto [pipeline_result, pipe] =
-        instance.GetDevice().createComputePipelineUnique(pipeline_cache, compute_pipeline_ci);
+    auto [pipeline_result, pipe] = [&] {
+        std::shared_lock access{BbDriverCache::Access()};
+        return instance.GetDevice().createComputePipelineUnique(pipeline_cache, compute_pipeline_ci);
+    }();
     // bbport: as for graphics pipelines, a driver failure skips its dispatches.
     if (pipeline_result != vk::Result::eSuccess) {
         LOG_ERROR(Render_Vulkan, "Failed to create compute pipeline {}: {}; its dispatches are skipped",

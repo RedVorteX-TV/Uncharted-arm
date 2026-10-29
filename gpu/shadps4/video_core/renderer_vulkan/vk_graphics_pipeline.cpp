@@ -10,6 +10,7 @@
 #include "shader_recompiler/backend/spirv/emit_spirv_quad_rect.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_graphics_pipeline.h"
+#include "bbport_driver_cache.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
@@ -420,8 +421,10 @@ GraphicsPipeline::GraphicsPipeline(
         .layout = *pipeline_layout,
     };
 
-    auto [pipeline_result, pipe] =
-        device.createGraphicsPipelineUnique(pipeline_cache, pipeline_info);
+    auto [pipeline_result, pipe] = [&] {
+        std::shared_lock access{BbDriverCache::Access()};
+        return device.createGraphicsPipelineUnique(pipeline_cache, pipeline_info);
+    }();
     // bbport: a driver that cannot build one pipeline (ErrorUnknown on some AMD drivers) stopped
     // the game here; the pipeline stays empty instead and the draws that use it are skipped.
     if (pipeline_result != vk::Result::eSuccess) {

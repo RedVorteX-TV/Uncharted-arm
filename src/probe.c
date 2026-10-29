@@ -1022,6 +1022,7 @@ static void patch_eop_tick_wait(uint64_t image_size) {
  * applied at start). Descriptors are closed first so the old GPU device and its memory are
  * released before the new process opens its own. */
 void runtime_restart(void) {
+    if (gpu_enabled) bbgpu_flush_pipeline_cache(); /* the driver's pipeline cache to disk first */
     fflush(NULL);
 #ifdef _WIN32
     /* run.py sets BB_RESTART_COMMAND: the launch command line, started again (new patches). */
