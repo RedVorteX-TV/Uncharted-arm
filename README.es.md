@@ -115,7 +115,11 @@ Sobre el trabajo de:
   gpu/shim/bbport_movie.cpp).
 - [revvv991/uncharted-android](https://github.com/revvv991/uncharted-android) (GPL-2.0 o
   posterior): el skinning por lotes (vk_skin_batch.cpp y sus shaders), las constantes reutilizadas,
-  los hilos de GPU en los núcleos rápidos y menos despertares del hilo de envíos del juego.
+  los hilos de GPU en los núcleos rápidos y menos despertares del hilo de envíos del juego; los
+  vídeos y la escala del desenfoque por debajo de 1080p.
+- [Bachata S4](https://github.com/zenithblue-oss/shadps4-arm64) (GPL-2.0 o posterior), a través de
+  [erickmendes22/uncharted-android](https://github.com/erickmendes22/uncharted-android): los
+  parches gráficos del launcher (patches/graphics_patches.json).
 - [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) y
   [ARMSX2](https://github.com/ARMSX2/ARMSX2): los pases de generación de fotogramas LSFG, a partir
   de los de [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)
