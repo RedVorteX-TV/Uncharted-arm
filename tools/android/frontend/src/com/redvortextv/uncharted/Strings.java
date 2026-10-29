@@ -96,8 +96,7 @@ final class Strings {
                 + "game hangs at the same spot every time. With it off Uncharted 2 and 3 run at a somewhat lower frame rate.",
             "Desactívalo si una escena se congela (la imagen se para mientras el sonido sigue) o el juego se cuelga "
                 + "siempre en el mismo sitio. Desactivado, Uncharted 2 y 3 van con algo menos de FPS.");
-        put("arm_skin_batch", "Batched character skinning (all resolutions)",
-            "Skinning de personajes por lotes (todas las resoluciones)");
+        put("arm_skin_batch", "Batched character skinning", "Skinning de personajes por lotes");
         put("arm_skin_batch_hint", "Deforms the characters' meshes in one GPU job instead of ~1300 a frame, with "
                 + "the two-stage draw pipeline: much faster on high-end devices. On low and mid-range devices it can run "
                 + "slower: try the game with it on and off and keep the faster one. Turn off as well if characters "

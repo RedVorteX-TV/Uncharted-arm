@@ -2326,6 +2326,36 @@ void TemporalUpscaler::UpscaleToUi(VideoCore::ImageId source) {
     }
 }
 
+void TemporalUpscaler::OnDisplayDraw(u64 ps_hash) {
+    if (composite_seen || !composite_frames) {
+        return;
+    }
+    if (ps_hash == composite_ps) {
+        composite_seen = true;
+        return;
+    }
+    for (u64& seen : display_shaders) {
+        if (seen == ps_hash) break;
+        if (!seen) {
+            seen = ps_hash;
+            break;
+        }
+    }
+    if (++display_draws < 6000) { // the intro movies and logos draw into them too
+        return;
+    }
+    composite_frames = false;
+    std::printf("Upscaler: the game's frame copy (pixel shader %08llx) not seen in %u display "
+                "buffer draws: upscaling presets off for this session (the game draws at %ux%u, "
+                "scaled to the screen). Pixel shaders drawing into the display buffers:",
+                static_cast<unsigned long long>(composite_ps), display_draws, render_width,
+                render_height);
+    for (const u64 seen : display_shaders) {
+        if (seen) std::printf(" %08llx", static_cast<unsigned long long>(seen));
+    }
+    std::printf("\n");
+}
+
 bool TemporalUpscaler::OnComposite(u64 ps_hash, VideoCore::ImageId color) {
     if (!composite_frames || !color) {
         return false;

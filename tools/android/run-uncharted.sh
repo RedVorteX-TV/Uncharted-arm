@@ -200,10 +200,7 @@ while :; do
             # game shows at 540p (Videodec2, from revvv991's uncharted-android).
             export BB_VDEC_CONTENT=960x540
             movie_patch=1
-            # At 540p the Thor waits for its CPU, not its GPU: Uncharted 2's ~1300 compute fences
-            # a frame each waited for the guest copies (40% of the GPU command thread's time); with
-            # the draw pipeline they are signalled after the copies instead (liverpool.cpp).
-            export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}
+            # (The draw pipeline is the batched skinning switch's: Compatibility (ARM).)
             echo "Render resolution: 960x540"
         else echo "Render 540p: not available for $exe ($(cat "$data/render-960x540.txt" 2>/dev/null)); rendering at 1080p"; fi
     fi

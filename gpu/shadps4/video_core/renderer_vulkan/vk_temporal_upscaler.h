@@ -77,6 +77,11 @@ public:
     /// resolution. True: skip the guest's draw, and the next frame starts here (the rasterizer
     /// calls OnFrameStart).
     bool OnComposite(u64 ps_hash, VideoCore::ImageId color);
+    /// A draw into a display buffer while CompositeFrames(): without the game's frame copy
+    /// (BB_UI_COMPOSITE_PS) in the first 6000 of them, the presets' composition is turned off
+    /// for the session (the frames never started: a flickering picture), and the pixel shaders
+    /// seen are logged.
+    void OnDisplayDraw(u64 ps_hash);
     [[nodiscard]] bool CompositeFrames() const noexcept {
         return composite_frames;
     }
@@ -288,6 +293,9 @@ private:
     bool tonemap_pending = false;     ///< the next draw upscales tonemap_target
     bool composite_frames = false;  ///< OnComposite replaces the frame's display copy
     bool composite_done = false;    ///< this frame's OnComposite ran: its UI draws follow
+    bool composite_seen = false;    ///< the frame copy's pixel shader was met
+    u32 display_draws = 0;          ///< display buffer draws before composite_seen
+    std::array<u64, 8> display_shaders{};
     HostPasses::FsrPass fsr1_pass;  ///< FSR 1 (EASU) at OnComposite without a temporal upscale
     bool fsr1_created = false;
     FfxVkPortableUpscaleContext* context = nullptr;

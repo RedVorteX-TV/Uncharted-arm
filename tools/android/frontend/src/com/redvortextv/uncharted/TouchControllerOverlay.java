@@ -53,7 +53,8 @@ final class TouchControllerOverlay extends View {
     private final PointF cameraAnchor=new PointF();
     private final Set<String> pressed=new LinkedHashSet<>();
     private boolean editing;
-    private boolean whiteFace; ///< PS5 style: white face buttons (setWhiteFaceButtons)
+    private boolean whiteFace; ///< PS5 style: every button white (setWhiteFaceButtons)
+    private static final int WHITE=0xffeeeeee;
     // Editor: the finger dragging `dragged`, a second finger pinching it, and the control −/+ resize.
     private int editPointer=-1, pinchPointer=-1;
     private float pinchDistance, pinchSize;
@@ -417,7 +418,7 @@ final class TouchControllerOverlay extends View {
         PointF p=center(name); float s=size(name), w=width*s/2, h=25*s;
         paint.setStyle(Paint.Style.FILL); paint.setColor(fill(name));
         c.drawRoundRect(p.x-w,p.y-h,p.x+w,p.y+h,14*s,14*s,paint);
-        paint.setStyle(Paint.Style.STROKE); paint.setColor(0xbbc6ad76); paint.setStrokeWidth(2);
+        paint.setStyle(Paint.Style.STROKE); paint.setColor(whiteFace ? WHITE : 0xbbc6ad76); paint.setStrokeWidth(2);
         c.drawRoundRect(p.x-w,p.y-h,p.x+w,p.y+h,14*s,14*s,paint);
         paint.setStyle(Paint.Style.FILL); paint.setTypeface(Typeface.DEFAULT_BOLD);
         paint.setTextSize(19*s); paint.setTextAlign(Paint.Align.CENTER);
@@ -428,7 +429,7 @@ final class TouchControllerOverlay extends View {
         PointF center=center(name); float s=size(name), travel=27*s;
         paint.setStyle(Paint.Style.FILL); paint.setColor(name.equals(dragged) ? 0xffe8dfc9 : 0x6630394c);
         c.drawCircle(center.x,center.y,57*s,paint);
-        paint.setStyle(Paint.Style.STROKE); paint.setColor(0xffa0aec0); paint.setStrokeWidth(3);
+        paint.setStyle(Paint.Style.STROKE); paint.setColor(whiteFace ? WHITE : 0xffa0aec0); paint.setStrokeWidth(3);
         c.drawCircle(center.x,center.y,57*s,paint);
         float knobX=center.x,knobY=center.y;
         for (int i=0;i<controls.size();i++) {
@@ -441,7 +442,7 @@ final class TouchControllerOverlay extends View {
                 break;
             }
         }
-        paint.setStyle(Paint.Style.FILL); paint.setColor(0xbba0aec0);
+        paint.setStyle(Paint.Style.FILL); paint.setColor(whiteFace ? 0xbbeeeeee : 0xbba0aec0);
         c.drawCircle(knobX,knobY,28*s,paint);
         paint.setColor(0xff15202c); paint.setTypeface(Typeface.DEFAULT_BOLD);
         paint.setTextAlign(Paint.Align.CENTER); paint.setTextSize(22*s);
@@ -475,14 +476,15 @@ final class TouchControllerOverlay extends View {
         rectangle(c,"l2",108,"L2"); rectangle(c,"l1",108,"L1");
         rectangle(c,"r1",108,"R1"); rectangle(c,"r2",108,"R2");
         rectangle(c,"touchpad",126,"TOUCH"); rectangle(c,"options",108,"OPTIONS");
-        circle(c,"up",39,"▲",0xffc6ad76); circle(c,"left",39,"◀",0xffc6ad76);
-        circle(c,"right",39,"▶",0xffc6ad76); circle(c,"down",39,"▼",0xffc6ad76);
-        // Classic: the PlayStation colours; PS5 (launcher.ini touch_style): white, as on a DualSense.
-        final int white=0xffeeeeee;
-        circle(c,"triangle",39,"△",whiteFace ? white : 0xff83cdaa); circle(c,"circle",39,"○",whiteFace ? white : 0xffe38288);
-        circle(c,"cross",39,"×",whiteFace ? white : 0xff88aaff); circle(c,"square",39,"□",whiteFace ? white : 0xffd6a0ce);
+        // Classic: the PlayStation colours and the gold accents; PS5 (launcher.ini touch_style):
+        // every button white, as on a DualSense.
+        final int dpad=whiteFace ? WHITE : 0xffc6ad76, stick=whiteFace ? WHITE : 0xffa0aec0;
+        circle(c,"up",39,"▲",dpad); circle(c,"left",39,"◀",dpad);
+        circle(c,"right",39,"▶",dpad); circle(c,"down",39,"▼",dpad);
+        circle(c,"triangle",39,"△",whiteFace ? WHITE : 0xff83cdaa); circle(c,"circle",39,"○",whiteFace ? WHITE : 0xffe38288);
+        circle(c,"cross",39,"×",whiteFace ? WHITE : 0xff88aaff); circle(c,"square",39,"□",whiteFace ? WHITE : 0xffd6a0ce);
         drawStick(c,"leftstick"); drawCamera(c);
-        circle(c,"l3",29,"L3",0xffa0aec0); circle(c,"r3",29,"R3",0xffa0aec0);
+        circle(c,"l3",29,"L3",stick); circle(c,"r3",29,"R3",stick);
         if (editing) {
             barButton(c,RESET,"RESET",true); barButton(c,MINUS,"−",selected!=null); barButton(c,DONE,"DONE",true); barButton(c,PLUS,"+",selected!=null);
             paint.setStyle(Paint.Style.FILL); paint.setTextSize(17); paint.setColor(0xffe8dfc9);
