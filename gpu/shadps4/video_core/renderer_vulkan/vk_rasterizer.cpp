@@ -2129,10 +2129,13 @@ void Rasterizer::DispatchDirect() {
     if (!pipeline) {
         return;
     }
-    if (pipelined &&
-        !IsGuestMemoryShaderHLE(pipeline->GetStage(Shader::SwStage::Compute).pgm_hash)) {
-        PostDraw(pipeline, nullptr, false, 0, &CsRegs());
-        return;
+    if (pipelined) {
+        const auto& cs = pipeline->GetStage(Shader::SwStage::Compute);
+        if (!IsGuestMemoryShaderHLE(cs.pgm_hash) ||
+            PipelineGuestMemoryShaderHLE(cs, CsRegs(), *this)) {
+            PostDraw(pipeline, nullptr, false, 0, &CsRegs());
+            return;
+        }
     }
     DrainDrawPipe();
     DispatchRecord(pipeline);

@@ -381,6 +381,52 @@ static bool ExecuteScalarCopyHLE(const Shader::Info& info, const AmdGpu::Compute
     return true;
 }
 
+// bbport (from revvv991's uncharted-android, as erickmendes22's fork keeps it): the scalar copy
+// decides between a copy in guest memory and one on the GPU from the buffer cache's state, so the
+// GPU thread drained the draw pipe before each one (U1: ~190 a second, a fifth to a third of the
+// GPU thread's waits on the Thor). Nearly all of them copy GPU-written data (a copy on the GPU,
+// guest memory untouched): when the source's pages are already GPU-modified the copy goes down the
+// pipe and the recording thread runs the same HLE in order, with the exact state. Only a source
+// that turns out not to be GPU-written then gets its guest memory copy later than the GPU thread's
+// next SRT walks. The check reads the page bits unlocked (a hint; a stale bit only picks the drain
+// or the pipe). U2's mesh result copies (BB_SCALAR_COPY64_SYNC=2) always drain: their CPU records
+// land through the landing thread, which the recording thread must not wait for.
+// BB_SCALAR_COPY_PIPELINE=0: always drain.
+bool PipelineGuestMemoryShaderHLE(const Shader::Info& info,
+                                  const AmdGpu::ComputeProgram& cs_program, Rasterizer& rasterizer) {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_SCALAR_COPY_PIPELINE");
+        return !(env && env[0] == '0');
+    }();
+    if (!enabled || info.buffers.size() != 2) {
+        return false;
+    }
+    const u64 group_size = info.pgm_hash == SCALAR_COPY64_SHADER_HASH ? 64 : 1;
+    if (group_size == 64 && MeshCopyResultsEnabled()) {
+        return false;
+    }
+    const auto ud = info.UserData();
+    if (ud.size() <= 6) {
+        return false;
+    }
+    const auto src = info.buffers[0].GetSharp(info);
+    const auto dst = info.buffers[1].GetSharp(info);
+    if (src.GetStride() != 4 || dst.GetStride() != 4 || !src.base_address || !dst.base_address) {
+        return false;
+    }
+    const u64 count =
+        std::min<u64>({u64(cs_program.dim_x) * group_size, ud[6], src.num_records, dst.num_records});
+    const bool pipe =
+        count != 0 && rasterizer.GetBufferCache().IsRegionGpuModified(src.base_address, count * 4);
+    static std::atomic<u32> total{0}, piped{0};
+    const u32 n = total.fetch_add(1, std::memory_order_relaxed) + 1;
+    const u32 p = piped.fetch_add(pipe, std::memory_order_relaxed) + pipe;
+    if ((n & 8191) == 0) {
+        std::printf("Scalar copy: %u of %u down the draw pipe\n", p, n);
+    }
+    return pipe;
+}
+
 bool IsGuestMemoryShaderHLE(unsigned long long pgm_hash) {
     return pgm_hash == SCALAR_COPY_SHADER_HASH || pgm_hash == SCALAR_COPY64_SHADER_HASH;
 }
