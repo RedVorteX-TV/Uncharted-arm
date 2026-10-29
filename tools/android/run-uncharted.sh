@@ -217,6 +217,15 @@ while :; do
               no_bloom no_aa no_aniso no_dynamic_lights no_sun_ao draw_distance_40; do
         [ "$(choice gfx_$id)" = 1 ] && gfx_on="$gfx_on $id"
     done
+    # FSR 3.1, GSR 2 and TAA take the camera from the motion blur's velocity pass, which "No motion
+    # blur" removes: they ran on no frame (the picture stayed FSR 1's). The patch waits for those.
+    case "$(setting upscaler)" in
+        fsr3|gsr2|taa|fsr4|fsr411|dlss)
+            case " $gfx_on " in *" no_motion_blur "*)
+                gfx_on=$(printf '%s' "$gfx_on" | sed 's/ no_motion_blur//')
+                echo "Graphics patch no_motion_blur: not applied with the $(setting upscaler) upscaler (it needs the motion blur's camera pass)" ;;
+            esac ;;
+    esac
     case "$(choice gfx_shadows)" in
         2) gfx_on="$gfx_on shadows_2" ;;
         1) gfx_on="$gfx_on shadows_1" ;;

@@ -178,6 +178,9 @@ final class Strings {
         put("gfx_no_fog", "No fog", "Sin niebla");
         put("gfx_no_volumetric", "No volumetric lights", "Sin luces volumétricas");
         put("gfx_no_motion_blur", "No motion blur", "Sin desenfoque de movimiento");
+        put("gfx_no_motion_blur_hint", "Not applied with FSR 3.1, GSR 2 or TAA: they take the camera's motion from "
+                + "the motion blur's pass.",
+            "No se aplica con FSR 3.1, GSR 2 ni TAA: toman el movimiento de la cámara del pase del desenfoque.");
         put("gfx_no_dof", "No depth of field", "Sin profundidad de campo");
         put("gfx_no_bloom", "No bloom", "Sin resplandor (bloom)");
         put("gfx_no_aa", "No game anti-aliasing", "Sin el antialiasing del juego");

@@ -2164,6 +2164,15 @@ void TemporalUpscaler::UpscaleToUi(VideoCore::ImageId source) {
     ldr_target = source;
     if (Active() && !failed && camera_motion.Ready()) {
         RunScaled();
+    } else if (Active() && !failed) {
+        // bbport: why the upscaler did not run (the frame is scaled by FSR 1 or bilinear instead).
+        static int reported = 0;
+        if (reported < 3) {
+            ++reported;
+            std::printf("Upscaler: not run on this frame (no camera from the game's velocity pass: %s; "
+                        "depth %d)\n", camera_motion.VelocityMode() ? "motion blur off?" : "-",
+                        int(bool(camera_motion.Depth())));
+        }
     }
     auto& ldr = texture_cache.GetImage(ldr_target);
     if (!ui_phase) {
