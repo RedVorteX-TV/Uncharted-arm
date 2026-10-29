@@ -1824,6 +1824,14 @@ void TemporalUpscaler::RunScaled() {
     const u32 iw = color.info.size.width, ih = color.info.size.height;
     const auto [w, h] = SceneSize(iw, ih);
     const u32 ow = target_width, oh = target_height;
+    // bbport: once per session, that the upscaler does run on the game's frames.
+    static bool announced = false;
+    if (!announced) {
+        announced = true;
+        std::printf("Upscaler: %s %s running on the game's frames (%ux%u -> %ux%u)\n",
+                    BbSettings::UpscalerName(BbSettings::Get().upscaler.load()),
+                    BbSettings::PresetName(BbSettings::Get().preset.load()), w, h, ow, oh);
+    }
     if (depth.info.size.width != iw || depth.info.size.height != ih || w > ow || h > oh) {
         ++scaled_stats.size_mismatch;
         static int reported = 0;
@@ -2341,7 +2349,13 @@ void TemporalUpscaler::OnDisplayDraw(u64 ps_hash) {
             break;
         }
     }
-    if (++display_draws < 6000) { // the intro movies and logos draw into them too
+    // Counted only while the game draws a 3D scene (the velocity pass gave a camera): the logos,
+    // movies and the collection's menu draw into the display buffers without the frame copy,
+    // and counting them turned the presets off before any gameplay (prueba 7's GSR 2 log).
+    if (!camera_motion.Ready()) {
+        return;
+    }
+    if (++display_draws < 6000) {
         return;
     }
     composite_frames = false;
