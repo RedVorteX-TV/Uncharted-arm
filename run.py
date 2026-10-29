@@ -381,6 +381,7 @@ def main():
     # only, as upstream uncharted_pc 0.3.8 and the Android app (~13% slower in U3, upstream).
     player_merge = env.get('BB_GPU_MERGE')
     player_small = env.get('BB_READBACK_SMALL')
+    player_copy64 = {name for name in ('BB_SCALAR_COPY64_SYNC', 'BB_SCALAR_COPY64_DEFER') if name in env}
     while True:
         if player_merge is None:
             if exe in (EXECUTABLES['u2'], EXECUTABLES['u3']):
@@ -389,6 +390,13 @@ def main():
                 env.pop('BB_GPU_MERGE', None)
         if player_small is None:
             env['BB_READBACK_SMALL'] = '1' if exe == EXECUTABLES['u2'] else '0'
+        # Uncharted 2's mesh raycasters read GPU results on the CPU after checkpoints (copy
+        # shader 0x6a6422a9): copied into guest memory, on a landing thread once the GPU is past
+        # them (BB_SCALAR_COPY64_SYNC=2, BB_SCALAR_COPY64_DEFER=1; U2 only). Without it the game
+        # asserted iSubMesh < m_numSubMeshInstances (erickmendes22's uncharted-android).
+        for name, u2_value in (('BB_SCALAR_COPY64_SYNC', '2'), ('BB_SCALAR_COPY64_DEFER', '1')):
+            if name not in player_copy64:
+                env[name] = u2_value if exe == EXECUTABLES['u2'] else '0'
         game, file = locate(env, exe)
         if not game:
             fail('Set BB_GAME_DIR to the game folder (the one with eboot.bin).')
