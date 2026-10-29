@@ -190,7 +190,7 @@ def render_resolution(env, exe, out, image):
     the direct memory the larger render target heaps need, and, when the game draws below the
     resolution chosen, the upscale to it. 1920x1080 without a preset: the image as it is."""
     key = next((k for k, v in EXECUTABLES.items() if v == exe), '')
-    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE', 'BB_RENDER_RES', 'BB_OUTPUT_RES',
+    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE', 'BB_VDEC_CONTENT', 'BB_RENDER_RES', 'BB_OUTPUT_RES',
                  'BB_UI_COMPOSITE_PS', 'BB_UI_TONEMAP_PS'):
         env.pop(name, None)
     if 'BB_DMEM_MB_USER' in env:
@@ -230,8 +230,7 @@ def render_resolution(env, exe, out, image):
     if wanted != (1920, 1080):
         import json
         text = f'{wanted[0]}x{wanted[1]}'
-        # 540p: the movie decoder patched too (render_res.py --movie-decoder), as on Android.
-        patched = out / f'boot-res-{text}{"-movies" if render_540p else ""}.bin'
+        patched = out / f'boot-res-{text}.bin'
         meta = patched.with_suffix('.json')
         sources = [image, PORT / 'scripts' / 'render_res.py']
         if not (patched.is_file() and meta.is_file() and
@@ -239,8 +238,7 @@ def render_resolution(env, exe, out, image):
             print(f'Render resolution: preparing {text} for {key.upper()} ...')
             for old in out.glob('boot-res-*'):
                 old.unlink(missing_ok=True)
-            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text,
-                       *(['--movie-decoder'] if render_540p else []))
+            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text)
         info = json.loads(meta.read_text(encoding='utf-8'))
         render = parse_size(info['render'])
         movie_decoder = bool(info.get('movie_decoder'))
@@ -250,7 +248,12 @@ def render_resolution(env, exe, out, image):
             env['BB_DMEM_MB'] = str(max(needed, int(player)) if player.isdigit() else needed)
     render_text = f'{render[0]}x{render[1]}'
     env['BB_SCENE_SIZE'] = render_text
-    if render != (1920, 1080) and not movie_decoder:
+    if render_540p and render == (960, 540):
+        # 540p: the movies stay 1920x1080 frames with the picture in their top-left 960x540, the
+        # part the game shows (Videodec2, from revvv991's uncharted-android). The movie decoder
+        # patched to 960x540 (render_res.py --movie-decoder) gave grey movies with coloured stripes.
+        env['BB_VDEC_CONTENT'] = render_text
+    elif render != (1920, 1080) and not movie_decoder:
         env['BB_MOVIE_SIZE'] = render_text
     upscaled = render[0] < output[0] or render[1] < output[1]
     if upscaled:
@@ -350,13 +353,18 @@ def main():
     # of chapter 21) from memory it also writes: merging leaves them on the GPU, so it runs with
     # accurate GPU memory (BB_GPU_MERGE=0) unless the player chose otherwise. Uncharted 3 runs the
     # same engine and showed the same floating NPCs (Linux fork), so it does too.
+    # Uncharted 2's aim and turret blur read tiny render results back (BB_READBACK_SMALL): U2
+    # only, as upstream uncharted_pc 0.3.8 and the Android app (~13% slower in U3, upstream).
     player_merge = env.get('BB_GPU_MERGE')
+    player_small = env.get('BB_READBACK_SMALL')
     while True:
         if player_merge is None:
             if exe in (EXECUTABLES['u2'], EXECUTABLES['u3']):
                 env['BB_GPU_MERGE'] = '0'
             else:
                 env.pop('BB_GPU_MERGE', None)
+        if player_small is None:
+            env['BB_READBACK_SMALL'] = '1' if exe == EXECUTABLES['u2'] else '0'
         game, file = locate(env, exe)
         if not game:
             fail('Set BB_GAME_DIR to the game folder (the one with eboot.bin).')
@@ -386,6 +394,18 @@ def main():
                 command += ['--patches', str(patches)]
             else:
                 print('Render 720p: not available for this executable; rendering at 1080p')
+        # ARM port: the launcher's graphics patches (BB_GRAPHICS_PATCHES=id ..., from the Bachata S4
+        # catalog): the ones whose original bytes match this executable (scripts/graphics_patches.py),
+        # applied after the others; a write that does not fit is skipped (--extra-patches).
+        graphics = env.get('BB_GRAPHICS_PATCHES', '').split()
+        if graphics:
+            patches = out / 'graphics.bin'
+            script = ['--script'] if getattr(sys, 'frozen', False) else []
+            made = subprocess.run([sys.executable, *script, str(PORT / 'scripts' / 'graphics_patches.py'),
+                                   str(out / 'eboot.elf'), exe, str(patches), *graphics],
+                                  stdin=subprocess.DEVNULL, creationflags=no_console()).returncode == 0
+            if made:
+                command += ['--extra-patches', str(patches)]
         loadexec.unlink(missing_ok=True)
         # No stdin: an inherited pipe (shells such as Git Bash) cost the game its console output.
         code = subprocess.run([*command, *args], stdin=subprocess.DEVNULL, creationflags=no_console()).returncode

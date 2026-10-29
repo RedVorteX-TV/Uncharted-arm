@@ -471,7 +471,8 @@ def apply_defaults(ns):
 # Updates come from the x86-64 fork's releases, which have no ARM build: off on ARM.
 ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'present_mode': 'Fifo',
                 'render_res': '720', 'scaler': 'fsr1', 'check_updates': False,
-                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True, 'lsfg_dll': '',
+                'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True,
+                'arm_skin_batch': True, 'lsfg_dll': '',
                 'game_rate': '60'}
 # Advanced > Compatibility (ARM): the ARM port's performance fixes, each one off with its variable
 # when a scene misbehaves (the Environment field and the player's own variables still win).
@@ -490,7 +491,32 @@ ARM_COMPATIBILITY = (
      'Turn off if the game stutters or pauses for a moment again and again in one place, or loading '
      'screens take much longer than usual. With it off the game uses about twice the CPU: more battery '
      'and heat.'),
+    ('arm_skin_batch', 'BB_SKIN_BATCH',
+     'Batched character skinning',
+     'Deforms the characters\' meshes in one GPU job instead of ~1300 a frame: much faster on high-end '
+     'devices. On low and mid-range devices it can run slower: try the game with it on and off and keep the '
+     'faster one. Turn off as well if characters stretch, flicker or lose parts.'),
 )
+# Settings > Graphics patches (patches/graphics_patches.json, from the Bachata S4 catalog): changes
+# to the games' own graphics settings, all off; run.py applies the chosen ones (BB_GRAPHICS_PATCHES)
+# whose original bytes match the executable. Not part of the recommended settings.
+ARM_GRAPHICS_PATCHES = (
+    ('skip_logos', 'Skip startup logos', None),
+    ('no_water_reflections', 'No water reflections', None),
+    ('no_ssao', 'No ambient occlusion (SSAO)', None),
+    ('no_fog', 'No fog', None),
+    ('no_volumetric', 'No volumetric lights', None),
+    ('no_motion_blur', 'No motion blur', None),
+    ('no_dof', 'No depth of field', None),
+    ('no_bloom', 'No bloom', None),
+    ('no_aa', 'No anti-aliasing', None),
+    ('no_aniso', 'No anisotropic filtering', None),
+    ('no_dynamic_lights', 'No dynamic lights', None),
+    ('no_sun_ao', 'No sunlight ambient occlusion', None),
+    ('draw_distance_40', 'Draw distance 40 m', 'Extreme: distant scenery disappears.'),
+)
+ARM_SHADOW_CASCADES = [('0', 'Original'), ('2', '2 cascades'), ('1', '1 cascade')]
+ARM_GRAPHICS_DEFAULTS = dict({'gfx_' + key: False for key, _t, _h in ARM_GRAPHICS_PATCHES}, gfx_shadows='0')
 # The sidebar's credit line for this port (the Linux fork's own stays above it).
 ARM_CREDIT = 'ARM port by RedVorteX-TV'
 ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
@@ -514,6 +540,7 @@ def apply_arm_defaults(ns):
     """ARM hosts: no Steam Deck mode, the ARM defaults, frame rate limits instead of display
     rates, and no NVIDIA or FSR 4 choices (those need GPUs these devices do not have)."""
     ns['APP_DEFAULTS'].update(ARM_DEFAULTS)
+    ns['APP_DEFAULTS'].update(ARM_GRAPHICS_DEFAULTS)
     ns['FRAME_RATES'][:] = ARM_FRAME_RATES
     for name, key in (('ANTI_ALIASING', 'anti_aliasing'), ('FRAME_GENERATION', 'frame_generation')):
         ns[name][:] = [(value, text) for value, text in ns[name] if value not in ARM_UNAVAILABLE[key]]
@@ -586,6 +613,20 @@ def arm_environment(settings, env):
             env[name] = 'off'
     if str(settings.get('lsfg_dll') or '').strip():
         env['BB_LSFG_DLL'] = str(settings['lsfg_dll']).strip()
+    graphics = arm_graphics_patches(settings)
+    if graphics:
+        env['BB_GRAPHICS_PATCHES'] = ' '.join(graphics)
+    else:
+        env.pop('BB_GRAPHICS_PATCHES', None)
+
+
+def arm_graphics_patches(settings):
+    """The graphics patch ids these settings choose (run.py BB_GRAPHICS_PATCHES)."""
+    ids = [key for key, _title, _hint in ARM_GRAPHICS_PATCHES if settings.get('gfx_' + key)]
+    shadows = str(settings.get('gfx_shadows') or '0')
+    if shadows in ('2', '1'):
+        ids.append('shadows_' + shadows)
+    return ids
 
 
 def saves_for(game_dir):
@@ -1450,6 +1491,16 @@ def launcher_class(base, ns):
                               _('Lossless.dll from your copy of Lossless Scaling (Steam: right-click it, Manage, '
                                 'Browse local files). It is not included with the port. Then choose LSFG as '
                                 'the frame generation, here or in the in-game menu.'))
+            if ARM:
+                self.section(f, _('Graphics patches'))
+                self.note(f, _('Optional changes to the games\' own graphics settings, from the Bachata S4 catalog. '
+                               'Each one is checked against your game\'s files and skipped if it does not match. '
+                               'They lower image quality; measure the gain on your device before keeping them. '
+                               'Applied at the next start.'), top=2)
+                self.row(f, _('Shadow cascades'), self.choice(f, 'gfx_shadows', ARM_SHADOW_CASCADES, 30),
+                         _('Fewer shadow maps: less GPU work, shadows end closer.'))
+                for key, title, hint in ARM_GRAPHICS_PATCHES:
+                    self.check(f, 'gfx_' + key, _(title), _(hint) if hint else None)
             self.section(f, _('Console'))
             self.row(f, _('Language'), self.choice(f, 'language', ns['LANGUAGES'], 30))
             name = self.ttk.Entry(f, textvariable=self.var('player_name'), width=30)

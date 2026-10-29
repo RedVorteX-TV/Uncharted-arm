@@ -52,14 +52,15 @@ class UpscalePresets(unittest.TestCase):
 
     def test_540p_from_bbport_ini(self):
         # The ARM launcher and the in-game menu: render_540p=1 wins over the launcher's resolution,
-        # without an upscaling preset, and the movie decoder is patched instead of BB_MOVIE_SIZE.
+        # without an upscaling preset; the movie decoder keeps 1920x1080 frames, with the picture
+        # in their top-left 960x540 (BB_VDEC_CONTENT; patched to 960x540 the movies were striped).
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_QUALITY': 'quality'},
                              ini='render_720p=0\nrender_540p=1\n')
         self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertEqual(env['BB_VDEC_CONTENT'], '960x540')
         self.assertNotIn('BB_RENDER_RES', env)
         self.assertNotIn('BB_MOVIE_SIZE', env)
-        self.assertIn(bytes.fromhex('c7442430') + (960).to_bytes(4, 'little') + bytes.fromhex('c7442434') +
-                      (540).to_bytes(4, 'little'), self.patched)
+        self.assertIn(DECODER_1080P, self.patched)
 
     def test_720p_wins_over_540p(self):
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},

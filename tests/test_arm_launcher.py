@@ -53,6 +53,27 @@ class ArmLauncher(unittest.TestCase):
         linux.arm_environment({'anti_aliasing': 'dlss'}, env)
         self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_UPSCALER': 'off', 'BB_FRAME_GEN': 'off'})
 
+    def test_graphics_patches(self):
+        env = {'BB_GRAPHICS_PATCHES': 'no_fog'}
+        linux.arm_environment({'gfx_no_ssao': True, 'gfx_no_fog': False, 'gfx_shadows': '2'}, env)
+        self.assertEqual(env['BB_GRAPHICS_PATCHES'], 'no_ssao shadows_2')
+        linux.arm_environment({'gfx_shadows': '0'}, env)
+        self.assertNotIn('BB_GRAPHICS_PATCHES', env)
+        # Every id is in the catalog, for each game (shadows: 2 or 1 cascades).
+        import json
+        catalog = json.loads((ROOT / 'patches' / 'graphics_patches.json').read_text())
+        ids = {p['id'] for p in catalog['patches']}
+        self.assertEqual({k for k, _t, _h in linux.ARM_GRAPHICS_PATCHES} | {'shadows_2', 'shadows_1'}, ids)
+
+    def test_skin_batch_switch(self):
+        env = {}
+        linux.arm_environment({'arm_skin_batch': False}, env)
+        self.assertEqual(env['BB_SKIN_BATCH'], '0')
+        env = {}
+        linux.arm_environment({}, env)
+        self.assertNotIn('BB_SKIN_BATCH', env)
+        self.assertTrue(linux.ARM_DEFAULTS['arm_skin_batch'])
+
     def test_game_rate(self):
         env = {}
         linux.arm_environment({'game_rate': '120'}, env)
