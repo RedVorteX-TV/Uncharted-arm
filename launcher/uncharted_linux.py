@@ -497,28 +497,27 @@ ARM_COMPATIBILITY = (
      'devices. On low and mid-range devices it can run slower: try the game with it on and off and keep the '
      'faster one. Turn off as well if characters stretch, flicker or lose parts.'),
 )
-# Settings > Graphics effects (patches/graphics_patches.json, from the Bachata S4 catalog): the
-# games' own effects, on by default; one switched off applies its patch (run.py
-# BB_GRAPHICS_PATCHES) when the original bytes match the executable (versions 1.00 and 1.02).
-# Not part of the recommended settings. (setting, patch id applied when off, title, hint)
-ARM_GRAPHICS_EFFECTS = (
-    ('fx_logos', 'skip_logos', 'Startup logos (Uncharted 1 and 2)',
-     'Off: the games start without the studio logos. Not available for Uncharted 3.'),
-    ('fx_water_reflections', 'no_water_reflections', 'Water reflections', None),
-    ('fx_ssao', 'no_ssao', 'Ambient occlusion (SSAO)', None),
-    ('fx_fog', 'no_fog', 'Fog', None),
-    ('fx_volumetric', 'no_volumetric', 'Volumetric lights', None),
-    ('fx_motion_blur', 'no_motion_blur', 'Motion blur', None),
-    ('fx_dof', 'no_dof', 'Depth of field', None),
-    ('fx_bloom', 'no_bloom', 'Bloom', None),
-    ('fx_aa', 'no_aa', "The game's anti-aliasing", None),
-    ('fx_aniso', 'no_aniso', 'Anisotropic filtering', None),
-    ('fx_dynamic_lights', 'no_dynamic_lights', 'Dynamic lights', None),
-    ('fx_sun_ao', 'no_sun_ao', 'Sunlight ambient occlusion', None),
-    ('fx_draw_distance', 'draw_distance_40', 'Full draw distance', 'Off: 40 m, extreme; distant scenery disappears.'),
+# Settings > Graphics patches (patches/graphics_patches.json, from the Bachata S4 catalog): all off
+# by default, the games as they are; one switched on is applied (run.py BB_GRAPHICS_PATCHES) when
+# the original bytes match the executable (versions 1.00 and 1.02). Not part of the recommended
+# settings. (setting, patch id, title, hint)
+ARM_GRAPHICS_PATCHES = (
+    ('gfx_skip_logos', 'skip_logos', 'Skip startup logos (Uncharted 1 and 2)', 'Not available for Uncharted 3.'),
+    ('gfx_no_water_reflections', 'no_water_reflections', 'No water reflections', None),
+    ('gfx_no_ssao', 'no_ssao', 'No ambient occlusion (SSAO)', None),
+    ('gfx_no_fog', 'no_fog', 'No fog', None),
+    ('gfx_no_volumetric', 'no_volumetric', 'No volumetric lights', None),
+    ('gfx_no_motion_blur', 'no_motion_blur', 'No motion blur', None),
+    ('gfx_no_dof', 'no_dof', 'No depth of field', None),
+    ('gfx_no_bloom', 'no_bloom', 'No bloom', None),
+    ('gfx_no_aa', 'no_aa', 'No game anti-aliasing', None),
+    ('gfx_no_aniso', 'no_aniso', 'No anisotropic filtering', None),
+    ('gfx_no_dynamic_lights', 'no_dynamic_lights', 'No dynamic lights', None),
+    ('gfx_no_sun_ao', 'no_sun_ao', 'No sunlight ambient occlusion', None),
+    ('gfx_draw_distance_40', 'draw_distance_40', 'Draw distance 40 m', 'Extreme: distant scenery disappears.'),
 )
 ARM_SHADOW_CASCADES = [('0', 'Original'), ('2', '2 cascades'), ('1', '1 cascade')]
-ARM_GRAPHICS_DEFAULTS = dict({key: True for key, _id, _t, _h in ARM_GRAPHICS_EFFECTS}, gfx_shadows='0')
+ARM_GRAPHICS_DEFAULTS = dict({key: False for key, _id, _t, _h in ARM_GRAPHICS_PATCHES}, gfx_shadows='0')
 # The sidebar's credit line for this port (the Linux fork's own stays above it).
 ARM_CREDIT = 'ARM port by RedVorteX-TV'
 ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
@@ -653,9 +652,8 @@ def arm_environment(settings, env):
 
 
 def arm_graphics_patches(settings):
-    """The graphics patch ids these settings choose (run.py BB_GRAPHICS_PATCHES): the effects
-    switched off, and fewer shadow cascades."""
-    ids = [patch for key, patch, _title, _hint in ARM_GRAPHICS_EFFECTS if not settings.get(key, True)]
+    """The graphics patch ids these settings choose (run.py BB_GRAPHICS_PATCHES)."""
+    ids = [patch for key, patch, _title, _hint in ARM_GRAPHICS_PATCHES if settings.get(key)]
     shadows = str(settings.get('gfx_shadows') or '0')
     if shadows in ('2', '1'):
         ids.append('shadows_' + shadows)
@@ -1525,14 +1523,14 @@ def launcher_class(base, ns):
                                 'Browse local files). It is not included with the port. Then choose LSFG as '
                                 'the frame generation, here or in the in-game menu.'))
             if ARM:
-                self.section(f, _('Graphics effects'))
-                self.note(f, _('The games\' own effects, all on as in the original games. Switching one off applies '
-                               'a patch from the Bachata S4 catalog to your game\'s executable (version 1.00 or 1.02, '
-                               'checked before it is applied): less GPU work, a plainer picture. Measure the gain on '
-                               'your device before keeping it. Applied at the next start.'), top=2)
+                self.section(f, _('Graphics patches'))
+                self.note(f, _('Optional patches from the Bachata S4 catalog, all off: the games as they are. One '
+                               'switched on changes the game\'s own graphics settings (versions 1.00 and 1.02, checked '
+                               'against your executable before it is applied): less GPU work, a plainer picture. '
+                               'Measure the gain on your device before keeping it. Applied at the next start.'), top=2)
                 self.row(f, _('Shadow cascades'), self.choice(f, 'gfx_shadows', ARM_SHADOW_CASCADES, 30),
                          _('Fewer shadow maps: less GPU work, shadows end closer.'))
-                for key, _patch, title, hint in ARM_GRAPHICS_EFFECTS:
+                for key, _patch, title, hint in ARM_GRAPHICS_PATCHES:
                     self.check(f, key, _(title), _(hint) if hint else None)
             self.section(f, _('Console'))
             self.row(f, _('Language'), self.choice(f, 'language', ns['LANGUAGES'], 30))

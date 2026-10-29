@@ -64,18 +64,18 @@ class ArmLauncher(unittest.TestCase):
         self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_FRAME_GEN': 'off'})
 
     def test_graphics_patches(self):
-        # The effects are on by default (the games' own); one switched off applies its patch.
+        # All off by default (the games as they are); one switched on is applied.
         env = {'BB_GRAPHICS_PATCHES': 'no_fog'}
-        linux.arm_environment({'fx_ssao': False, 'fx_fog': True, 'gfx_shadows': '2'}, env)
+        linux.arm_environment({'gfx_no_ssao': True, 'gfx_no_fog': False, 'gfx_shadows': '2'}, env)
         self.assertEqual(env['BB_GRAPHICS_PATCHES'], 'no_ssao shadows_2')
         linux.arm_environment({'gfx_shadows': '0'}, env)
         self.assertNotIn('BB_GRAPHICS_PATCHES', env)
-        self.assertTrue(all(linux.ARM_GRAPHICS_DEFAULTS[k] for k, _p, _t, _h in linux.ARM_GRAPHICS_EFFECTS))
-        # Every patch is in the catalog (shadows: 2 or 1 cascades).
+        self.assertFalse(any(linux.ARM_GRAPHICS_DEFAULTS[k] for k, _p, _t, _h in linux.ARM_GRAPHICS_PATCHES))
         import json
         catalog = json.loads((ROOT / 'patches' / 'graphics_patches.json').read_text())
         ids = {p['id'] for p in catalog['patches']}
-        self.assertEqual({p for _k, p, _t, _h in linux.ARM_GRAPHICS_EFFECTS} | {'shadows_2', 'shadows_1', 'movies_below_1080p'}, ids)
+        self.assertEqual({p for _k, p, _t, _h in linux.ARM_GRAPHICS_PATCHES} |
+                         {'shadows_2', 'shadows_1', 'movies_below_1080p'}, ids)
 
     def test_skin_batch_switch(self):
         env = {}
