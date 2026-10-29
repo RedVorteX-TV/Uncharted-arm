@@ -242,9 +242,13 @@ while :; do
     # Uncharted 2's aiming and turret blur read tiny render results back: copied back without
     # waiting (BB_TINY_READBACK, upstream uncharted_pc 0.3.8; ~13% slower elsewhere, so U2 only).
     # Without it everything behind Drake stayed blurred while aiming.
+    # Uncharted 2's mesh raycasters read GPU results on the CPU after checkpoints (copy shader
+    # 0x6a6422a9): without the copy into guest memory the CPU's records stay stale and the game
+    # asserts iSubMesh < m_numSubMeshInstances (BB_SCALAR_COPY64_SYNC=2, U2 only; from
+    # erickmendes22's uncharted-android, after Supermedo/uncharted_pc).
     case "$exe" in
-        big2*) export BB_TINY_READBACK=1 ;;
-        *) export BB_TINY_READBACK=0 ;;
+        big2*) export BB_TINY_READBACK=1 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-2} ;;
+        *) export BB_TINY_READBACK=0 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-0} ;;
     esac
     # BB_RENDER_CPUS: the host GPU threads (command processor, draw recording, Vulkan recorder,
     # presentation) off the slowest cores when at least four faster ones remain (the Thor: 3-7).
