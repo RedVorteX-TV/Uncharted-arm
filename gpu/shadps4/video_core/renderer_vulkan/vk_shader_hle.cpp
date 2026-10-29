@@ -335,10 +335,15 @@ static bool ExecuteScalarCopyHLE(const Shader::Info& info, const AmdGpu::Compute
             const bool mesh_copy=group_size==64 && MeshCopyResultsEnabled();
             const bool copy_sync=sync || (mesh_copy && BbMeshCopy::NeedsGuestResult(
                 64,true,buffer_cache.IsRegionCpuModified(dst.base_address,size)));
-            if (src_written && copy_sync) {
+            bool deferred = false;
+            if (src_written && copy_sync && mesh_copy && !sync) {
+                deferred = buffer_cache.DeferGuestCopy(src.base_address, dst.base_address, size);
+            }
+            if (src_written && copy_sync && !deferred) {
+                buffer_cache.WaitLanding(buffer_cache.PendingLanding());
                 buffer_cache.ReadMemory(src.base_address, size, false, true);
             }
-            if ((!src_written || copy_sync) && memory->IsValidGpuMapping(src.base_address, size) &&
+            if (!deferred && (!src_written || copy_sync) && memory->IsValidGpuMapping(src.base_address, size) &&
                 memory->IsValidGpuMapping(dst.base_address, size)) {
                 memory->TryWriteBacking(reinterpret_cast<void*>(dst.base_address),
                                         reinterpret_cast<const void*>(src.base_address), size);

@@ -247,7 +247,7 @@ while :; do
     # asserts iSubMesh < m_numSubMeshInstances (BB_SCALAR_COPY64_SYNC=2, U2 only; from
     # erickmendes22's uncharted-android, after Supermedo/uncharted_pc).
     case "$exe" in
-        big2*) export BB_TINY_READBACK=1 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-2} ;;
+        big2*) export BB_TINY_READBACK=1 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-2} BB_SCALAR_COPY64_DEFER=${BB_SCALAR_COPY64_DEFER-1} ;;
         *) export BB_TINY_READBACK=0 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-0} ;;
     esac
     # BB_RENDER_CPUS: the host GPU threads (command processor, draw recording, Vulkan recorder,
