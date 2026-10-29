@@ -25,8 +25,13 @@ final class PadBridge {
     PadBridge(File state) { this.state=state; reset(); }
 
     private String name(KeyEvent e) {
-        // Thor's Linux scancodes were verified against its printed Nintendo positions.
-        switch (e.getScanCode()) {
+        // Thor's Linux scancodes were verified against its printed Nintendo positions. Sony's and
+        // Nintendo's controller drivers report the top button as 307 (BTN_NORTH) and the left one
+        // as 308 (BTN_WEST), the other way round: triangle and square came swapped. Those go by
+        // Android's key layout (KEYCODE_BUTTON_X/Y) instead.
+        final InputDevice device=e.getDevice();
+        final int vendor=device==null ? 0 : device.getVendorId();
+        if (vendor!=0x054c && vendor!=0x057e) switch (e.getScanCode()) {
             case 304: return "cross"; case 305: return "circle";
             case 307: return "square"; case 308: return "triangle";
             case 310: return "l1"; case 311: return "r1";

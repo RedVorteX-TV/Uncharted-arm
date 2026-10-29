@@ -59,6 +59,9 @@ export BB_UPSCALER=${BB_UPSCALER:-off}
 [ "$(choice arm_uma_readback)" = 0 ] && export BB_UMA_READBACK=0
 [ "$(choice arm_flush_draws)" = 0 ] && export BB_FLUSH_DRAWS=0
 [ "$(choice arm_job_spin)" = 0 ] && export BB_JOB_SPIN=0
+# Batched skinning (vk_skin_batch.cpp) runs with the two-stage draw pipeline: on at every render
+# resolution unless the launcher's switch is off (then the pipeline only at 540p, unbatched).
+if [ "$(choice arm_skin_batch)" = 0 ]; then export BB_SKIN_BATCH=0; else export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}; fi
 # The launcher's "Performance statistics in the log": frame, thread, GPU wait and memory statistics.
 [ "$(choice perf_stats)" = 1 ] && export BB_FRAME_STATS=1 BB_THREAD_STATS=1
 # Sound: the mixer writes s16 stereo 48 kHz into the FIFO the app plays (AudioBridge.java), only when

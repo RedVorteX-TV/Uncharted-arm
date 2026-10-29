@@ -48,7 +48,8 @@ public final class MainActivity extends Activity {
     private String FILES, BASE;
     private Ini bbport, launcher;
     private String gameDir;
-    private static final int REQUEST_FOLDER = 1, REQUEST_STORAGE = 2, REQUEST_DRIVER = 3, REQUEST_LSFG = 4;
+    private static final int REQUEST_FOLDER = 1, REQUEST_STORAGE = 2, REQUEST_DRIVER = 3, REQUEST_LSFG = 4,
+        REQUEST_SAVES_EXPORT = 5, REQUEST_SAVES_IMPORT = 6;
     private static final int GOLD = 0xffc6ad76, TEXT = 0xffe8dfc9, MUTED = 0xff8e9097, CARD = 0xff1b1d24, BACK = 0xff0f1014;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -363,7 +364,7 @@ public final class MainActivity extends Activity {
 
         // Compatibility (ARM): launcher.ini (the in-game menu rewrites bbport.ini whole)
         section(Strings.get("compatibility"));
-        for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"})
+        for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
         actionRow(Strings.get("recommended"), Strings.get("recommended_hint"), this::applyRecommended);
 
@@ -371,12 +372,17 @@ public final class MainActivity extends Activity {
         section(Strings.get("system"));
         actionRow(Strings.get("gpu_driver"), driverSummary(), this::showDrivers).setTag("driver");
         actionRow(Strings.get("game_folder"), gameDir == null ? Strings.get("not_chosen") : gameDir, () -> askGameFolder()).setTag("folder");
+        actionRow(Strings.get("saves_export"), Strings.get("saves_export_hint"), this::askSavesExport);
+        actionRow(Strings.get("saves_import"), Strings.get("saves_import_hint"), this::askSavesImport);
         switchRow(launcher, "perf_stats", false, Strings.get("perf_stats"), Strings.get("perf_stats_hint"));
         actionRow(Strings.get("logs"), Strings.get("logs_hint") + "\n" + sharedLogDir().getPath(), () -> {
             File log = new File(sharedLogDir(), "android-game.log");
             toast(log.isFile() ? log.getPath() : Strings.get("no_log"));
         });
         switchRow(launcher, "touch_controls", false, Strings.get("touch_controls"), Strings.get("touch_controls_hint"));
+        cyclerRow(launcher, "touch_style", Strings.get("touch_style"), Strings.get("touch_style_hint"),
+            new String[]{"classic", "ps5"}, new String[]{Strings.get("touch_style_classic"), Strings.get("touch_style_ps5")},
+            "classic");
         actionRow(Strings.get("edit_layout"), null, () -> {
             launcher.set("touch_controls", true);
             launcherView.setVisibility(View.GONE);
@@ -527,7 +533,7 @@ public final class MainActivity extends Activity {
     private void applyRecommended() {
         bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
         bbport.set("render_540p", false);
-        for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin"}) launcher.set(key, true);
+        for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"}) launcher.set(key, true);
         launcher.set("game_rate", "60");
         refreshRows(launcherBody);
         notice(Strings.get("recommended_done"));
@@ -786,6 +792,7 @@ public final class MainActivity extends Activity {
     }
     private boolean touchControls() { return launcher.on("touch_controls", false); }
     private void applyOverlayVisibility() {
+        controllerOverlay.setWhiteFaceButtons("ps5".equals(launcher.get("touch_style", "classic")));
         boolean paused;
         synchronized (pauseLock) { paused = userPaused; }
         boolean show = !launcherShown() && !drawerOpen && (controllerOverlay.isEditing() || (touchControls() && !paused));
@@ -995,6 +1002,12 @@ public final class MainActivity extends Activity {
             if (result == RESULT_OK && data != null && data.getData() != null) installLsfgDll(data.getData());
             return;
         }
+        if (code == REQUEST_SAVES_EXPORT || code == REQUEST_SAVES_IMPORT) {
+            if (result == RESULT_OK && data != null && data.getData() != null) {
+                if (code == REQUEST_SAVES_EXPORT) exportSaves(data.getData()); else importSaves(data.getData());
+            }
+            return;
+        }
         if (code == REQUEST_DRIVER) {
             if (result == RESULT_OK && data != null && data.getData() != null) installDriver(data.getData());
             return;
@@ -1015,6 +1028,88 @@ public final class MainActivity extends Activity {
         gameDir = dir.getPath();
         getSharedPreferences("uncharted", MODE_PRIVATE).edit().putString("game_dir", gameDir).apply();
         setRowHint("folder", gameDir);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Saves: BASE/user/savedata (runtime_savedata.c), as a zip of savedata/... (the Linux version
+    // keeps the same folder in its saves folder, so the two take each other's zips).
+    private File savesDir() { return new File(BASE, "user/savedata"); }
+    private void askSavesExport() {
+        String name = "uncharted-saves-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.ROOT)
+            .format(new java.util.Date()) + ".zip";
+        Intent pick = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/zip").putExtra(Intent.EXTRA_TITLE, name);
+        try { startActivityForResult(pick, REQUEST_SAVES_EXPORT); } catch (Exception ex) { toast("No file picker: " + ex); }
+    }
+    private void askSavesImport() {
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        try { startActivityForResult(pick, REQUEST_SAVES_IMPORT); } catch (Exception ex) { toast("No file picker: " + ex); }
+    }
+    private static void zipFolder(java.util.zip.ZipOutputStream zip, File dir, String path) throws java.io.IOException {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            String entry = path + "/" + child.getName();
+            if (child.isDirectory()) { zipFolder(zip, child, entry); continue; }
+            zip.putNextEntry(new java.util.zip.ZipEntry(entry));
+            try (java.io.InputStream in = new java.io.FileInputStream(child)) {
+                byte[] buffer = new byte[1 << 16];
+                for (int n; (n = in.read(buffer)) > 0; ) zip.write(buffer, 0, n);
+            }
+            zip.closeEntry();
+        }
+    }
+    private void exportSaves(android.net.Uri uri) {
+        File saves = savesDir();
+        if (!saves.isDirectory()) { toast(Strings.get("saves_none")); return; }
+        new Thread(() -> {
+            String problem = null;
+            try (java.io.OutputStream out = getContentResolver().openOutputStream(uri);
+                 java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(out)) {
+                if (out == null) throw new java.io.IOException("cannot open the file");
+                zipFolder(zip, saves, "savedata");
+            } catch (Exception ex) { problem = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
+            String failure = problem;
+            main.post(() -> { if (!destroyed) toast(failure == null ? Strings.get("saves_exported") : failure); });
+        }).start();
+    }
+    /** A zip of savedata/... (an export of this app or of the Linux version) replaces the saves;
+     *  the old ones stay beside them as savedata.before-import-<time>. */
+    private void importSaves(android.net.Uri uri) {
+        new Thread(() -> {
+            String problem = null;
+            File user = new File(BASE, "user"), incoming = new File(user, "savedata.importing");
+            FsUtil.deleteTree(incoming);
+            int files = 0;
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+                 java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(in)) {
+                if (in == null) throw new java.io.IOException("cannot open the file");
+                String root = incoming.getCanonicalPath() + File.separator;
+                for (java.util.zip.ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
+                    String name = entry.getName().replace('\\', '/');
+                    if (!name.startsWith("savedata/") || entry.isDirectory()) continue;
+                    File target = new File(incoming, name.substring("savedata/".length()));
+                    if (!target.getCanonicalPath().startsWith(root)) continue; // no paths out of it
+                    target.getParentFile().mkdirs();
+                    try (java.io.OutputStream out = new java.io.FileOutputStream(target)) {
+                        byte[] buffer = new byte[1 << 16];
+                        for (int n; (n = zip.read(buffer)) > 0; ) out.write(buffer, 0, n);
+                    }
+                    ++files;
+                }
+                if (files == 0) throw new java.io.IOException(Strings.get("saves_not_zip"));
+                File saves = savesDir();
+                if (saves.exists()) {
+                    String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date());
+                    if (!saves.renameTo(new File(user, "savedata.before-import-" + stamp)))
+                        throw new java.io.IOException("cannot move the current saves aside");
+                }
+                if (!incoming.renameTo(saves)) throw new java.io.IOException("cannot put the saves in place");
+            } catch (Exception ex) { problem = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
+            if (problem != null) FsUtil.deleteTree(incoming);
+            String failure = problem;
+            main.post(() -> { if (!destroyed) toast(failure == null ? Strings.get("saves_imported") : failure); });
+        }).start();
     }
 
     // ---------------------------------------------------------------------------------------------

@@ -96,6 +96,16 @@ final class Strings {
                 + "game hangs at the same spot every time. With it off Uncharted 2 and 3 run at a somewhat lower frame rate.",
             "Desactívalo si una escena se congela (la imagen se para mientras el sonido sigue) o el juego se cuelga "
                 + "siempre en el mismo sitio. Desactivado, Uncharted 2 y 3 van con algo menos de FPS.");
+        put("arm_skin_batch", "Batched character skinning (all resolutions)",
+            "Skinning de personajes por lotes (todas las resoluciones)");
+        put("arm_skin_batch_hint", "Deforms the characters' meshes in one GPU job instead of ~1300 a frame, with "
+                + "the two-stage draw pipeline: much faster on the Thor. On low and mid-range devices it can run "
+                + "slower: try the game with it on and off and keep the faster one. Turn off as well if characters "
+                + "stretch, flicker or lose parts.",
+            "Deforma las mallas de los personajes en un solo trabajo de GPU en vez de ~1300 por fotograma, con el "
+                + "doble carril de dibujo: mucho más rápido en la Thor. En dispositivos de gama baja o media puede "
+                + "ir peor: prueba el juego activado y desactivado y quédate con lo que vaya mejor. Desactívalo "
+                + "también si los personajes se estiran, parpadean o pierden partes.");
         put("arm_job_spin", "Let idle game threads sleep", "Dejar que los hilos inactivos del juego duerman");
         put("arm_job_spin_hint", "Turn off if the game stutters or pauses for a moment again and again in one place, "
                 + "or loading screens take much longer than usual. With it off the game uses about twice the CPU: more "
@@ -131,6 +141,27 @@ final class Strings {
         put("touch_controls_hint", "Touch buttons over the game, for playing without a controller.",
             "Botones táctiles sobre el juego, para jugar sin mando.");
         put("edit_layout", "Edit controller layout", "Editar el mando en pantalla");
+        put("saves_export", "Export saves", "Exportar partidas");
+        put("saves_export_hint", "Saves the three games' saves to a .zip file of your choice (a backup, or to move "
+                + "them to another device or to the Linux version).", "Guarda las partidas de los tres juegos en un "
+                + "archivo .zip donde elijas (una copia de seguridad, o para pasarlas a otro dispositivo o a la versión "
+                + "de Linux).");
+        put("saves_import", "Import saves", "Importar partidas");
+        put("saves_import_hint", "Replaces the saves with those of an exported .zip (from this app or the Linux "
+                + "version's savedata folder). The current ones are kept aside in the app's folder.",
+            "Sustituye las partidas por las de un .zip exportado (de esta app o de la carpeta savedata de la versión "
+                + "de Linux). Las actuales se guardan aparte en la carpeta de la app.");
+        put("saves_exported", "Saves exported", "Partidas exportadas");
+        put("saves_imported", "Saves imported", "Partidas importadas");
+        put("saves_none", "There are no saves yet", "Todavía no hay partidas guardadas");
+        put("saves_not_zip", "That file has no saves (a zip with a savedata folder)",
+            "Ese archivo no tiene partidas (un zip con una carpeta savedata)");
+        put("touch_style", "On-screen controller style", "Estilo del mando en pantalla");
+        put("touch_style_hint", "Classic: the PlayStation colours on the face buttons. PS5: white symbols, as on a "
+                + "DualSense.", "Clásico: los colores de PlayStation en los botones de acción. PS5: símbolos blancos, "
+                + "como en un DualSense.");
+        put("touch_style_classic", "Classic", "Clásico");
+        put("touch_style_ps5", "PS5", "PS5");
         put("language", "Language", "Idioma");
         put("lang_auto", "Automatic (system language)", "Automático (idioma del sistema)");
         put("controls_hint", "Controller: D-pad to move, A to choose, left/right to change a value, B to go back. "

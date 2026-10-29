@@ -53,6 +53,7 @@ final class TouchControllerOverlay extends View {
     private final PointF cameraAnchor=new PointF();
     private final Set<String> pressed=new LinkedHashSet<>();
     private boolean editing;
+    private boolean whiteFace; ///< PS5 style: white face buttons (setWhiteFaceButtons)
     // Editor: the finger dragging `dragged`, a second finger pinching it, and the control −/+ resize.
     private int editPointer=-1, pinchPointer=-1;
     private float pinchDistance, pinchSize;
@@ -70,6 +71,10 @@ final class TouchControllerOverlay extends View {
     private WindowInsets lastInsets;
     private final RectF miniPx=new RectF();
 
+    /** The face buttons in white (PS5 style) or the PlayStation colours (classic). */
+    void setWhiteFaceButtons(boolean white) {
+        if (white!=whiteFace) { whiteFace=white; invalidate(); }
+    }
     TouchControllerOverlay(Context context,PadBridge pad) {
         super(context); this.pad=pad;
         preferences=context.getSharedPreferences("uncharted",Context.MODE_PRIVATE);
@@ -472,8 +477,10 @@ final class TouchControllerOverlay extends View {
         rectangle(c,"touchpad",126,"TOUCH"); rectangle(c,"options",108,"OPTIONS");
         circle(c,"up",39,"▲",0xffc6ad76); circle(c,"left",39,"◀",0xffc6ad76);
         circle(c,"right",39,"▶",0xffc6ad76); circle(c,"down",39,"▼",0xffc6ad76);
-        circle(c,"triangle",39,"△",0xff83cdaa); circle(c,"circle",39,"○",0xffe38288);
-        circle(c,"cross",39,"×",0xff88aaff); circle(c,"square",39,"□",0xffd6a0ce);
+        // Classic: the PlayStation colours; PS5 (launcher.ini touch_style): white, as on a DualSense.
+        final int white=0xffeeeeee;
+        circle(c,"triangle",39,"△",whiteFace ? white : 0xff83cdaa); circle(c,"circle",39,"○",whiteFace ? white : 0xffe38288);
+        circle(c,"cross",39,"×",whiteFace ? white : 0xff88aaff); circle(c,"square",39,"□",whiteFace ? white : 0xffd6a0ce);
         drawStick(c,"leftstick"); drawCamera(c);
         circle(c,"l3",29,"L3",0xffa0aec0); circle(c,"r3",29,"R3",0xffa0aec0);
         if (editing) {
