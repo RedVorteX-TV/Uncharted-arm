@@ -234,6 +234,11 @@ int VideoOutDriver::RegisterBuffers(VideoOutPort* port, s32 startIndex, void* co
         return ORBIS_VIDEO_OUT_ERROR_INVALID_VALUE;
     }
 
+    if (attribute && attribute->width >= 320 && attribute->height >= 180) {
+        // The blur scaling below 1080p (Rasterizer::PostBlurScale) reads the game's size.
+        BbSettings::Get().game_display_width = int(attribute->width);
+        BbSettings::Get().game_display_height = int(attribute->height);
+    }
     const s32 end_index = startIndex + bufferNum;
     if (bufferNum > 0 &&
         std::any_of(port->buffer_slots.begin() + startIndex, port->buffer_slots.begin() + end_index,
