@@ -343,6 +343,21 @@ public final class MainActivity extends Activity {
 
         // Graphics: shared with the in-game menu through bbport.ini
         section(Strings.get("graphics"));
+        // Profiles: a set of the settings below in one choice (applyProfile); "Custom" once any of
+        // them differs from every profile (currentProfile). The compatibility switches are not part.
+        profileRow = valueRow(Strings.get("profile"), Strings.get("profile_hint"), PROFILES,
+            new String[]{Strings.get("profile_custom"), Strings.get("profile_low"), Strings.get("profile_medium"),
+                Strings.get("profile_high"), Strings.get("profile_high_perf"), Strings.get("profile_battery")},
+            this::currentProfile,
+            value -> { if (!value.equals("custom")) applyProfile(value); });
+        TextView profileNote = text(Strings.get("profile_note"), 12, MUTED); profileNote.setPadding(dp(4), 0, dp(4), dp(8));
+        profileNote.setTag((Runnable) () -> {
+            String p = currentProfile();
+            profileNote.setText(Strings.has("profile_" + p + "_desc") ? Strings.get("profile_" + p + "_desc") : Strings.get("profile_note"));
+        });
+        ((Runnable) profileNote.getTag()).run();
+        launcherBody.addView(profileNote);
+        profileNoteView = profileNote;
         // Render resolution (bbport.ini, shared with the in-game menu): 1080p, the game's 720p mode
         // (render_720p) or the whole game at 960x540 (render_540p).
         valueRow(Strings.get("render_res"), Strings.get("render_res_hint"), new String[]{"1080", "720", "540"},
@@ -405,7 +420,6 @@ public final class MainActivity extends Activity {
         section(Strings.get("compatibility"));
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
-        actionRow(Strings.get("recommended"), Strings.get("recommended_hint"), this::applyRecommended);
 
         // System
         section(Strings.get("system"));
@@ -484,7 +498,7 @@ public final class MainActivity extends Activity {
         };
         show.run();
         row.setTag(show);
-        row.setOnClickListener(v -> { ini.set(key, !ini.on(key, fallback)); show.run(); });
+        row.setOnClickListener(v -> { ini.set(key, !ini.on(key, fallback)); show.run(); refreshProfile(); });
         return row;
     }
 
@@ -505,6 +519,7 @@ public final class MainActivity extends Activity {
             String next = values[(at + delta + values.length) % values.length];
             ini.set(key, next);
             show.run();
+            refreshProfile();
             if (key.equals("language")) { Strings.setLanguage(next); recreate(); }
         };
         row.setOnClickListener(v -> step.accept(1));
@@ -532,6 +547,7 @@ public final class MainActivity extends Activity {
             int at = Math.max(0, java.util.Arrays.asList(values).indexOf(get.get()));
             set.accept(values[(at + delta + values.length) % values.length]);
             show.run();
+            refreshProfile();
         };
         row.setOnClickListener(v -> step.accept(1));
         row.setOnKeyListener((v, code, e) -> {
@@ -569,15 +585,88 @@ public final class MainActivity extends Activity {
     }
 
     /** Every launcher setting back to what runs best on an ARM handheld (the Linux launcher's button). */
-    private void applyRecommended() {
-        bbport.set("render_720p", true); bbport.set("fsr1", true); bbport.set("fps_limit", "40");
-        bbport.set("upscaler", "off"); bbport.set("preset", "0");
-        bbport.set("render_540p", false);
-        for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"}) launcher.set(key, true);
-        launcher.set("game_rate", "60");
-        refreshRows(launcherBody);
-        notice(Strings.get("recommended_done"));
+    // ---------------------------------------------------------------------------------------------
+    // Profiles (the launcher's graphics section): ids, then each profile's settings. skip_logos and
+    // the compatibility switches are left as the player has them.
+    private View profileRow, profileNoteView;
+    /** After a single setting changed: the profile row and its description follow. */
+    private void refreshProfile() {
+        for (View v : new View[]{profileRow, profileNoteView})
+            if (v != null && v.getTag() instanceof Runnable) ((Runnable) v.getTag()).run();
     }
+    private static final String[] PROFILES = {"custom", "low", "medium", "high", "high_perf", "battery"};
+    /** The graphics patches a profile sets (all of GFX_PATCHES but skip_logos, which is not a graphics effect). */
+    private static final String[] PROFILE_GFX = {"no_water_reflections", "no_ssao", "no_fog", "no_volumetric",
+        "no_motion_blur", "no_dof", "no_bloom", "no_aa", "no_aniso", "no_dynamic_lights", "no_sun_ao", "draw_distance_40"};
+
+    /** resolution (1080/720/540), upscaler (fsr1/gsr2), preset, fps limit, game rate, all patches on. */
+    private static String[] profileSettings(String id) {
+        switch (id) {
+            case "low":       return new String[]{"540", "fsr1", "0", "30", "60", "1"};
+            case "medium":    return new String[]{"540", "fsr1", "0", "30", "60", "0"};
+            case "high":      return new String[]{"1080", "gsr2", "1", "60", "60", "0"};
+            case "high_perf": return new String[]{"1080", "gsr2", "1", "0", "120", "0"};
+            case "battery":   return new String[]{"720", "fsr1", "0", "40", "120", "0"};
+            default:          return null;
+        }
+    }
+
+    /** The display's highest refresh rate (Hz); 60 when unknown. */
+    private float maxRefreshRate() {
+        float best = 60f;
+        try {
+            android.view.Display display = getWindowManager().getDefaultDisplay();
+            for (android.view.Display.Mode mode : display.getSupportedModes()) best = Math.max(best, mode.getRefreshRate());
+        } catch (RuntimeException ignored) {}
+        return best;
+    }
+
+    private void applyProfile(String id) {
+        String[] p = profileSettings(id);
+        if (p == null) return;
+        bbport.set("render_720p", p[0].equals("720"));
+        bbport.set("render_540p", p[0].equals("540"));
+        bbport.set("upscaler", p[1].equals("fsr1") ? "off" : p[1]);
+        bbport.set("fsr1", true);
+        bbport.set("preset", p[2]);
+        String fps = p[3];
+        // 40 FPS is even only on a 120 Hz screen (three refreshes a frame); at 60 Hz it alternates.
+        boolean screen60 = fps.equals("40") && maxRefreshRate() < 119f;
+        if (screen60) fps = "30";
+        bbport.set("fps_limit", fps);
+        launcher.set("game_rate", screen60 ? "60" : p[4]);
+        boolean patches = p[5].equals("1");
+        for (String key : PROFILE_GFX) launcher.set("gfx_" + key, patches);
+        launcher.set("gfx_shadows", patches ? "1" : "0");
+        refreshRows(launcherBody);
+        notice(screen60 ? Strings.get("profile_battery_60hz") : Strings.format("profile_done",
+            Strings.get("profile_" + id)));
+    }
+
+    /** The profile the current settings match, or "custom". */
+    private String currentProfile() {
+        String res = bbport.on("render_720p", true) ? "720" : bbport.on("render_540p", false) ? "540" : "1080";
+        String up = bbport.get("upscaler", "off");
+        String upscaler = up.equals("gsr2") || up.equals("fsr3") || up.equals("taa") ? up : bbport.on("fsr1", true) ? "fsr1" : "off";
+        String preset = bbport.get("preset", "0"), fps = bbport.get("fps_limit", "40"), rate = launcher.get("game_rate", "60");
+        boolean allOn = true, allOff = true;
+        for (String key : PROFILE_GFX) {
+            boolean on = launcher.on("gfx_" + key, false);
+            allOn &= on; allOff &= !on;
+        }
+        String shadows = launcher.get("gfx_shadows", "0");
+        for (String id : PROFILES) {
+            String[] p = profileSettings(id);
+            if (p == null) continue;
+            boolean patches = p[5].equals("1");
+            boolean fpsOk = fps.equals(p[3]) || (id.equals("battery") && fps.equals("30") && rate.equals("60"));
+            boolean rateOk = rate.equals(p[4]) || (id.equals("battery") && fps.equals("30"));
+            if (res.equals(p[0]) && upscaler.equals(p[1]) && (upscaler.equals("fsr1") || preset.equals(p[2])) && fpsOk && rateOk
+                && (patches ? allOn && shadows.equals("1") : allOff && shadows.equals("0"))) return id;
+        }
+        return "custom";
+    }
+
     private void refreshRows(View view) {
         if (view.getTag() instanceof Runnable) ((Runnable) view.getTag()).run();
         if (view instanceof android.view.ViewGroup) {

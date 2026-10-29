@@ -76,7 +76,34 @@ final class Strings {
         put("frame_rate_hint", "A frame rate limit: 40 FPS paces evenly on 120 Hz screens. Also in the in-game menu.",
             "Un límite de fotogramas: 40 FPS va fluido en pantallas de 120 Hz. También en el menú del juego.");
         put("fps_30", "30 FPS", "30 FPS");
-        put("fps_40", "40 FPS (recommended)", "40 FPS (recomendado)");
+        put("profile", "Profile", "Perfil");
+        put("profile_hint", "A recommended set of the settings below. Change any of them and it becomes Custom.",
+            "Un conjunto recomendado de los ajustes de abajo. Si cambias alguno, pasa a Personalizado.");
+        put("profile_note", "Custom: the settings below as you chose them.", "Personalizado: los ajustes de abajo tal como los elegiste.");
+        put("profile_custom", "Custom", "Personalizado");
+        put("profile_low", "Low", "Bajo");
+        put("profile_medium", "Medium", "Medio");
+        put("profile_high", "High", "Alto");
+        put("profile_high_perf", "High performance", "Alto rendimiento");
+        put("profile_battery", "High autonomy", "Alta autonomía");
+        put("profile_low_desc", "960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and lower devices.",
+            "960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.");
+        put("profile_medium_desc", "960 × 540 with FSR 1, the game's own effects, 30 FPS.",
+            "960 × 540 con FSR 1, los efectos originales del juego, 30 FPS.");
+        put("profile_high_desc", "1280 × 720 upscaled to 1080p with GSR 2, the game's own effects, 60 FPS. For high-end devices.",
+            "1280 × 720 escalado a 1080p con GSR 2, los efectos originales del juego, 60 FPS. Para gama alta.");
+        put("profile_high_perf_desc", "For powerful devices: 1280 × 720 upscaled with GSR 2, the game's own effects and no frame limit. "
+                + "Frame pacing may vary more than with a limit.",
+            "Para dispositivos potentes: 1280 × 720 escalado con GSR 2, los efectos originales del juego y sin límite de FPS. "
+                + "La fluidez puede variar más que con un límite.");
+        put("profile_battery_desc", "For powerful devices, to save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. "
+                + "Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).",
+            "Para dispositivos potentes, ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. "
+                + "Requiere pantalla de 120 Hz (a 60 Hz usa 30 FPS).");
+        put("profile_done", "Profile %s applied and saved.", "Perfil %s aplicado y guardado.");
+        put("profile_battery_60hz", "High autonomy applied with 30 FPS: 40 FPS needs a 120 Hz screen and this one goes up to 60 Hz.",
+            "Alta autonomía aplicada a 30 FPS: los 40 FPS requieren pantalla de 120 Hz y esta llega a 60 Hz.");
+        put("fps_40", "40 FPS", "40 FPS");
         put("fps_45", "45 FPS", "45 FPS");
         put("fps_60", "60 FPS", "60 FPS");
         put("fps_0", "No limit", "Sin límite");
@@ -112,10 +139,6 @@ final class Strings {
             "Desactívalo si el juego da tirones o se detiene un momento una y otra vez en un mismo sitio, o si las "
                 + "pantallas de carga tardan mucho más de lo normal. Desactivado, el juego usa más o menos el doble de "
                 + "CPU: más batería y más calor.");
-        put("recommended", "Recommended for ARM handhelds", "Recomendado para portátiles ARM");
-        put("recommended_hint", "720p with FSR 1, a 40 FPS limit and all the compatibility fixes on.",
-            "720p con FSR 1, límite de 40 FPS y todos los arreglos de compatibilidad activados.");
-        put("recommended_done", "Recommended settings applied and saved.", "Ajustes recomendados aplicados y guardados.");
         put("system", "System", "Sistema");
         put("gpu_driver", "GPU driver", "Driver gráfico");
         put("driver_auto", "Automatic (recommended)", "Automático (recomendado)");
