@@ -87,7 +87,6 @@ final class Strings {
         put("profile_low", "Low", "Bajo");
         put("profile_medium", "Medium", "Medio");
         put("profile_high", "High", "Alto");
-        put("profile_high_perf", "High performance", "Alto rendimiento");
         put("profile_battery", "High autonomy", "Alta autonomía");
         put("profile_low_desc", "960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and lower devices.",
             "960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.");
@@ -95,10 +94,6 @@ final class Strings {
             "960 × 540 con FSR 1, los efectos originales del juego, 30 FPS.");
         put("profile_high_desc", "1280 × 720 upscaled to 1080p with GSR 2, the game's own effects, 60 FPS. For high-end devices.",
             "1280 × 720 escalado a 1080p con GSR 2, los efectos originales del juego, 60 FPS. Para gama alta.");
-        put("profile_high_perf_desc", "For powerful devices: 1280 × 720 upscaled with GSR 2, the game's own effects and no frame limit. "
-                + "Frame pacing may vary more than with a limit.",
-            "Para dispositivos potentes: 1280 × 720 escalado con GSR 2, los efectos originales del juego y sin límite de FPS. "
-                + "La fluidez puede variar más que con un límite.");
         put("profile_battery_desc", "For powerful devices, to save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. "
                 + "Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).",
             "Para dispositivos potentes, ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. "
@@ -143,16 +138,14 @@ final class Strings {
                 + "pantallas de carga tardan mucho más de lo normal. Desactivado, el juego usa más o menos el doble de "
                 + "CPU: más batería y más calor.");
         put("adpf", "Android performance hints", "Pistas de rendimiento de Android");
-        put("adpf_hint", "Turn it off if you use ClusterTune or another CPU frequency tool: both set the clocks and "
-                + "they clash. It tells Android which threads draw the frames. Efficiency (Android 15+) does not let it "
-                + "raise the clocks to the top when a frame is late: less heat for the same frame rate. Performance "
-                + "raises them (the High performance profile).",
-            "Desactívalo si usas ClusterTune u otra herramienta de frecuencias de CPU: los dos ajustan las frecuencias "
-                + "y se pisan. Le dice a Android qué hilos dibujan los fotogramas. Eficiencia (Android 15+) no deja que "
-                + "suba las frecuencias al máximo cuando un fotograma llega tarde: menos calor con los mismos FPS. "
-                + "Rendimiento sí las sube (el perfil Alto rendimiento).");
-        put("adpf_efficiency", "Efficiency", "Eficiencia");
-        put("adpf_performance", "Performance", "Rendimiento");
+        put("adpf_hint", "Turn it on only if you do not use ClusterTune or another CPU frequency tool: both set the "
+                + "clocks and clash. It tells Android which threads draw the frames; on Android 15 and later it also asks "
+                + "it to prefer efficiency, so the clocks are not driven to the top when a frame is late (less heat for "
+                + "the same frame rate).",
+            "Actívalo solo si no usas ClusterTune u otra herramienta de frecuencias de CPU: los dos ajustan las "
+                + "frecuencias y se pisan. Le dice a Android qué hilos dibujan los fotogramas; en Android 15 o superior "
+                + "le pide además que priorice la eficiencia, para que no suba las frecuencias al máximo cuando un "
+                + "fotograma llega tarde (menos calor con los mismos FPS).");
         put("system", "System", "Sistema");
         put("gpu_driver", "GPU driver", "Driver gráfico");
         put("driver_auto", "Automatic (recommended)", "Automático (recomendado)");

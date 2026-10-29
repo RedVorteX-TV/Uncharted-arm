@@ -347,7 +347,7 @@ public final class MainActivity extends Activity {
         // them differs from every profile (currentProfile). The compatibility switches are not part.
         profileRow = valueRow(Strings.get("profile"), Strings.get("profile_hint"), PROFILES,
             new String[]{Strings.get("profile_custom"), Strings.get("profile_low"), Strings.get("profile_medium"),
-                Strings.get("profile_high"), Strings.get("profile_high_perf"), Strings.get("profile_battery")},
+                Strings.get("profile_high"), Strings.get("profile_battery")},
             this::currentProfile,
             // Custom is only shown, never chosen: stepping onto it goes on to the next profile
             // round the list (after the last one, the first; left of the first, the last).
@@ -428,9 +428,10 @@ public final class MainActivity extends Activity {
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
         // Android performance hints (run-uncharted.sh: BB_ADPF, BB_ADPF_EFFICIENT); the profiles set it.
+        // A saved "performance" (pruebas 11-12) counts as on: efficiency.
+        if ("performance".equals(launcher.get("adpf", ""))) launcher.set("adpf", "efficiency");
         cyclerRow(launcher, "adpf", Strings.get("adpf"), Strings.get("adpf_hint"),
-            new String[]{"efficiency", "performance", "off"},
-            new String[]{Strings.get("adpf_efficiency"), Strings.get("adpf_performance"), Strings.get("off")}, "efficiency");
+            new String[]{"efficiency", "off"}, new String[]{Strings.get("on"), Strings.get("off")}, "efficiency");
 
         // System
         section(Strings.get("system"));
@@ -605,7 +606,7 @@ public final class MainActivity extends Activity {
         for (View v : new View[]{profileRow, profileNoteView})
             if (v != null && v.getTag() instanceof Runnable) ((Runnable) v.getTag()).run();
     }
-    private static final String[] PROFILES = {"custom", "low", "medium", "high", "high_perf", "battery"};
+    private static final String[] PROFILES = {"custom", "low", "medium", "high", "battery"};
     /** The graphics patches a profile sets (all of GFX_PATCHES but skip_logos, which is not a graphics effect). */
     private static final String[] PROFILE_GFX = {"no_water_reflections", "no_ssao", "no_fog", "no_volumetric",
         "no_motion_blur", "no_dof", "no_bloom", "no_aa", "no_aniso", "no_dynamic_lights", "no_sun_ao", "draw_distance_40"};
@@ -616,7 +617,6 @@ public final class MainActivity extends Activity {
             case "low":       return new String[]{"540", "fsr1", "0", "30", "60", "1"};
             case "medium":    return new String[]{"540", "fsr1", "0", "30", "60", "0"};
             case "high":      return new String[]{"1080", "gsr2", "1", "60", "auto", "0"};
-            case "high_perf": return new String[]{"1080", "gsr2", "1", "0", "auto", "0"};
             case "battery":   return new String[]{"720", "fsr1", "0", "40", "120", "0"};
             default:          return null;
         }
@@ -674,9 +674,6 @@ public final class MainActivity extends Activity {
         boolean patches = p[5].equals("1");
         for (String key : PROFILE_GFX) launcher.set("gfx_" + key, patches);
         launcher.set("gfx_shadows", patches ? "1" : "0");
-        // Only the uncapped profile asks Android for the highest clocks.
-        if (!launcher.get("adpf", "efficiency").equals("off"))
-            launcher.set("adpf", id.equals("high_perf") ? "performance" : "efficiency");
         refreshRows(launcherBody);
         notice(screen60 ? Strings.get("profile_battery_60hz") : Strings.format("profile_done",
             Strings.get("profile_" + id)));
