@@ -324,8 +324,15 @@ void Menu() {
                  "still too much for. Applies when the game restarts.",
                  "Размер, в котором рисуется вся игра; кадр растягивается на экран. 1280x720 — режим "
                  "720p PS4. 960x540 — для GPU, которым мало 720p. После перезапуска."));
+    // The game's render size follows a preset only from the next start: switching between an
+    // upscaler with a preset and anything else (FSR 1, TAA, Native) needs a restart too.
+    const auto scaling = [](int u, int p) {
+        return u != BbSettings::UpscalerOff && u != BbSettings::UpscalerTaa && p != BbSettings::NativeAA;
+    };
+    const bool scaling_changed = scaling(s.upscaler, s.preset) != scaling(s.startup_upscaler, s.startup_preset) ||
+                                 (scaling(s.upscaler, s.preset) && s.preset != s.startup_preset);
     if (s.render_720p != s.startup_render_720p || s.render_540p != s.startup_render_540p ||
-        (s.preset != s.startup_preset && (temporal_scaler || s.startup_preset != BbSettings::NativeAA))) {
+        scaling_changed) {
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "%s",
                            T("Applies when the game restarts (Save and restart, below)",
                              "Применится после перезапуска (кнопка ниже)"));
