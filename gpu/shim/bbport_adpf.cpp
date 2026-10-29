@@ -59,6 +59,18 @@ bool EnvOff(const char* name) {
     return v && v[0] == '0';
 }
 
+/// BB_ADPF_EFFICIENT=1 (the launcher's "Efficiency"): the session asks Android to prefer power
+/// efficiency (Android 15+): the frame-critical threads keep their place in the session without
+/// clocks driven to the top while frames miss the target (90 degrees C on a Snapdragon 8 Elite at
+/// 55 FPS with a 60 FPS target).
+bool PreferEfficiency() {
+    static const bool v = [] {
+        const char* e = std::getenv("BB_ADPF_EFFICIENT");
+        return e && e[0] == '1';
+    }();
+    return v;
+}
+
 /// A thread whose scheduling time is measured per frame.
 struct Probe {
     int tid = -1;
@@ -227,10 +239,13 @@ void EnsureSession() {
         }
         s.session_threads = s.tids.size();
         if (s.api.set_prefer_power_efficiency) {
-            s.api.set_prefer_power_efficiency(s.session, false);
+            s.api.set_prefer_power_efficiency(s.session, PreferEfficiency());
         }
-        std::printf("ADPF: session with %zu threads, target %.1f ms\n", s.session_threads,
-                    double(s.target_ns) / 1e6);
+        std::printf("ADPF: session with %zu threads, target %.1f ms, %s\n", s.session_threads,
+                    double(s.target_ns) / 1e6,
+                    !PreferEfficiency() ? "performance"
+                    : s.api.set_prefer_power_efficiency ? "power efficiency"
+                                                        : "power efficiency not available (Android below 15)");
         return;
     }
     // A thread joined later: replace the session's threads (API 34), else make the session again.
@@ -254,7 +269,7 @@ void EnsureSession() {
         s.api.close_session(s.session);
         s.session = fresh;
         if (s.api.set_prefer_power_efficiency) {
-            s.api.set_prefer_power_efficiency(s.session, false);
+            s.api.set_prefer_power_efficiency(s.session, PreferEfficiency());
         }
     }
     s.session_threads = s.tids.size();

@@ -426,6 +426,10 @@ public final class MainActivity extends Activity {
         section(Strings.get("compatibility"));
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
+        // Android performance hints (run-uncharted.sh: BB_ADPF, BB_ADPF_EFFICIENT); the profiles set it.
+        cyclerRow(launcher, "adpf", Strings.get("adpf"), Strings.get("adpf_hint"),
+            new String[]{"efficiency", "performance", "off"},
+            new String[]{Strings.get("adpf_efficiency"), Strings.get("adpf_performance"), Strings.get("off")}, "efficiency");
 
         // System
         section(Strings.get("system"));
@@ -644,6 +648,9 @@ public final class MainActivity extends Activity {
         boolean patches = p[5].equals("1");
         for (String key : PROFILE_GFX) launcher.set("gfx_" + key, patches);
         launcher.set("gfx_shadows", patches ? "1" : "0");
+        // Only the uncapped profile asks Android for the highest clocks.
+        if (!launcher.get("adpf", "efficiency").equals("off"))
+            launcher.set("adpf", id.equals("high_perf") ? "performance" : "efficiency");
         refreshRows(launcherBody);
         notice(screen60 ? Strings.get("profile_battery_60hz") : Strings.format("profile_done",
             Strings.get("profile_" + id)));

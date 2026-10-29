@@ -139,6 +139,15 @@ final class Strings {
             "Desactívalo si el juego da tirones o se detiene un momento una y otra vez en un mismo sitio, o si las "
                 + "pantallas de carga tardan mucho más de lo normal. Desactivado, el juego usa más o menos el doble de "
                 + "CPU: más batería y más calor.");
+        put("adpf", "Android performance hints", "Pistas de rendimiento de Android");
+        put("adpf_hint", "Tells Android which threads draw the frames. Efficiency (Android 15+) does not let it raise "
+                + "the clocks to the top when a frame is late: less heat for the same frame rate. Performance raises them "
+                + "(the High performance profile). Turn it off if it clashes with a CPU frequency tool.",
+            "Le dice a Android qué hilos dibujan los fotogramas. Eficiencia (Android 15+) no deja que suba las "
+                + "frecuencias al máximo cuando un fotograma llega tarde: menos calor con los mismos FPS. Rendimiento sí "
+                + "las sube (el perfil Alto rendimiento). Desactívalo si choca con una herramienta de frecuencias de CPU.");
+        put("adpf_efficiency", "Efficiency", "Eficiencia");
+        put("adpf_performance", "Performance", "Rendimiento");
         put("system", "System", "Sistema");
         put("gpu_driver", "GPU driver", "Driver gráfico");
         put("driver_auto", "Automatic (recommended)", "Automático (recomendado)");
