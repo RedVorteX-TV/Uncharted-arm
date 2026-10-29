@@ -52,9 +52,12 @@ case $(setting fps_limit) in 30|40|45|60|0) ;; *) printf 'fps_limit=40\n' >> "$B
 case $(setting render_720p) in 0|1) ;; *) printf 'render_720p=1\n' >> "$BB_CONFIG" ;; esac
 case $(setting render_540p) in 0|1) ;; *) printf 'render_540p=0\n' >> "$BB_CONFIG" ;; esac
 case $(setting fsr1) in 0|1) ;; *) printf 'fsr1=1\n' >> "$BB_CONFIG" ;; esac
-# Temporal anti-aliasing / FSR 3.1 off unless asked for, as the Linux launcher sets it (libbbgpu's
-# own default is FSR 3.1 with object motion, costly on these GPUs).
-export BB_UPSCALER=${BB_UPSCALER:-off}
+# Temporal anti-aliasing / FSR 3.1 off unless asked for (libbbgpu's own default is FSR 3.1 with
+# object motion, costly on these GPUs): upscaler=off in bbport.ini when there is no choice yet. Not
+# BB_UPSCALER: the environment wins over bbport.ini, and the launcher's and the in-game menu's
+# choice (GSR 2, FSR 3.1) was undone at every start.
+case $(setting upscaler) in off|fsr3|gsr2|taa|fsr4|fsr411|dlss) ;; *) printf 'upscaler=off\n' >> "$BB_CONFIG" ;; esac
+case $(setting preset) in 0|1|2|3|4) ;; *) printf 'preset=0\n' >> "$BB_CONFIG" ;; esac
 # Compatibility (the launcher's switches; each one off with its variable when a scene misbehaves).
 [ "$(choice arm_uma_readback)" = 0 ] && export BB_UMA_READBACK=0
 [ "$(choice arm_flush_draws)" = 0 ] && export BB_FLUSH_DRAWS=0
@@ -138,7 +141,7 @@ loadexec="$base/data/loadexec.txt"
 export BB_LOADEXEC_FILE="$loadexec"
 player_merge=${BB_GPU_MERGE-unset}
 guest_argv=
-echo "Run: Uncharted Android $(cat "$base/BUILD" 2>/dev/null || echo source), game $exe, $(uname -sr), screen ${BB_SCREEN_W}x${BB_SCREEN_H}, fps_limit $(setting fps_limit), render_720p $(setting render_720p), render_540p $(setting render_540p), fsr1 $(setting fsr1)"
+echo "Run: Uncharted Android $(cat "$base/BUILD" 2>/dev/null || echo source), game $exe, $(uname -sr), screen ${BB_SCREEN_W}x${BB_SCREEN_H}, fps_limit $(setting fps_limit), render_720p $(setting render_720p), render_540p $(setting render_540p), fsr1 $(setting fsr1), upscaler $(setting upscaler) preset $(setting preset)"
 while :; do
     [ -f "$game_dir/$exe" ] || { echo "Game missing: no $exe in $game_dir"; exit 2; }
     # Uncharted 2 and 3 read the results of GPU work back from memory: accurate GPU memory
@@ -165,9 +168,6 @@ while :; do
     # to 1920x1080 at the copy into the display buffer (pixel shader 749bbec9; Uncharted 3's
     # prompts after its tonemap, 484cdbf5) and the HUD and menus are drawn at 1920x1080. They
     # replace the render resolution below.
-    # No choice yet (bbport.ini without upscaler=): off, as the launcher shows it (the renderer's
-    # own default is FSR 3.1 at the render resolution).
-    if [ -z "$(setting upscaler)" ] && [ -z "${BB_UPSCALER+set}" ]; then export BB_UPSCALER=off; fi
     upscale_size= movie_patch=
     case "$(setting upscaler)" in
         fsr3|gsr2)
