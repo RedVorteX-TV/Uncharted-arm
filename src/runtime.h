@@ -137,4 +137,15 @@ void runtime_thread_stats_start(void);
 void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t size);
 /* After the segments: says so in the log when no worker loop was found. */
 void runtime_job_spin_report(void);
+/* Startup patches identified by a unique instruction pattern, never by guessed offsets. */
+typedef struct {
+    const char *name, *pattern;
+    size_t offset, moved;
+    void *unused_callback;
+    const unsigned char *patch;
+} RuntimeGuestFix;
+const RuntimeGuestFix *runtime_guest_fixes(size_t *count);
+size_t runtime_find_guest_fix(const unsigned char *code, size_t size, const char *pattern,
+                             size_t *found, size_t *length);
+
 #endif
