@@ -75,7 +75,7 @@ class ArmLauncher(unittest.TestCase):
         import json
         catalog = json.loads((ROOT / 'patches' / 'graphics_patches.json').read_text())
         ids = {p['id'] for p in catalog['patches']}
-        self.assertEqual({p for _k, p, _t, _h in linux.ARM_GRAPHICS_EFFECTS} | {'shadows_2', 'shadows_1'}, ids)
+        self.assertEqual({p for _k, p, _t, _h in linux.ARM_GRAPHICS_EFFECTS} | {'shadows_2', 'shadows_1', 'movies_below_1080p'}, ids)
 
     def test_skin_batch_switch(self):
         env = {}
