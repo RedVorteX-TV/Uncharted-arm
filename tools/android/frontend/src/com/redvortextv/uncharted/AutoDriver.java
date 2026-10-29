@@ -24,7 +24,7 @@ final class AutoDriver {
 
     private AutoDriver() {}
 
-    /** What auto means on this phone, in words for the menu: "Turnip Gen8 V37 (Adreno 8xx)", or the phone's own
+    /** What auto means on this phone, in words for the menu: "Turnip Gen8 V38-patched (Adreno 8xx)", or the phone's own
      *  driver with the reason. gpu may be null (not detected yet). */
     static String describe(GpuFamily gpu,int sdk) {
         if (gpu==null) return "detecting the GPU…";

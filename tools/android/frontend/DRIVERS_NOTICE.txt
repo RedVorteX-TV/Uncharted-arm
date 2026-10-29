@@ -7,7 +7,12 @@ GPU drivers bundled in the app (assets/drivers/)
 The app carries these Vulkan drivers as the zips they were published in, byte for
 byte (their sha256 is checked when the app is built: tools/android/fetch_bundled_drivers.sh):
 
-  Adreno           Turnip_Gen8_V37.zip, for 6xx/7xx and 8xx alike
+  Adreno 8xx       Turnip_Gen8_V38_Patched.zip
+                   "Turnip Gen8 V38-patched" (Mesa Turnip 27.0.0-1 for a8xx) built by StevenMXZ,
+                   https://github.com/StevenMXZ/Adreno-Tools-Drivers, release v27.0.0-R1 (the
+                   repository with the build scripts is licensed GPL-3.0; the text is below). Mesa
+                   Turnip itself: MIT License. Source: that repository and release, and Mesa.
+  Adreno 6xx/7xx   Turnip_Gen8_V37.zip
                    "Turnip for a8xx" (Mesa Turnip, also runs Adreno 6xx/7xx) built by StevenMXZ,
                    https://github.com/StevenMXZ/Adreno-Tools-Drivers, tag v37 (the repository
                    with the build scripts is licensed GPL-3.0; the text is below). Mesa Turnip

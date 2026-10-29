@@ -1,8 +1,8 @@
 package com.redvortextv.uncharted;
 
 /** The GPU drivers inside the APK (assets/drivers/<zip>, tools/android/fetch_bundled_drivers.sh pins and
- *  packs them), one per GPU family: StevenMXZ's Turnip Gen8 V37 for every Adreno (6xx/7xx too; the driver played
- *  on the AYN Thor's Adreno 740), PanVK for Mali. Other builds are download options (DriverCatalog). The automatic
+ *  packs them), one per GPU family: StevenMXZ's Turnip Gen8 V37 for Adreno 6xx/7xx (it played on the Adreno 740), his
+ *  V38-patched for Adreno 8xx (as erickmendes22's uncharted-android picks there), PanVK for Mali. Other builds are download options (DriverCatalog). The automatic
  *  choice (AutoDriver) installs the one for the phone's family through DriverManager when no installed driver was
  *  made from that zip. */
 final class BundledDrivers {
@@ -17,7 +17,7 @@ final class BundledDrivers {
 
     private static final Spec[] ALL={
         new Spec(GpuFamily.MAIN,"Turnip_Gen8_V37.zip","Turnip Gen8 V37 (Adreno 6xx/7xx)",28),
-        new Spec(GpuFamily.GEN8,"Turnip_Gen8_V37.zip","Turnip Gen8 V37 (Adreno 8xx)",28),
+        new Spec(GpuFamily.GEN8,"Turnip_Gen8_V38_Patched.zip","Turnip Gen8 V38-patched (Adreno 8xx)",28),
         new Spec(GpuFamily.MALI,"PanVK-android-v3.2-universal-2a9358a.zip","PanVK 3.2 (Mali)",35),
     };
 
