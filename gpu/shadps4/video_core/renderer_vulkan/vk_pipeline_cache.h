@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <filesystem>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <shared_mutex>
 #include <variant>
@@ -121,6 +124,8 @@ public:
     ~PipelineCache();
 
     void WarmUp();
+    /// bbport: writes the driver's pipeline cache now when it grew (the end of the game).
+    void SaveDriverCache();
     void Sync();
 
     bool LoadComputePipeline(Serialization::Archive& ar);
@@ -185,6 +190,12 @@ private:
     AmdGpu::Liverpool* liverpool;
     DescriptorHeap desc_heap;
     vk::UniquePipelineCache pipeline_cache;
+    /// bbport: the driver's pipeline cache on disk (BbDriverCache), saved when it grows.
+    std::filesystem::path driver_cache_path;
+    size_t driver_cache_saved_size = 0;
+    std::mutex driver_cache_save_mutex;
+    std::jthread driver_cache_saver;
+    void LoadDriverCache();
     vk::UniquePipelineLayout pipeline_layout;
     Shader::Profile profile{};
     Shader::Pools pools;
@@ -204,5 +215,8 @@ private:
                    std::vector<std::variant<GraphicsPipelineKey, ComputePipelineKey>>>
         module_related_pipelines;
 };
+
+/// bbport: saves the driver pipeline cache before the process ends (bbgpu_flush_pipeline_cache).
+void FlushPipelineCacheForExit();
 
 } // namespace Vulkan

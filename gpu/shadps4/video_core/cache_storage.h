@@ -41,6 +41,11 @@ public:
     void Load(BlobType type, const std::string& name, std::vector<u8>& data);
     void Load(BlobType type, const std::string& name, std::vector<u32>& data);
 
+    /// bbport: the cache's folder, or its .zip for an archived cache (valid after Open()).
+    [[nodiscard]] const std::filesystem::path& CachePath() const {
+        return cache_path;
+    }
+
     void ForEachBlob(BlobType type, const std::function<void(std::vector<u8>&& data)>& func);
 
 private:
