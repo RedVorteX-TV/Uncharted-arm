@@ -4,6 +4,9 @@
 #include <xxhash.h>
 
 #include "bbport_toggles.h"
+#ifdef __ANDROID__
+#include "bbport_gc_budget.h"
+#endif
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -1126,10 +1129,20 @@ void TextureCache::GarbageCollectImages() {
         // collector evicted images used two or three frames ago on every submission and wrote
         // GPU-written ones back. Compare with the driver's current budget instead.
         // BB_GC_BUDGET_MB=N: this rule with a fixed budget on any GPU (tests on a desktop).
+#ifdef __ANDROID__
+        // Android: the GPU's memory is the system's RAM, shared with the game and the rest of
+        // the phone. The budget follows MemAvailable, zram use and memory stalls (BbGcBudget,
+        // from ducvd89/Bloodborne-Android via erickmendes22's uncharted-android); the driver's
+        // budget kept the cache at its limit on 8 GB phones. BB_GC_BUDGET_MB=0: the driver's.
+        const u64 forced_budget =
+            BbGcBudget::Bytes(total_used_memory, instance.GetDeviceMemoryBudgetNow());
+        BbGcBudget::ReportUsage(total_used_memory);
+#else
         static const u64 forced_budget = [] {
             const char* env = std::getenv("BB_GC_BUDGET_MB");
             return env ? std::strtoull(env, nullptr, 10) << 20 : 0;
         }();
+#endif
         if (instance.IsIntegrated() || forced_budget) {
             const u64 budget = forced_budget ? forced_budget : instance.GetDeviceMemoryBudgetNow();
             if (budget != 0) {
@@ -1155,10 +1168,17 @@ void TextureCache::GarbageCollectImages() {
     if (total_used_memory < trigger_gc_memory) {
         return;
     }
-    static const u64 idle_seconds = [] {
+    static const u64 base_idle_seconds = [] {
         const char* env = std::getenv("BB_GC_IDLE_SECONDS");
         return std::clamp<u64>(env ? std::strtoull(env, nullptr, 10) : 20, 1, 63);
     }();
+#ifdef __ANDROID__
+    // The system short of memory: idle textures go after 5 s, not 20.
+    const u64 idle_seconds = BbGcBudget::Short() ? std::min<u64>(base_idle_seconds, 5)
+                                                  : base_idle_seconds;
+#else
+    const u64 idle_seconds = base_idle_seconds;
+#endif
     // Under pressure an image goes once unused for BB_GC_PRESSURE_IDLE_SECONDS (5), over the
     // critical mark for 1 s first, and only then by submissions (a fraction of a second). On
     // smaller cards the usage stayed over the pressure mark, so textures off screen for a moment

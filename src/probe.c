@@ -1104,6 +1104,9 @@ int main(int argc, char **argv) {
 #endif
     if (argc == 2 && !strcmp(argv[1], "--vulkan-only")) return vulkan_smoke();
     check_cpu();
+#ifdef __ANDROID__
+    bbgpu_adpf_register_main();
+#endif
 #ifdef _WIN32
     /* The PS4 user range must stay free of host allocations (GPU driver, heaps), and the guest
      * TCB needs one of the 64 TEB TLS slots before DLLs (Vulkan drivers) take them. */

@@ -16,6 +16,9 @@
 #include <sys/resource.h>
 #endif
 #include "common/assert.h"
+#ifdef __ANDROID__
+#include "bbport_adpf.h"
+#endif
 #include "bbport_settings.h"
 #include "bbport_toggles.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
@@ -707,6 +710,9 @@ void WaitEopFlipsReached(u64 count, u32 timeout_ms) {
 }
 
 void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_arg, bool is_eop) {
+#ifdef __ANDROID__
+    BbAdpf::FrameSubmitted(); // the frame's CPU work to the ADPF hint session
+#endif
     Vulkan::Frame* frame;
     if (index == -1) {
         frame = presenter->PrepareBlankFrame(false);
