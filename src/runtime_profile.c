@@ -185,7 +185,7 @@ void runtime_profile_start(const void *image, uint64_t size) {
 /* ---- BB_THREAD_STATS ---- */
 enum { STAT_THREADS = 256 };
 static struct { int tid; unsigned long long ticks; char name[20]; } stat_seen[STAT_THREADS];
-static int read_ticks(int tid, char *name, size_t name_size, unsigned long long *ticks, char *state) {
+static int read_ticks(int tid, char *name, size_t name_size, unsigned long long *ticks, char *state, int *cpu) {
     char path[64], buffer[512];
     snprintf(path, sizeof(path), "/proc/self/task/%d/stat", tid);
     const int fd = open(path, O_RDONLY);
@@ -203,6 +203,13 @@ static int read_ticks(int tid, char *name, size_t name_size, unsigned long long 
     unsigned long long utime = 0, stime = 0;
     if (sscanf(close_paren + 2, "%*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %llu %llu", &utime, &stime) != 2) return 0;
     *ticks = utime + stime;
+    /* processor (field 39): the CPU the thread last ran on. */
+    *cpu = -1;
+    int field = 3;
+    for (char *p = close_paren + 2; *p; ++p) {
+        if (*p != ' ') continue;
+        if (++field == 39) { *cpu = atoi(p + 1); break; }
+    }
     return 1;
 }
 static void print_clocks(void) {
@@ -255,7 +262,7 @@ static void *thread_stats(void *unused) {
         clock_gettime(CLOCK_MONOTONIC, &now);
         const double seconds = (double)(now.tv_sec - before.tv_sec) + (now.tv_nsec - before.tv_nsec) / 1e9;
         before = now;
-        struct { char name[20]; double percent; char state; } busy[STAT_THREADS];
+        struct { char name[20]; double percent; char state; int cpu; } busy[STAT_THREADS];
         int busy_count = 0;
         double sum = 0;
         DIR *dir = opendir("/proc/self/task");
@@ -264,7 +271,8 @@ static void *thread_stats(void *unused) {
             const int tid = atoi(entry->d_name);
             char name[20], state = 0;
             unsigned long long ticks;
-            if (tid <= 0 || !read_ticks(tid, name, sizeof(name), &ticks, &state)) continue;
+            int cpu = -1;
+            if (tid <= 0 || !read_ticks(tid, name, sizeof(name), &ticks, &state, &cpu)) continue;
             int slot = -1, free_slot = -1;
             for (int i = 0; i < STAT_THREADS; ++i) {
                 if (stat_seen[i].tid == tid) { slot = i; break; }
@@ -286,6 +294,7 @@ static void *thread_stats(void *unused) {
                 snprintf(busy[busy_count].name, sizeof(busy[busy_count].name), "%s", name);
                 busy[busy_count].percent = percent;
                 busy[busy_count].state = state;
+                busy[busy_count].cpu = cpu;
                 ++busy_count;
             }
         }
@@ -296,7 +305,7 @@ static void *thread_stats(void *unused) {
                 if (busy[b].percent > busy[a].percent) { __typeof__(busy[0]) t = busy[a]; busy[a] = busy[b]; busy[b] = t; }
         printf("Thread stats (%.0f s, %% of one core, all threads %.0f%%):\n", seconds, sum);
         for (int a = 0; a < busy_count && a < 24; ++a)
-            printf("  %5.1f%%  %s\n", busy[a].percent, busy[a].name);
+            printf("  %5.1f%%  %-16s cpu%d\n", busy[a].percent, busy[a].name, busy[a].cpu);
         print_clocks();
         fflush(stdout);
     }
