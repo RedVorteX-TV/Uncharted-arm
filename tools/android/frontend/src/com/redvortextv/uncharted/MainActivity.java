@@ -349,7 +349,13 @@ public final class MainActivity extends Activity {
             new String[]{Strings.get("profile_custom"), Strings.get("profile_low"), Strings.get("profile_medium"),
                 Strings.get("profile_high"), Strings.get("profile_high_perf"), Strings.get("profile_battery")},
             this::currentProfile,
-            value -> { if (!value.equals("custom")) applyProfile(value); });
+            // Custom is only shown, never chosen: stepping onto it goes on to the next profile
+            // round the list (after the last one, the first; left of the first, the last).
+            value -> {
+                String chosen = value;
+                if (chosen.equals("custom")) chosen = currentProfile().equals("low") ? "battery" : "low";
+                applyProfile(chosen);
+            });
         TextView profileNote = text(Strings.get("profile_note"), 12, MUTED); profileNote.setPadding(dp(4), 0, dp(4), dp(8));
         profileNote.setTag((Runnable) () -> {
             String p = currentProfile();
