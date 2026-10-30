@@ -86,10 +86,10 @@ final class Strings {
         put("profile_custom", "Custom", "Personalizado");
         put("profile_low", "Low", "Bajo");
         put("profile_medium", "Medium", "Medio");
-        put("profile_high", "High", "Alto");
-        put("profile_battery", "High autonomy", "Alta autonomía");
+        put("profile_high", "High (for powerful devices)", "Alto (Para dispositivos potentes)");
+        put("profile_battery", "High autonomy (for powerful devices)", "Alta autonomía (Para dispositivos potentes)");
         put("profile_low_medium", "Low-medium", "Bajo-medio");
-        put("profile_very_high", "Very high", "Muy alto");
+        put("profile_very_high", "Very high (for powerful devices)", "Muy alto (Para dispositivos potentes)");
         put("profile_performance", "Performance (for powerful devices)", "Rendimiento (Para dispositivos potentes)");
         put("profile_low_medium_desc", "960 × 540 with FSR 1, 30 FPS, with the lighter patches: 2 shadow cascades, no depth of "
                 + "field, bloom, dynamic lights or sun ambient occlusion, 40 m draw distance and the intro logos skipped.",
@@ -109,11 +109,11 @@ final class Strings {
             "960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.");
         put("profile_medium_desc", "960 × 540 with FSR 1, the game's own effects, 30 FPS.",
             "960 × 540 con FSR 1, los efectos originales del juego, 30 FPS.");
-        put("profile_high_desc", "1280 × 720 with FSR 1, the game's own effects, 60 FPS. For high-end devices.",
-            "1280 × 720 con FSR 1, los efectos originales del juego, 60 FPS. Para gama alta.");
-        put("profile_battery_desc", "For powerful devices, to save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. "
+        put("profile_high_desc", "1280 × 720 with FSR 1, the game's own effects, 60 FPS.",
+            "1280 × 720 con FSR 1, los efectos originales del juego, 60 FPS.");
+        put("profile_battery_desc", "To save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. "
                 + "Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).",
-            "Para dispositivos potentes, ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. "
+            "Ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. "
                 + "Requiere pantalla de 120 Hz (a 60 Hz usa 30 FPS).");
         put("profile_done", "Profile %s applied and saved.", "Perfil %s aplicado y guardado.");
         put("profile_40_60hz", "%s applied with 30 FPS: 40 FPS needs a 120 Hz screen and this one goes up to 60 Hz.",
