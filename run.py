@@ -191,6 +191,9 @@ def render_720p(env, key=''):
 # with FSR 1) bring each frame up to it before the HUD and menus are drawn at the output size
 # (TemporalUpscaler::OnComposite). After BilalReloaded's Uncharted PC port.
 UPSCALE_SCALES = {'quality': 1.5, 'balanced': 1.7, 'performance': 2.0, 'ultra': 3.0}
+# ARM port: the launcher's upscaling output 1280x720 (BB_UPSCALE_OUTPUT) with a bbport.ini preset:
+# the render sizes the Android launcher uses for that output (960x540 for Quality, as FSR 1's 540p).
+UPSCALE_720_SIZES = {'quality': (960, 540), 'balanced': (832, 468), 'performance': (640, 360), 'ultra': (640, 360)}
 TEMPORAL_UPSCALERS = ('fsr3', 'gsr2', 'fsr4', 'fsr411', 'dlss')
 COMPOSITE_PS = '749bbec9'  # the copy of the finished frame into the display buffer (all three games)
 TONEMAP_PS = '484cdbf5'    # the draw finishing the frame (Uncharted 3 draws prompts into it after)
@@ -245,7 +248,12 @@ def render_resolution(env, exe, out, image):
         print('Upscaling preset: needs the camera tracking (BB_UPSCALER=none): drawing at the output size')
         scale = None
     wanted = output
-    if scale:
+    if scale and ini_preset and env.get('BB_UPSCALE_OUTPUT', '').strip().lower() == '1280x720':
+        # The ARM launcher's 1280x720 output: FSR 3.1 / GSR 2 rebuild 720p frames, the screen's
+        # scaling does the rest (less GPU time than rebuilding 1080p ones).
+        output = (1280, 720)
+        wanted = UPSCALE_720_SIZES[preset]
+    elif scale:
         # Widths in steps of 16 (Uncharted 3 asserts it in its post processing), heights of 4.
         wanted = (max(640, round(output[0] / scale / 16) * 16), max(360, round(output[1] / scale / 4) * 4))
     render = wanted

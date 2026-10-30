@@ -87,6 +87,62 @@ ES = {
         'No se incluye con el port. Después elige LSFG como generación de fotogramas, aquí o en el menú del juego.',
     'All files': 'Todos los archivos',
     'Game display rate': 'Frecuencia del juego',
+    "Auto (the screen's rate)": 'Auto (la frecuencia de la pantalla)',
+    'The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz screens (a frame a '
+    'little over 33 ms is not held until 50 ms). Keep 60 Hz on a 60 Hz screen. Auto: for limits above 60 FPS and '
+    "No limit, the frames follow the screen's rate (up to 120 Hz).":
+        'La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en '
+        'pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). Deja 60 Hz en una '
+        'pantalla de 60 Hz. Auto: para límites por encima de 60 FPS y Sin límite, los fotogramas siguen la '
+        'frecuencia de la pantalla (hasta 120 Hz).',
+    'Profile': 'Perfil',
+    'Custom': 'Personalizado',
+    'A recommended set of the settings on this page. Change any of them and it becomes Custom.':
+        'Un conjunto recomendado de los ajustes de esta página. Si cambias alguno, pasa a Personalizado.',
+    'Custom: the settings on this page as you chose them.': 'Personalizado: los ajustes de esta página tal como los elegiste.',
+    'Profile applied': 'Perfil aplicado',
+    '30 FPS: 60 Hz screen': '30 FPS: pantalla 60 Hz',
+    'Low': 'Bajo',
+    'Low-medium': 'Bajo-medio',
+    'Medium': 'Medio',
+    'High (for powerful devices)': 'Alto (Para dispositivos potentes)',
+    'Very high (for powerful devices)': 'Muy alto (Para dispositivos potentes)',
+    'Performance (for powerful devices)': 'Rendimiento (Para dispositivos potentes)',
+    'High autonomy (for powerful devices)': 'Alta autonomía (Para dispositivos potentes)',
+    '960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and lower devices.':
+        '960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.',
+    '960 × 540 with FSR 1, 30 FPS, with the lighter patches: 2 shadow cascades, no depth of field, bloom, dynamic '
+    'lights or sun ambient occlusion, 40 m draw distance and the intro logos skipped.':
+        '960 × 540 con FSR 1, 30 FPS, con los parches ligeros: 2 cascadas de sombras, sin profundidad de campo, bloom, '
+        'luces dinámicas ni oclusión ambiental del sol, distancia de dibujado de 40 m y sin logos de inicio.',
+    "960 × 540 with FSR 1, the game's own effects, 30 FPS.": '960 × 540 con FSR 1, los efectos originales del juego, 30 FPS.',
+    "1280 × 720 with FSR 1, the game's own effects, 60 FPS.": '1280 × 720 con FSR 1, los efectos originales del juego, 60 FPS.',
+    "FSR 3.1 Quality with a 1920 × 1080 output, the game's own effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it "
+    'uses 30 FPS).':
+        'FSR 3.1 en Calidad con salida a 1920 × 1080, los efectos originales del juego, 40 FPS. Requiere pantalla de '
+        '120 Hz (a 60 Hz usa 30 FPS).',
+    "GSR 2 Balanced with a 1280 × 720 output, no FPS limit at the screen's rate, with the lighter patches (2 shadow "
+    'cascades, no depth of field, bloom, dynamic lights or sun ambient occlusion, 40 m draw distance, intro logos '
+    'skipped).':
+        'GSR 2 en Equilibrado con salida a 1280 × 720, FPS sin límite a la frecuencia de la pantalla, con los parches '
+        'ligeros (2 cascadas de sombras, sin profundidad de campo, bloom, luces dinámicas ni oclusión ambiental del '
+        'sol, distancia de dibujado de 40 m, sin logos de inicio).',
+    "To save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it uses "
+    '30 FPS).':
+        'Ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. Requiere pantalla de '
+        '120 Hz (a 60 Hz usa 30 FPS).',
+    'Upscaling output': 'Salida del escalado',
+    "The size FSR 3.1 and GSR 2 rebuild the frames at. 1280 × 720 costs less GPU time; the screen's scaling "
+    'enlarges it.':
+        'El tamaño al que FSR 3.1 y GSR 2 reconstruyen los fotogramas. 1280 × 720 cuesta menos tiempo de GPU; el '
+        'escalado de la pantalla lo amplía.',
+    'For FSR 3.1 and GSR 2. Native: anti-aliasing at the render resolution. With a 1920 x 1080 output: Quality '
+    '1280 x 720, Balanced 1136 x 636, Performance 960 x 540, Ultra Performance 640 x 360; with 1280 x 720: '
+    '960 x 540, 832 x 468, 640 x 360 and 640 x 360. The render resolution is then not used.':
+        'Para FSR 3.1 y GSR 2. Nativa: antialiasing a la resolución de renderizado. Con salida a 1920 x 1080: Calidad '
+        '1280 x 720, Equilibrado 1136 x 636, Rendimiento 960 x 540, Ultra rendimiento 640 x 360; con 1280 x 720: '
+        '960 x 540, 832 x 468, 640 x 360 y 640 x 360. La resolución de renderizado no se usa entonces.',
+    '40 FPS': '40 FPS',
     '120 Hz (120 Hz screens)': '120 Hz (pantallas de 120 Hz)',
     'The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz screens (a frame a '
     'little over 33 ms is not held until 50 ms). Keep 60 Hz on a 60 Hz screen.':

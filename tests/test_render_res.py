@@ -79,6 +79,20 @@ class UpscalePresets(unittest.TestCase):
         self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
         self.assertNotIn('BB_RENDER_RES', env)
 
+    def test_preset_with_720p_output(self):
+        # ARM launcher's 1280x720 upscaling output (BB_UPSCALE_OUTPUT): the Android launcher's sizes,
+        # Balanced 832x468 upscaled to 1280x720; without a preset the output setting is not used.
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_OUTPUT': '1280x720'},
+                             ini='render_720p=0\nrender_540p=0\nupscaler=gsr2\npreset=2\n')
+        self.assertEqual((env['BB_RENDER_RES'], env['BB_OUTPUT_RES']), ('832x468', '1280x720'))
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_OUTPUT': '1280x720'},
+                             ini='render_720p=0\nrender_540p=0\nupscaler=fsr3\npreset=1\n')
+        self.assertEqual((env['BB_RENDER_RES'], env['BB_OUTPUT_RES']), ('960x540', '1280x720'))
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_OUTPUT': '1280x720'},
+                             ini='render_720p=0\nrender_540p=1\nupscaler=off\npreset=2\n')
+        self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertNotIn('BB_OUTPUT_RES', env)
+
     def test_720p_wins_over_540p(self):
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
                              ini='render_720p=1\nrender_540p=1\n')

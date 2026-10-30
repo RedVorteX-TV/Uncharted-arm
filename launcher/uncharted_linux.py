@@ -473,7 +473,7 @@ ARM_DEFAULTS = {'steam_deck': False, 'frame_rate': '40', 'fullscreen': True, 'pr
                 'render_res': '720', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'check_updates': False,
                 'arm_uma_readback': True, 'arm_flush_draws': True, 'arm_job_spin': True,
                 'arm_skin_batch': True, 'lsfg_dll': '',
-                'game_rate': '60'}
+                'game_rate': '60', 'upscale_out': '1080'}
 # Advanced > Compatibility (ARM): the ARM port's performance fixes, each one off with its variable
 # when a scene misbehaves (the Environment field and the player's own variables still win).
 ARM_COMPATIBILITY = (
@@ -522,7 +522,7 @@ ARM_SHADOW_CASCADES = [('0', 'Original'), ('2', '2 cascades'), ('1', '1 cascade'
 ARM_GRAPHICS_DEFAULTS = dict({key: False for key, _id, _t, _h in ARM_GRAPHICS_PATCHES}, gfx_shadows='0')
 # The sidebar's credit line for this port (the Linux fork's own stays above it).
 ARM_CREDIT = 'ARM port by RedVorteX-TV'
-ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS (recommended)'), ('45', '45 FPS'),
+ARM_FRAME_RATES = [('30', '30 FPS'), ('40', '40 FPS'), ('45', '45 FPS'),
                    ('60', '60 FPS'), ('0', 'No limit')]
 ARM_UNAVAILABLE = {'anti_aliasing': ('fsr4', 'fsr411', 'dlss'), 'frame_generation': ('dlss',)}
 ARM_INI = ('fps_limit', 'render_720p', 'render_540p', 'fsr1', 'upscaler', 'preset')
@@ -538,10 +538,106 @@ ARM_RENDER_RESOLUTIONS = [('1080', "1920 × 1080 (the games' own)"), ('720', '12
                           ('540', '960 × 540 (slower GPUs)')]
 # The display rate the game sees (BB_VBLANK_HZ): at 60 Hz a frame that misses 33 ms waits until
 # 50 ms; at 120 Hz it waits until 41.7 (steadier on 120 Hz screens, the Odin 3 and the Thor).
-ARM_GAME_RATES = [('60', '60 Hz'), ('120', '120 Hz (120 Hz screens)')]
+# Auto (BB_VBLANK_HZ=0): the game paces to a fast vblank and the frames are limited to the
+# screen's rate (at most 120), for frame rate limits above 60 and No limit.
+ARM_GAME_RATES = [('60', '60 Hz'), ('120', '120 Hz (120 Hz screens)'), ('auto', "Auto (the screen's rate)")]
+# The size FSR 3.1 and GSR 2 rebuild the frames at (run.py BB_UPSCALE_OUTPUT): 1280x720 costs less
+# GPU time, and the screen's scaling enlarges it.
+ARM_UPSCALE_OUTPUTS = [('1080', '1920 × 1080'), ('720', '1280 × 720')]
 # Lossless Scaling's frame generation, with the player's own Lossless.dll (never included).
 ARM_LSFG = ('lsfg', 'Lossless Scaling LSFG (your Lossless.dll)')
 ARM_FRAME_GEN_MULTIPLIERS = [('2', '2× (one generated frame)'), ('3', '3× (LSFG only)'), ('4', '4× (LSFG only)')]
+# Settings > Profile: a set of the settings in one choice, as in the Android launcher; "Custom" once
+# any of them differs from every profile. The compatibility switches are not part of them. Each:
+# (id, name, description, settings, graphics patches on, shadow cascades, skip logos or None).
+ARM_PROFILE_GFX = tuple(key for key, _id, _t, _h in ARM_GRAPHICS_PATCHES if key != 'gfx_skip_logos')
+ARM_LIGHT_GFX = ('gfx_no_dof', 'gfx_no_bloom', 'gfx_no_dynamic_lights', 'gfx_no_sun_ao', 'gfx_draw_distance_40')
+_FSR1_540 = {'render_res': '540', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'frame_rate': '30',
+             'game_rate': '60'}
+ARM_PROFILES = (
+    ('low', 'Low', '960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and '
+     'lower devices.', _FSR1_540, ARM_PROFILE_GFX, '1', None),
+    ('low_medium', 'Low-medium', '960 × 540 with FSR 1, 30 FPS, with the lighter patches: 2 shadow cascades, no '
+     'depth of field, bloom, dynamic lights or sun ambient occlusion, 40 m draw distance and the intro logos '
+     'skipped.', _FSR1_540, ARM_LIGHT_GFX, '2', True),
+    ('medium', 'Medium', "960 × 540 with FSR 1, the game's own effects, 30 FPS.", _FSR1_540, (), '0', None),
+    ('high', 'High (for powerful devices)', "1280 × 720 with FSR 1, the game's own effects, 60 FPS.",
+     {'render_res': '720', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'frame_rate': '60',
+      'game_rate': 'auto'}, (), '0', None),
+    ('very_high', 'Very high (for powerful devices)', "FSR 3.1 Quality with a 1920 × 1080 output, the game's own "
+     'effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).',
+     {'render_res': '1080', 'anti_aliasing': 'fsr3', 'upscale_preset': 'quality', 'upscale_out': '1080',
+      'frame_rate': '40', 'game_rate': '120'}, (), '0', None),
+    ('performance', 'Performance (for powerful devices)', "GSR 2 Balanced with a 1280 × 720 output, no FPS limit at "
+     "the screen's rate, with the lighter patches (2 shadow cascades, no depth of field, bloom, dynamic lights or "
+     'sun ambient occlusion, 40 m draw distance, intro logos skipped).',
+     {'render_res': '1080', 'anti_aliasing': 'gsr2', 'upscale_preset': 'balanced', 'upscale_out': '720',
+      'frame_rate': '0', 'game_rate': 'auto'}, ARM_LIGHT_GFX, '2', True),
+    ('battery', 'High autonomy (for powerful devices)', "To save battery: 1280 × 720 with FSR 1, the game's own "
+     'effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).',
+     {'render_res': '720', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'frame_rate': '40',
+      'game_rate': '120'}, (), '0', None),
+)
+ARM_PROFILE_WATCH = ('render_res', 'anti_aliasing', 'upscale_preset', 'upscale_out', 'frame_rate', 'game_rate',
+                     'gfx_shadows', 'gfx_skip_logos') + ARM_PROFILE_GFX
+
+
+def arm_profile_settings(profile):
+    """Every setting a profile sets: its own, each graphics patch on or off, the shadows."""
+    _id, _name, _desc, values, patches, shadows, skip_logos = profile
+    out = dict(values)
+    out.update({key: key in patches for key in ARM_PROFILE_GFX})
+    out['gfx_shadows'] = shadows
+    if skip_logos is not None:
+        out['gfx_skip_logos'] = skip_logos
+    return out
+
+
+def arm_profile_of(settings):
+    """The profile these settings match ('custom' when none): with FSR 3.1 or GSR 2 the preset and
+    the output set the size (the render resolution is unused), with FSR 1 the render resolution."""
+    method = str(settings.get('anti_aliasing') or 'fsr1')
+    fps, rate = str(settings.get('frame_rate') or ''), str(settings.get('game_rate') or '60')
+    for profile in ARM_PROFILES:
+        values = profile[3]
+        if method != values['anti_aliasing']:
+            continue
+        if method in ('fsr3', 'gsr2'):
+            if (str(settings.get('upscale_preset') or 'off'), str(settings.get('upscale_out') or '1080')) != \
+                    (values['upscale_preset'], values['upscale_out']):
+                continue
+        elif arm_render_res(settings) != values['render_res']:
+            continue
+        forty_at_60 = values['frame_rate'] == '40' and fps == '30' and rate == '60'
+        if (fps, rate) != (values['frame_rate'], values['game_rate']) and not forty_at_60:
+            continue
+        wanted = arm_profile_settings(profile)
+        if any(bool(settings.get(key)) != wanted[key] for key in ARM_PROFILE_GFX):
+            continue
+        if str(settings.get('gfx_shadows') or '0') != wanted['gfx_shadows']:
+            continue
+        if profile[6] is not None and bool(settings.get('gfx_skip_logos')) != profile[6]:
+            continue
+        return profile[0]
+    return 'custom'
+
+
+def arm_screen_hz():
+    """The screen's highest refresh rate at its current size (xrandr), or None when unknown."""
+    try:
+        text = subprocess.run(['xrandr', '--current'], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    best, output = None, False
+    for line in text.splitlines():
+        if not line.startswith(' '):
+            output = ' connected' in line
+            continue
+        if output and '*' in line:  # the current size: '   1920x1080   120.00*+  60.00'
+            rates = [float(rate) for rate in re.findall(r'\d+\.\d+', line)]
+            if rates:
+                best = max(best or 0, max(rates))
+    return best
 
 
 def apply_arm_defaults(ns):
@@ -565,9 +661,10 @@ def apply_arm_defaults(ns):
     ROW_HINTS['Upscaler'] = ('FSR 1 enlarges the frame alone (sharp, no anti-aliasing); Off is bilinear. FSR 3.1 and '
                              'Snapdragon GSR 2 rebuild each frame with depth and motion; GSR 2 costs less GPU time. '
                              'TAA only smooths edges. Also in the in-game menu.')
-    ROW_HINTS['Quality'] = ('For FSR 3.1 and GSR 2. Native: anti-aliasing at the render resolution. Quality 1280 x 720, '
-                            'Balanced 1136 x 636, Performance 960 x 540, Ultra Performance 640 x 360, upscaled to the '
-                            'resolution; the render resolution is then not used.')
+    ROW_HINTS['Quality'] = ('For FSR 3.1 and GSR 2. Native: anti-aliasing at the render resolution. With a 1920 x 1080 '
+                            'output: Quality 1280 x 720, Balanced 1136 x 636, Performance 960 x 540, Ultra Performance '
+                            '640 x 360; with 1280 x 720: 960 x 540, 832 x 468, 640 x 360 and 640 x 360. The render '
+                            'resolution is then not used.')
     ROW_HINTS['Window size'] = ('Only for windowed mode: in fullscreen the game fills the screen. The resolution the '
                                 'games render at is "Render resolution" above.')
 
@@ -636,7 +733,12 @@ def arm_environment(settings, env):
     """ARM hosts: the game's display rate stays 60 Hz (the limit is fps_limit); 720p, FSR 1 and
     the limit come from bbport.ini, so that the in-game menu's changes hold after a restart; what
     these GPUs cannot run falls back to off."""
-    env['BB_VBLANK_HZ'] = '120' if str(settings.get('game_rate') or '60') == '120' else '60'
+    rate = str(settings.get('game_rate') or '60')
+    env['BB_VBLANK_HZ'] = '120' if rate == '120' else '0' if rate == 'auto' else '60'
+    if str(settings.get('upscale_out') or '1080') == '720':
+        env['BB_UPSCALE_OUTPUT'] = '1280x720'
+    else:
+        env.pop('BB_UPSCALE_OUTPUT', None)
     for name in ('BB_FPS_LIMIT', 'BB_RENDER_720P', 'BB_FSR1', 'BB_UPSCALER', 'BB_UPSCALE_QUALITY'):
         env.pop(name, None)
     for key, name, _title, _hint in ARM_COMPATIBILITY:
@@ -1134,6 +1236,13 @@ def launcher_class(base, ns):
                 self.arm_sync_from_ini()
             self.var('steam_deck').trace_add('write', lambda *_a: self.steam_deck_changed())
             self.steam_deck_changed(startup=True)
+            if ARM:
+                for key in ('anti_aliasing', 'upscale_preset', 'frame_generation'):
+                    self.var(key).trace_add('write', self.arm_refresh_locks)
+                self.arm_refresh_locks()
+                for key in ARM_PROFILE_WATCH:
+                    self.var(key).trace_add('write', lambda *_a: self.arm_profile_show())
+                self.arm_profile_show()
             self.build_save_button()
             self.pad_nav_start()
 
@@ -1478,7 +1587,8 @@ def launcher_class(base, ns):
             """A file setting with Browse… (the launcher's folder rows choose folders)."""
             var = self.var(key)
             holder = self.tk.Frame(self.target(parent), bg=CARD)
-            self.ttk.Entry(holder, textvariable=var, width=54).pack(side='left')
+            entry = self.ttk.Entry(holder, textvariable=var, width=54)
+            entry.pack(side='left')
 
             def browse():
                 start = Path(var.get()).parent if var.get() else Path.home()
@@ -1486,7 +1596,10 @@ def launcher_class(base, ns):
                     title=title, initialdir=str(start), filetypes=[('Lossless.dll', '*.dll'), (_('All files'), '*')])
                 if chosen:
                     var.set(str(Path(chosen)))
-            self.pill(holder, _('Browse…'), browse, padding=(14, 6)).pack(side='left', padx=(8, 0))
+            button = self.pill(holder, _('Browse…'), browse, padding=(14, 6))
+            button.pack(side='left', padx=(8, 0))
+            self.lock_parts = getattr(self, 'lock_parts', {})
+            self.lock_parts[key] = (entry, button)
             return self.row(parent, title, holder, hint)
 
         def build_game(self):
@@ -1510,9 +1623,132 @@ def launcher_class(base, ns):
             self.pill(holder, _('Clear shader cache'), self.clear_cache).pack(side='left')
 
         def row(self, parent, title, widget, hint=None):
-            """Upstream's rows with this fork's shorter texts (ROW_HINTS; None: no text)."""
+            """Upstream's rows with this fork's shorter texts (ROW_HINTS; None: no text); the labels are
+            kept (row_labels) to show the row locked. On ARM the upscaling output follows Quality."""
             hints = {_(key): _(text) if text else None for key, text in ROW_HINTS.items()}
-            return super().row(parent, title, widget, hints[title] if title in hints else hint)
+            hint = hints[title] if title in hints else hint
+            target = self.target(parent)
+            r = self.next_row(target)
+            label = self.ttk.Label(target, text=title)
+            label.grid(row=r, column=0, sticky='nw', padx=(0, 24), pady=(9, 0))
+            widget.grid(row=r, column=1, sticky='w', pady=(5, 0), in_=target)
+            widget.lift()
+            note = None
+            if hint:
+                note = self.ttk.Label(target, text=hint, style='Muted.TLabel', wraplength=self.px(560), justify='left')
+                note.grid(row=r + 1, column=1, sticky='w', pady=(3, 4))
+            self.row_labels = getattr(self, 'row_labels', {})
+            self.row_labels[str(widget)] = (label, note)
+            if ARM and title == _('Quality') and not getattr(self, 'arm_output_row', None):
+                self.arm_output_row = self.row(
+                    parent, _('Upscaling output'), self.choice(parent, 'upscale_out', ARM_UPSCALE_OUTPUTS, 34),
+                    _('The size FSR 3.1 and GSR 2 rebuild the frames at. 1280 × 720 costs less GPU time; the '
+                      'screen\'s scaling enlarges it.'))
+            return widget
+
+        def check(self, parent, key, title, hint=None):
+            """Upstream's switch rows, with their parts kept (check_parts) to show them locked."""
+            parent = self.target(parent)
+            r = self.next_row(parent)
+            line = self.tk.Frame(parent, bg=CARD)
+            line.grid(row=r, column=0, columnspan=2, sticky='w', pady=(7, 0))
+            switch = self.toggle(line, self.var(key))
+            switch.pack(side='left')
+            label = self.tk.Label(line, text=title, bg=CARD, fg=TEXT, font=self.font_ui, cursor='hand2')
+            label.pack(side='left', padx=(self.px(12), 0))
+            label.bind('<Button-1>', lambda _e: switch.state == 'normal' and self.var(key).set(not self.var(key).get()))
+            note = None
+            if hint:
+                note = self.ttk.Label(parent, text=hint, style='Muted.TLabel', wraplength=self.px(640), justify='left')
+                note.grid(row=r + 1, column=0, columnspan=2, sticky='w', padx=(self.px(52), 0), pady=(2, 2))
+            self.check_parts = getattr(self, 'check_parts', {})
+            self.check_parts[key] = (switch, label, note)
+
+        def arm_lock(self, key, locked):
+            """A setting another one turns off: its control greyed out and not usable, its texts pale."""
+            title_style, note_style = ('Locked.TLabel', 'LockedMuted.TLabel') if locked else ('TLabel', 'Muted.TLabel')
+            parts = getattr(self, 'check_parts', {}).get(key)
+            if parts:
+                switch, label, note = parts
+                switch.configure(state='disabled' if locked else 'normal')
+                label.configure(fg=self.locked_text if locked else TEXT, cursor='arrow' if locked else 'hand2')
+                if note is not None:
+                    note.configure(style=note_style)
+                return
+            widget = getattr(self, 'boxes', {}).get(key)
+            if widget is not None:
+                widget.configure(state='disabled' if locked else 'readonly')
+            elif key in getattr(self, 'lock_parts', {}):
+                entry, button = self.lock_parts[key]
+                entry.configure(state='disabled' if locked else 'normal')
+                button.configure(state='disabled' if locked else 'normal')
+                widget = entry.master
+            if widget is None:
+                return
+            label, note = getattr(self, 'row_labels', {}).get(str(widget), (None, None))
+            if label is not None:
+                label.configure(style=title_style)
+            if note is not None:
+                note.configure(style=note_style)
+
+        def arm_refresh_locks(self, *_args):
+            """What each choice turns off, as in the Android launcher: the quality and the output only
+            with FSR 3.1 or GSR 2, the render resolution unused with their presets, the multiplier and
+            Lossless.dll with frame generation, and the patches the temporal upscalers need left out."""
+            method = str(self.var('anti_aliasing').get())
+            temporal = method in ('fsr3', 'gsr2')
+            self.arm_lock('upscale_preset', not temporal)
+            self.arm_lock('upscale_out', not temporal)
+            self.arm_lock('render_res', temporal and str(self.var('upscale_preset').get()) != 'off')
+            generation = str(self.var('frame_generation').get())
+            self.arm_lock('frame_gen_multiplier', generation == 'off')
+            self.arm_lock('lsfg_dll', generation != 'lsfg')
+            for key in ('gfx_no_motion_blur', 'gfx_no_aa'):
+                self.arm_lock(key, method in ('fsr3', 'gsr2', 'taa'))
+
+        def arm_profile_row(self, f):
+            """Settings > Profile: the profiles (ARM_PROFILES) in one list, with what the chosen one
+            does under it; Custom is shown when the settings match none, and skipped when picked."""
+            ids = ['custom'] + [profile[0] for profile in ARM_PROFILES]
+            names = [_('Custom')] + [_(profile[1]) for profile in ARM_PROFILES]
+            box = self.ttk.Combobox(f, values=names, state='readonly', width=40)
+            self.row(f, _('Profile'), box, _('A recommended set of the settings on this page. Change any of them '
+                                             'and it becomes Custom.'))
+            target = self.target(f)
+            desc = self.ttk.Label(target, text='', style='Muted.TLabel', wraplength=self.px(560), justify='left')
+            desc.grid(row=self.next_row(target), column=1, sticky='w', pady=(0, 8))
+            self.arm_profile = 'custom'
+
+            def show(*_args):
+                settings = dict(self.app, **{key: var.get() for key, var in self.vars.items()})
+                self.arm_profile = arm_profile_of(settings)
+                box.current(ids.index(self.arm_profile))
+                profile = next((p for p in ARM_PROFILES if p[0] == self.arm_profile), None)
+                desc.configure(text=_(profile[2]) if profile else _('Custom: the settings on this page as you chose them.'))
+
+            def picked(_event):
+                chosen = ids[box.current()]
+                if chosen == 'custom':  # round the list: before the first one, the last one
+                    chosen = ARM_PROFILES[-1][0] if self.arm_profile == ARM_PROFILES[0][0] else ARM_PROFILES[0][0]
+                self.arm_apply_profile(chosen)
+            box.bind('<<ComboboxSelected>>', picked)
+            self.arm_profile_show = show
+
+        def arm_apply_profile(self, profile_id):
+            profile = next(p for p in ARM_PROFILES if p[0] == profile_id)
+            values = arm_profile_settings(profile)
+            notice = _('Profile applied')  # the corner is narrow: the list shows which
+            hz = arm_screen_hz() if values['frame_rate'] == '40' else None
+            if hz and hz < 119:  # 40 FPS paces evenly only at 120 Hz (three refreshes a frame)
+                values.update(frame_rate='30', game_rate='60')
+                notice = _('30 FPS: 60 Hz screen')
+            for key, value in values.items():
+                if key in self.vars:
+                    self.vars[key].set(value)
+                else:
+                    self.app[key] = value
+            self.save_changes()
+            self.show_version(notice, GOLD)
 
         def build_display(self):
             """Settings: display and graphics, and the console (language, player name)."""
@@ -1610,6 +1846,15 @@ def launcher_class(base, ns):
                     ('Combobox.textarea', {'sticky': 'nswe'})]})]})])
             s.configure('TCombobox', arrowcolor=GOLD, background=ns['CARD_HI'], bordercolor=ns['CARD_HI'],
                         lightcolor=ns['CARD_HI'], darkcolor=ns['CARD_HI'], padding=(self.px(4), 2))
+            # Locked settings (arm_lock): pale texts, a pale list.
+            self.locked_text = uncharted_widgets.blend(TEXT, CARD, 0.6)
+            locked_note = uncharted_widgets.blend(MUTED, CARD, 0.55)
+            s.configure('Locked.TLabel', background=CARD, foreground=self.locked_text)
+            s.configure('LockedMuted.TLabel', background=CARD, foreground=locked_note,
+                        font=s.lookup('Muted.TLabel', 'font'))
+            s.map('TCombobox', foreground=[('disabled', self.locked_text), ('readonly', TEXT)],
+                  selectforeground=[('disabled', self.locked_text), ('readonly', TEXT)],
+                  arrowcolor=[('disabled', locked_note)])
 
         def page(self, name, title, subtitle):
             if name == 'display':
@@ -1624,16 +1869,12 @@ def launcher_class(base, ns):
                 head.winfo_children()[1].pack_forget()
             self.page_inner = getattr(self, 'page_inner', {})
             self.page_inner[name] = f
+            if name == 'display' and ARM:  # the profiles first, as in the Android launcher
+                self.arm_profile_row(f)
             if name == 'display':
                 self.row(f, _('Launcher language'), self.choice(f, 'ui_language', uncharted_i18n.LANGUAGES, 30),
                          _('The language of this window. The launcher opens again in it when you save.'))
             if name == 'display' and ARM:
-                holder = self.tk.Frame(self.target(f), bg=ns['CARD'])
-                holder.grid(row=self.next_row(self.target(f)), column=0, columnspan=2, sticky='w', pady=(10, 0))
-                self.pill(holder, _('Recommended for ARM handhelds'), self.arm_recommended,
-                          kind='primary').pack(side='left')
-                self.note(f, _('Puts every setting on this page back to what runs best on an ARM handheld: '
-                               '720p with FSR 1, a 40 FPS limit, fullscreen and all the compatibility fixes on.'), top=4)
                 self.row(f, _('Render resolution'), self.choice(f, 'render_res', ARM_RENDER_RESOLUTIONS, 30),
                          _('The size the games render at, scaled to the screen by the upscaling below. '
                            '720p: the games\' own PS4 720p mode, much higher FPS on ARM handhelds. 540p: '
@@ -1642,7 +1883,8 @@ def launcher_class(base, ns):
                 self.row(f, _('Game display rate'), self.choice(f, 'game_rate', ARM_GAME_RATES, 30),
                          _('The refresh rate the game paces its frames to. 120 Hz: steadier frame times on '
                            '120 Hz screens (a frame a little over 33 ms is not held until 50 ms). Keep 60 Hz '
-                           'on a 60 Hz screen.'))
+                           'on a 60 Hz screen. Auto: for limits above 60 FPS and No limit, the frames follow '
+                           'the screen\'s rate (up to 120 Hz).'))
             elif name == 'display':
                 self.check(f, 'steam_deck', _('Steam Deck mode'),
                            _('Optimizes settings for Steam Deck. 1280x800 60FPS'))
@@ -1769,21 +2011,6 @@ def launcher_class(base, ns):
                 self.after_setting_change()
 
         # ---- ARM: recommended settings, language restart ----------------------------------------
-        def arm_recommended(self):
-            """The ARM defaults on the Settings page and the Compatibility switches, saved."""
-            values = dict(ARM_DEFAULTS, window_size='1920x1080', frame_generation='off',
-                          sharpening=ns['APP_DEFAULTS']['sharpening'])
-            values.pop('lsfg_dll')  # the player's file stays chosen
-            for key, value in values.items():
-                if key in self.vars:
-                    self.vars[key].set(value)
-                else:
-                    self.app[key] = value
-            self.save_changes()
-            # A notice in the corner, as for Save changes: a dialog box needs the touch screen
-            # or a mouse (and Tk's is large on a handheld).
-            self.show_version(_('Recommended settings applied and saved.'), GOLD)
-
         def restart_launcher(self):
             """The launcher again, in the language just chosen (its texts are made when it starts)."""
             if self.process:

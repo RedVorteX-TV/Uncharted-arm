@@ -12,6 +12,28 @@ import uncharted_linux as linux
 
 
 class ArmLauncher(unittest.TestCase):
+    def test_profiles_round_trip(self):
+        """Each profile's settings are recognised as that profile; a change makes them Custom."""
+        base = dict(linux.ARM_DEFAULTS, **linux.ARM_GRAPHICS_DEFAULTS)
+        for profile in linux.ARM_PROFILES:
+            settings = dict(base, **linux.arm_profile_settings(profile))
+            self.assertEqual(linux.arm_profile_of(settings), profile[0])
+            settings['gfx_no_fog'] = not settings['gfx_no_fog']
+            self.assertEqual(linux.arm_profile_of(settings), 'custom')
+        # 40 FPS profiles applied on a 60 Hz screen (30 FPS, 60 Hz) are still those profiles.
+        battery = dict(base, **linux.arm_profile_settings(linux.ARM_PROFILES[-1]))
+        battery.update(frame_rate='30', game_rate='60')
+        self.assertEqual(linux.arm_profile_of(battery), 'battery')
+        self.assertEqual(linux.arm_profile_of(base), 'custom')  # the defaults are none of them
+
+    def test_game_rate_auto_and_upscale_output(self):
+        env = {}
+        linux.arm_environment({'game_rate': 'auto', 'upscale_out': '720'}, env)
+        self.assertEqual((env['BB_VBLANK_HZ'], env['BB_UPSCALE_OUTPUT']), ('0', '1280x720'))
+        linux.arm_environment({'game_rate': '120', 'upscale_out': '1080'}, env)
+        self.assertEqual(env['BB_VBLANK_HZ'], '120')
+        self.assertNotIn('BB_UPSCALE_OUTPUT', env)
+
     def test_defaults_and_choices(self):
         ns = {'APP_DEFAULTS': {'frame_rate': '60', 'steam_deck': True},
               'FRAME_RATES': [('60', '60 FPS')], 'WINDOW_SIZES': [],
