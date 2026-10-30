@@ -120,6 +120,16 @@ Sobre el trabajo de:
 - [Bachata S4](https://github.com/zenithblue-oss/shadps4-arm64) (GPL-2.0 o posterior), a través de
   [erickmendes22/uncharted-android](https://github.com/erickmendes22/uncharted-android): los
   parches gráficos del launcher (patches/graphics_patches.json).
+- [erickmendes22/uncharted-android](https://github.com/erickmendes22/uncharted-android)
+  (GPL-2.0 o posterior): las correcciones de NaN de la cámara y de la cinemática inversa de las
+  piernas en Uncharted 2 y 3, saturate convirtiendo NaN en 0, la lectura completa de los datos de
+  Uncharted 2 y los resultados de sus mallas llegando a la CPU, la comprobación de la caché de
+  pipelines del driver y, en Android, el presupuesto de memoria de texturas según la RAM libre y las
+  pistas de rendimiento (commits de erickmendes22 en este repositorio).
+- [Snapdragon Game Super Resolution 2](https://github.com/SnapdragonStudios/snapdragon-gsr) de Qualcomm
+  (BSD-3-Clause): los shaders del escalador GSR 2 (gpu/shadps4/video_core/host_shaders/gsr2_*.comp).
+- [StevenMXZ/Adreno-Tools-Drivers](https://github.com/StevenMXZ/Adreno-Tools-Drivers): las
+  versiones de Turnip Gen8 que incluye la app de Android (V37, y V38 parcheada para Adreno 8xx).
 - [Eden](https://git.eden-emu.dev/eden-emu/eden) (PR #4263) y
   [ARMSX2](https://github.com/ARMSX2/ARMSX2): los pases de generación de fotogramas LSFG, a partir
   de los de [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk)
