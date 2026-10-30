@@ -794,10 +794,28 @@ void TemporalUpscaler::RecordGsr2(vk::CommandBuffer cmdbuf, vk::ImageView color,
         float min_lerp;
         u32 same_camera;
         u32 reset;
-    } params{{w, h}, {ow, oh}, {1.0f / float(w), 1.0f / float(h)},
+        u32 history_filter;
+    };
+    // From ducvd89's Bloodborne-Android (f16f827, c4e4f64): the 9-sample kernel always, sharper
+    // while the camera moves (the 5-sample one softens the upscale; BB_GSR2_NINE_TAP=0 restores
+    // upstream's camera-still only), and the history read back through a Catmull-Rom filter
+    // instead of one bilinear fetch, which blurred it a little more every frame
+    // (BB_GSR2_HISTORY=bilinear restores).
+    static const bool nine_tap = [] {
+        const char* env = std::getenv("BB_GSR2_NINE_TAP");
+        return !(env && env[0] == '0');
+    }();
+    static const bool history_catmull_rom = [] {
+        const char* env = std::getenv("BB_GSR2_HISTORY");
+        const bool on = !(env && (std::strcmp(env, "bilinear") == 0 || std::strcmp(env, "0") == 0));
+        std::printf("Upscaler: GSR 2 %s kernel, %s history\n", nine_tap ? "9-sample" : "upstream's",
+                    on ? "Catmull-Rom" : "bilinear");
+        return on;
+    }();
+    const Params params{{w, h}, {ow, oh}, {1.0f / float(w), 1.0f / float(h)},
              {1.0f / float(ow), 1.0f / float(oh)}, {jitter[0], jitter[1]}, 1.0f,
-             std::tan(camera_motion.VerticalFov() * 0.5f) * float(w) / float(h), 0.0f, 0u,
-             reset ? 1u : 0u};
+             std::tan(camera_motion.VerticalFov() * 0.5f) * float(w) / float(h), 0.0f,
+             nine_tap ? 1u : 0u, reset ? 1u : 0u, history_catmull_rom ? 1u : 0u};
     static_assert(sizeof(Params) <= 64);
     const auto push = [&](vk::Pipeline pipeline, const std::array<vk::ImageView, 5>& views,
                           const std::array<vk::Sampler, 3>& samplers, u32 gx, u32 gy) {
