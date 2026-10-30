@@ -124,7 +124,7 @@ public final class MainActivity extends Activity {
                 if (destroyed) return;
                 LinearLayout row = actionRow(Strings.format("update_available", release.version),
                     Strings.format("update_available_hint", current), () -> openLink(release.page));
-                launcherBody.removeView(row);
+                ((android.view.ViewGroup) row.getParent()).removeView(row);
                 launcherBody.addView(row, launcherBody.indexOfChild(launcherNotice) + 1);
             });
         }, "update check");
@@ -286,6 +286,7 @@ public final class MainActivity extends Activity {
         launcherView.setFillViewport(true);
         FrameLayout center = new FrameLayout(this);
         launcherBody = new LinearLayout(this); launcherBody.setOrientation(LinearLayout.VERTICAL);
+        rowsTarget = launcherBody;
         launcherBody.setPadding(dp(24), dp(20), dp(24), dp(28));
         center.addView(launcherBody, frame(Math.min(dp(820), getResources().getDisplayMetrics().widthPixels), -2, Gravity.CENTER_HORIZONTAL));
         launcherView.addView(center);
@@ -341,13 +342,19 @@ public final class MainActivity extends Activity {
         launcherNotice.setVisibility(View.GONE);
         launcherBody.addView(launcherNotice);
 
+        // The settings in tabs (buildTabs): graphics, graphics patches, controls, performance, system
+        // and the project (its channel, its repository).
+        tabButtons.clear(); tabPages.clear();
+        LinearLayout tabGraphics = newTab(Strings.get("graphics"), 0), tabGfx = newTab(Strings.get("gfx"), 0),
+            tabControls = newTab(Strings.get("tab_controls"), 0), tabPerformance = newTab(Strings.get("compatibility"), 0),
+            tabSystem = newTab(Strings.get("system"), 0), tabProject = newTab("YouTube", getResources().getIdentifier("ic_channel", "drawable", getPackageName()));
+
         // Graphics: shared with the in-game menu through bbport.ini
-        section(Strings.get("graphics"));
+        rowsTarget = tabGraphics;
         // Profiles: a set of the settings below in one choice (applyProfile); "Custom" once any of
         // them differs from every profile (currentProfile). The compatibility switches are not part.
         profileRow = valueRow(Strings.get("profile"), Strings.get("profile_hint"), PROFILES,
-            new String[]{Strings.get("profile_custom"), Strings.get("profile_low"), Strings.get("profile_medium"),
-                Strings.get("profile_high"), Strings.get("profile_battery")},
+            profileNames(),
             this::currentProfile,
             // Custom is only shown, never chosen: stepping onto it goes on to the next profile
             // round the list (after the last one, the first; left of the first, the last).
@@ -362,7 +369,7 @@ public final class MainActivity extends Activity {
             profileNote.setText(Strings.has("profile_" + p + "_desc") ? Strings.get("profile_" + p + "_desc") : Strings.get("profile_note"));
         });
         ((Runnable) profileNote.getTag()).run();
-        launcherBody.addView(profileNote);
+        rowsTarget.addView(profileNote);
         profileNoteView = profileNote;
         // Render resolution (bbport.ini, shared with the in-game menu): 1080p, the game's 720p mode
         // (render_720p) or the whole game at 960x540 (render_540p).
@@ -420,9 +427,9 @@ public final class MainActivity extends Activity {
 
         // Graphics patches (launcher.ini gfx_<id>, gfx_shadows; run-uncharted.sh, patches/graphics_patches.json):
         // all off by default, the game as it is.
-        section(Strings.get("gfx"));
+        rowsTarget = tabGfx;
         TextView gfxNote = text(Strings.get("gfx_note"), 12, MUTED); gfxNote.setPadding(dp(4), 0, dp(4), dp(8));
-        launcherBody.addView(gfxNote);
+        rowsTarget.addView(gfxNote);
         cyclerRow(launcher, "gfx_shadows", Strings.get("gfx_shadows"), Strings.get("gfx_shadows_hint"),
             new String[]{"0", "2", "1"}, new String[]{Strings.get("gfx_shadows_0"), Strings.get("gfx_shadows_2"),
                 Strings.get("gfx_shadows_1")}, "0");
@@ -440,7 +447,7 @@ public final class MainActivity extends Activity {
         });
 
         // Compatibility (ARM): launcher.ini (the in-game menu rewrites bbport.ini whole)
-        section(Strings.get("compatibility"));
+        rowsTarget = tabPerformance;
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
         // Android performance hints (run-uncharted.sh: BB_ADPF, BB_ADPF_EFFICIENT); the profiles set it.
@@ -450,7 +457,7 @@ public final class MainActivity extends Activity {
             new String[]{"off", "efficiency"}, new String[]{Strings.get("off"), Strings.get("on")}, "off");
 
         // System
-        section(Strings.get("system"));
+        rowsTarget = tabSystem;
         actionRow(Strings.get("gpu_driver"), driverSummary(), this::showDrivers).setTag("driver");
         actionRow(Strings.get("game_folder"), gameDir == null ? Strings.get("not_chosen") : gameDir, () -> askGameFolder()).setTag("folder");
         actionRow(Strings.get("saves_export"), Strings.get("saves_export_hint"), this::askSavesExport);
@@ -460,42 +467,101 @@ public final class MainActivity extends Activity {
             File log = new File(sharedLogDir(), "android-game.log");
             toast(log.isFile() ? log.getPath() : Strings.get("no_log"));
         });
+        rowsTarget = tabControls;
         switchRow(launcher, "touch_controls", false, Strings.get("touch_controls"), Strings.get("touch_controls_hint"));
         cyclerRow(launcher, "touch_style", Strings.get("touch_style"), Strings.get("touch_style_hint"),
             new String[]{"classic", "ps5"}, new String[]{Strings.get("touch_style_classic"), Strings.get("touch_style_ps5")},
             "classic");
+        sliderRow(launcher, "touch_opacity", Strings.get("touch_opacity"), Strings.get("touch_opacity_hint"), 20, 100, 5, 100);
         actionRow(Strings.get("edit_layout"), null, () -> {
             launcher.set("touch_controls", true);
             launcherView.setVisibility(View.GONE);
             controllerOverlay.setVisibility(View.VISIBLE);
             controllerOverlay.edit(() -> { controllerOverlay.setVisibility(View.INVISIBLE); showLauncher(null); });
         });
+        TextView controls = text(Strings.get("controls_hint"), 12, MUTED); controls.setPadding(dp(4), dp(18), 0, 0);
+        rowsTarget.addView(controls);
+        rowsTarget = tabSystem;
         String language = launcher.get("language", "auto");
         cyclerRow(launcher, "language", Strings.get("language"), null, new String[]{"auto", "en", "es"},
             new String[]{Strings.get("lang_auto"), "English", "Español"}, "auto");
         launcherView.setTag(language);
 
         // The port: its author's channel, its repository and its updates
-        section(Strings.get("project"));
+        rowsTarget = tabProject;
         actionRow(Strings.get("youtube"), Strings.get("youtube_hint"), () -> openLink(UpdateCheck.YOUTUBE));
         if (!UpdateCheck.REPO.isEmpty()) {
             actionRow(Strings.get("github"), Strings.get("github_hint"), () -> openLink(UpdateCheck.repoPage()));
             switchRow(launcher, "update_check", true, Strings.get("update_check"), Strings.get("update_check_hint"));
         }
 
-        TextView controls = text(Strings.get("controls_hint"), 12, MUTED); controls.setPadding(dp(4), dp(18), 0, 0);
-        launcherBody.addView(controls);
         String version = " " + versionName();
         TextView credits = text(Strings.get("credits") + version + ": " + Strings.get("credits_text"), 11, 0xff6f7178);
         credits.setPadding(dp(4), dp(10), 0, 0);
-        launcherBody.addView(credits);
+        rowsTarget.addView(credits);
+        rowsTarget = launcherBody;
+        int saved = 0;
+        try { saved = Integer.parseInt(launcher.get("launcher_tab", "0")); } catch (NumberFormatException ignored) {}
+        selectTab(Math.max(0, Math.min(saved, tabPages.size() - 1)));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Tabs: a bar of buttons under the play button, one page of rows each (rowsTarget while built).
+    private LinearLayout rowsTarget, tabBar;
+    private final List<TextView> tabButtons = new ArrayList<>();
+    private final List<LinearLayout> tabPages = new ArrayList<>();
+    private int currentTab;
+
+    private LinearLayout newTab(String label, int icon) {
+        if (tabBar == null || tabBar.getParent() == null || ((View) tabBar.getParent()).getParent() != launcherBody) {
+            android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
+            scroll.setHorizontalScrollBarEnabled(false);
+            tabBar = new LinearLayout(this);
+            scroll.addView(tabBar);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(18); lp.bottomMargin = dp(10);
+            launcherBody.addView(scroll, lp);
+        }
+        final int index = tabButtons.size();
+        TextView button = text(label, 14, TEXT);
+        button.setTypeface(Typeface.DEFAULT_BOLD); button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(16), dp(10), dp(16), dp(10));
+        button.setFocusable(true); button.setClickable(true);
+        if (icon != 0) {
+            android.graphics.drawable.Drawable d = getDrawable(icon);
+            if (d != null) { d.setBounds(0, 0, dp(20), dp(20)); button.setCompoundDrawables(d, null, null, null); }
+            button.setCompoundDrawablePadding(dp(8));
+        }
+        button.setOnClickListener(v -> selectTab(index));
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-2, -2); blp.rightMargin = dp(8);
+        tabBar.addView(button, blp);
+        tabButtons.add(button);
+        LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL);
+        page.setVisibility(View.GONE);
+        launcherBody.addView(page, new LinearLayout.LayoutParams(-1, -2));
+        tabPages.add(page);
+        return page;
+    }
+
+    private void selectTab(int index) {
+        currentTab = index;
+        for (int i = 0; i < tabPages.size(); i++) {
+            boolean on = i == index;
+            tabPages.get(i).setVisibility(on ? View.VISIBLE : View.GONE);
+            TextView b = tabButtons.get(i);
+            b.setTextColor(on ? 0xff15161a : TEXT);
+            StateListDrawable states = new StateListDrawable();
+            states.addState(new int[]{android.R.attr.state_focused}, rounded(on ? GOLD : 0xff2c2f38, 18, 3, 0xfffff3d0));
+            states.addState(new int[]{}, rounded(on ? GOLD : CARD, 18, 0, 0));
+            b.setBackground(states);
+        }
+        launcher.set("launcher_tab", Integer.toString(index));
     }
 
     private void section(String name) {
         TextView t = text(name.toUpperCase(java.util.Locale.ROOT), 12, GOLD);
         t.setLetterSpacing(0.15f); t.setTypeface(Typeface.DEFAULT_BOLD);
         t.setPadding(dp(4), dp(22), 0, dp(8));
-        launcherBody.addView(t);
+        rowsTarget.addView(t);
     }
 
     private LinearLayout row(String title, String hint) {
@@ -508,7 +574,7 @@ public final class MainActivity extends Activity {
         if (hint != null) { TextView h = text(hint, 12, MUTED); h.setTag("hint"); h.setPadding(0, dp(3), dp(12), 0); texts.addView(h); }
         row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.bottomMargin = dp(6);
-        launcherBody.addView(row, lp);
+        rowsTarget.addView(row, lp);
         return row;
     }
 
@@ -554,6 +620,52 @@ public final class MainActivity extends Activity {
         row.setOnKeyListener((v, code, e) -> {
             if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
             if (e.getAction() == KeyEvent.ACTION_DOWN) step.accept(code == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+            return true;
+        });
+        return row;
+    }
+
+    /** A percentage from min to max in steps of step: the slider, or left and right on a controller. */
+    private LinearLayout sliderRow(Ini ini, String key, String title, String hint, int min, int max, int step, int fallback) {
+        LinearLayout row = row(title, hint);
+        android.widget.SeekBar bar = new android.widget.SeekBar(this);
+        bar.setMax((max - min) / step);
+        bar.setFocusable(false);
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(GOLD));
+        bar.setThumbTintList(android.content.res.ColorStateList.valueOf(GOLD));
+        bar.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xff2c2f38));
+        row.addView(bar, new LinearLayout.LayoutParams(dp(160), -2));
+        TextView value = text("", 14, GOLD); value.setTypeface(Typeface.DEFAULT_BOLD);
+        value.setMinWidth(dp(48)); value.setGravity(Gravity.END);
+        row.addView(value);
+        java.util.function.IntSupplier get = () -> {
+            int v;
+            try { v = Integer.parseInt(ini.get(key, String.valueOf(fallback)).trim()); } catch (NumberFormatException e) { v = fallback; }
+            return Math.max(min, Math.min(max, v));
+        };
+        Runnable show = () -> {
+            int v = get.getAsInt();
+            if (bar.getProgress() != (v - min) / step) bar.setProgress((v - min) / step);
+            value.setText(v + " %");
+        };
+        show.run();
+        row.setTag(show);
+        bar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar b, int progress, boolean user) {
+                if (!user) return;
+                ini.set(key, String.valueOf(min + progress * step));
+                show.run();
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar b) {}
+            @Override public void onStopTrackingTouch(android.widget.SeekBar b) {}
+        });
+        row.setOnKeyListener((v, code, e) -> {
+            if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT) return false;
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                int next = get.getAsInt() + (code == KeyEvent.KEYCODE_DPAD_RIGHT ? step : -step);
+                ini.set(key, String.valueOf(Math.max(min, Math.min(max, next))));
+                show.run();
+            }
             return true;
         });
         return row;
@@ -650,20 +762,95 @@ public final class MainActivity extends Activity {
         String preset = bbport.get("preset", "0");
         return !preset.equals("0") || launcher.get("upscale_out", "1080").equals("720");
     }
-    private static final String[] PROFILES = {"custom", "low", "medium", "high", "battery"};
-    /** The graphics patches a profile sets (all of GFX_PATCHES but skip_logos, which is not a graphics effect). */
+    private static final String[] PROFILES = {"custom", "low", "low_medium", "medium", "high", "very_high",
+        "performance", "battery"};
+    /** The graphics patches a profile sets (all of GFX_PATCHES but skip_logos, which profiles set apart). */
     private static final String[] PROFILE_GFX = {"no_water_reflections", "no_ssao", "no_fog", "no_volumetric",
         "no_motion_blur", "no_dof", "no_bloom", "no_aa", "no_aniso", "no_dynamic_lights", "no_sun_ao", "draw_distance_40"};
+    /** Low-medium's and Performance's patches (with 2 shadow cascades and the logos skipped). */
+    private static final java.util.Set<String> LIGHT_GFX = new java.util.HashSet<>(java.util.Arrays.asList(
+        "no_dof", "no_bloom", "no_dynamic_lights", "no_sun_ao", "draw_distance_40"));
 
-    /** resolution (1080/720/540), upscaler (fsr1/gsr2), preset, fps limit, game rate, all patches on. */
-    private static String[] profileSettings(String id) {
-        switch (id) {
-            case "low":       return new String[]{"540", "fsr1", "0", "30", "60", "1"};
-            case "medium":    return new String[]{"540", "fsr1", "0", "30", "60", "0"};
-            case "high":      return new String[]{"720", "fsr1", "0", "60", "auto", "0"};
-            case "battery":   return new String[]{"720", "fsr1", "0", "40", "120", "0"};
-            default:          return null;
+    /** One profile: render resolution (1080/720/540), upscaler (fsr1/fsr3/gsr2), preset, upscaling
+     *  output (1080/720; only with fsr3/gsr2), FPS limit, game rate, the patches that are on (null:
+     *  none, ALL_GFX: every one), shadow cascades and whether it skips the logos (null: untouched). */
+    private static final class Profile {
+        final String res, upscaler, preset, out, fps, rate, shadows;
+        final java.util.Set<String> patches;
+        final Boolean skipLogos;
+        Profile(String res, String upscaler, String preset, String out, String fps, String rate,
+                java.util.Set<String> patches, String shadows, Boolean skipLogos) {
+            this.res = res; this.upscaler = upscaler; this.preset = preset; this.out = out; this.fps = fps;
+            this.rate = rate; this.patches = patches; this.shadows = shadows; this.skipLogos = skipLogos;
         }
+        boolean temporal() { return upscaler.equals("fsr3") || upscaler.equals("gsr2"); }
+        boolean patch(String key) { return patches != null && patches.contains(key); }
+    }
+    private static final java.util.Set<String> ALL_GFX = new java.util.HashSet<>(java.util.Arrays.asList(PROFILE_GFX));
+
+    private static String[] profileNames() {
+        String[] names = new String[PROFILES.length];
+        for (int i = 0; i < names.length; i++) names[i] = Strings.get("profile_" + PROFILES[i]);
+        return names;
+    }
+
+    private static Profile profile(String id) {
+        switch (id) {
+            case "low":         return new Profile("540", "fsr1", "0", null, "30", "60", ALL_GFX, "1", null);
+            case "low_medium":  return new Profile("540", "fsr1", "0", null, "30", "60", LIGHT_GFX, "2", true);
+            case "medium":      return new Profile("540", "fsr1", "0", null, "30", "60", null, "0", null);
+            case "high":        return new Profile("720", "fsr1", "0", null, "60", "auto", null, "0", null);
+            case "very_high":   return new Profile("1080", "fsr3", "1", "1080", "40", "120", null, "0", null);
+            case "performance": return new Profile("1080", "gsr2", "2", "720", "0", "auto", LIGHT_GFX, "2", true);
+            case "battery":     return new Profile("720", "fsr1", "0", null, "40", "120", null, "0", null);
+            default:            return null;
+        }
+    }
+
+    private void applyProfile(String id) {
+        Profile p = profile(id);
+        if (p == null) return;
+        bbport.set("render_720p", p.res.equals("720"));
+        bbport.set("render_540p", p.res.equals("540"));
+        bbport.set("upscaler", p.upscaler.equals("fsr1") ? "off" : p.upscaler);
+        bbport.set("fsr1", true);
+        bbport.set("preset", p.preset);
+        if (p.out != null) launcher.set("upscale_out", p.out);
+        String fps = p.fps;
+        // 40 FPS is even only on a 120 Hz screen (three refreshes a frame); at 60 Hz it alternates.
+        boolean screen60 = fps.equals("40") && maxRefreshRate() < 119f;
+        if (screen60) fps = "30";
+        bbport.set("fps_limit", fps);
+        launcher.set("game_rate", screen60 ? "60" : p.rate);
+        for (String key : PROFILE_GFX) launcher.set("gfx_" + key, p.patch(key));
+        launcher.set("gfx_shadows", p.shadows);
+        if (p.skipLogos != null) launcher.set("gfx_skip_logos", p.skipLogos);
+        refreshRows(launcherBody);
+        notice(screen60 ? Strings.format("profile_40_60hz", Strings.get("profile_" + id))
+            : Strings.format("profile_done", Strings.get("profile_" + id)));
+    }
+
+    /** The profile the current settings match, or "custom". */
+    private String currentProfile() {
+        String res = bbport.on("render_720p", true) ? "720" : bbport.on("render_540p", false) ? "540" : "1080";
+        String up = bbport.get("upscaler", "off");
+        String upscaler = up.equals("gsr2") || up.equals("fsr3") || up.equals("taa") ? up : bbport.on("fsr1", true) ? "fsr1" : "off";
+        String preset = bbport.get("preset", "0"), fps = bbport.get("fps_limit", "40"), rate = launcher.get("game_rate", "60");
+        String out = launcher.get("upscale_out", "1080"), shadows = launcher.get("gfx_shadows", "0");
+        for (String id : PROFILES) {
+            Profile p = profile(id);
+            if (p == null || !upscaler.equals(p.upscaler)) continue;
+            // With FSR 3.1 or GSR 2 the preset sets the render size; without them the preset is unused.
+            if (p.temporal() ? !(preset.equals(p.preset) && out.equals(p.out)) : !res.equals(p.res)) continue;
+            boolean fortyAt60 = p.fps.equals("40") && fps.equals("30") && rate.equals("60");
+            if (!(fps.equals(p.fps) && rate.equals(p.rate)) && !fortyAt60) continue;
+            boolean patches = shadows.equals(p.shadows);
+            for (String key : PROFILE_GFX) patches &= launcher.on("gfx_" + key, false) == p.patch(key);
+            if (!patches) continue;
+            if (p.skipLogos != null && launcher.on("gfx_skip_logos", false) != p.skipLogos) continue;
+            return id;
+        }
+        return "custom";
     }
 
     private float displayHz = 60f;
@@ -699,52 +886,6 @@ public final class MainActivity extends Activity {
             for (android.view.Display.Mode mode : display.getSupportedModes()) best = Math.max(best, mode.getRefreshRate());
         } catch (RuntimeException ignored) {}
         return best;
-    }
-
-    private void applyProfile(String id) {
-        String[] p = profileSettings(id);
-        if (p == null) return;
-        bbport.set("render_720p", p[0].equals("720"));
-        bbport.set("render_540p", p[0].equals("540"));
-        bbport.set("upscaler", p[1].equals("fsr1") ? "off" : p[1]);
-        bbport.set("fsr1", true);
-        bbport.set("preset", p[2]);
-        String fps = p[3];
-        // 40 FPS is even only on a 120 Hz screen (three refreshes a frame); at 60 Hz it alternates.
-        boolean screen60 = fps.equals("40") && maxRefreshRate() < 119f;
-        if (screen60) fps = "30";
-        bbport.set("fps_limit", fps);
-        launcher.set("game_rate", screen60 ? "60" : p[4]);
-        boolean patches = p[5].equals("1");
-        for (String key : PROFILE_GFX) launcher.set("gfx_" + key, patches);
-        launcher.set("gfx_shadows", patches ? "1" : "0");
-        refreshRows(launcherBody);
-        notice(screen60 ? Strings.get("profile_battery_60hz") : Strings.format("profile_done",
-            Strings.get("profile_" + id)));
-    }
-
-    /** The profile the current settings match, or "custom". */
-    private String currentProfile() {
-        String res = bbport.on("render_720p", true) ? "720" : bbport.on("render_540p", false) ? "540" : "1080";
-        String up = bbport.get("upscaler", "off");
-        String upscaler = up.equals("gsr2") || up.equals("fsr3") || up.equals("taa") ? up : bbport.on("fsr1", true) ? "fsr1" : "off";
-        String preset = bbport.get("preset", "0"), fps = bbport.get("fps_limit", "40"), rate = launcher.get("game_rate", "60");
-        boolean allOn = true, allOff = true;
-        for (String key : PROFILE_GFX) {
-            boolean on = launcher.on("gfx_" + key, false);
-            allOn &= on; allOff &= !on;
-        }
-        String shadows = launcher.get("gfx_shadows", "0");
-        for (String id : PROFILES) {
-            String[] p = profileSettings(id);
-            if (p == null) continue;
-            boolean patches = p[5].equals("1");
-            boolean fpsOk = fps.equals(p[3]) || (id.equals("battery") && fps.equals("30") && rate.equals("60"));
-            boolean rateOk = rate.equals(p[4]) || (id.equals("battery") && fps.equals("30"));
-            if (res.equals(p[0]) && upscaler.equals(p[1]) && (upscaler.equals("fsr1") || preset.equals(p[2])) && fpsOk && rateOk
-                && (patches ? allOn && shadows.equals("1") : allOff && shadows.equals("0"))) return id;
-        }
-        return "custom";
     }
 
     private void refreshRows(View view) {
@@ -1007,6 +1148,9 @@ public final class MainActivity extends Activity {
     private boolean touchControls() { return launcher.on("touch_controls", false); }
     private void applyOverlayVisibility() {
         controllerOverlay.setWhiteFaceButtons("ps5".equals(launcher.get("touch_style", "classic")));
+        int opacity;
+        try { opacity = Integer.parseInt(launcher.get("touch_opacity", "100").trim()); } catch (NumberFormatException e) { opacity = 100; }
+        controllerOverlay.setAlpha(Math.max(20, Math.min(100, opacity)) / 100f);
         boolean paused;
         synchronized (pauseLock) { paused = userPaused; }
         boolean show = !launcherShown() && !drawerOpen && (controllerOverlay.isEditing() || (touchControls() && !paused));
@@ -1059,6 +1203,17 @@ public final class MainActivity extends Activity {
                 return true;
             }
             if (code == KeyEvent.KEYCODE_BUTTON_START && launcherShown()) { if (up) play(); return true; }
+            if ((code == KeyEvent.KEYCODE_BUTTON_L1 || code == KeyEvent.KEYCODE_BUTTON_R1) && launcherShown() && !drawerOpen
+                    && !tabPages.isEmpty()) {
+                // L1 / R1: the previous / next tab, round the bar.
+                if (up) {
+                    int n = tabPages.size();
+                    int next = (currentTab + (code == KeyEvent.KEYCODE_BUTTON_R1 ? 1 : n - 1)) % n;
+                    selectTab(next);
+                    tabButtons.get(next).requestFocus();
+                }
+                return true;
+            }
             return super.dispatchKeyEvent(e);
         }
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_BUTTON_MODE

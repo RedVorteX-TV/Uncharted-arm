@@ -88,6 +88,23 @@ final class Strings {
         put("profile_medium", "Medium", "Medio");
         put("profile_high", "High", "Alto");
         put("profile_battery", "High autonomy", "Alta autonomía");
+        put("profile_low_medium", "Low-medium", "Bajo-medio");
+        put("profile_very_high", "Very high", "Muy alto");
+        put("profile_performance", "Performance (for powerful devices)", "Rendimiento (Para dispositivos potentes)");
+        put("profile_low_medium_desc", "960 × 540 with FSR 1, 30 FPS, with the lighter patches: 2 shadow cascades, no depth of "
+                + "field, bloom, dynamic lights or sun ambient occlusion, 40 m draw distance and the intro logos skipped.",
+            "960 × 540 con FSR 1, 30 FPS, con los parches ligeros: 2 cascadas de sombras, sin profundidad de campo, bloom, "
+                + "luces dinámicas ni oclusión ambiental del sol, distancia de dibujado de 40 m y sin logos de inicio.");
+        put("profile_very_high_desc", "FSR 3.1 Quality with a 1920 × 1080 output, the game's own effects, 40 FPS. "
+                + "Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).",
+            "FSR 3.1 en Calidad con salida a 1920 × 1080, los efectos originales del juego, 40 FPS. "
+                + "Requiere pantalla de 120 Hz (a 60 Hz usa 30 FPS).");
+        put("profile_performance_desc", "GSR 2 Balanced with a 1280 × 720 output, uncapped FPS at the screen's highest rate, "
+                + "with the lighter patches (2 shadow cascades, no depth of field, bloom, dynamic lights or sun ambient "
+                + "occlusion, 40 m draw distance, intro logos skipped).",
+            "GSR 2 en Equilibrado con salida a 1280 × 720, FPS sin límite a la frecuencia más alta de la pantalla, con los "
+                + "parches ligeros (2 cascadas de sombras, sin profundidad de campo, bloom, luces dinámicas ni oclusión "
+                + "ambiental del sol, distancia de dibujado de 40 m, sin logos de inicio).");
         put("profile_low_desc", "960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and lower devices.",
             "960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.");
         put("profile_medium_desc", "960 × 540 with FSR 1, the game's own effects, 30 FPS.",
@@ -99,8 +116,8 @@ final class Strings {
             "Para dispositivos potentes, ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. "
                 + "Requiere pantalla de 120 Hz (a 60 Hz usa 30 FPS).");
         put("profile_done", "Profile %s applied and saved.", "Perfil %s aplicado y guardado.");
-        put("profile_battery_60hz", "High autonomy applied with 30 FPS: 40 FPS needs a 120 Hz screen and this one goes up to 60 Hz.",
-            "Alta autonomía aplicada a 30 FPS: los 40 FPS requieren pantalla de 120 Hz y esta llega a 60 Hz.");
+        put("profile_40_60hz", "%s applied with 30 FPS: 40 FPS needs a 120 Hz screen and this one goes up to 60 Hz.",
+            "%s aplicado a 30 FPS: los 40 FPS requieren pantalla de 120 Hz y esta llega a 60 Hz.");
         put("upscale_out", "Upscaling output", "Salida del escalado");
         put("upscale_out_hint", "The resolution FSR 3.1 and GSR 2 bring the game to; the quality presets count from it. "
                 + "At 1280 × 720 (Native 1280 × 720, Quality 960 × 540, Balanced 832 × 468, Performance 640 × 360) the "
@@ -263,6 +280,10 @@ final class Strings {
                 + "DualSense.", "Clásico: los colores de PlayStation en los botones de acción. PS5: símbolos blancos, "
                 + "como en un DualSense.");
         put("touch_style_classic", "Classic", "Clásico");
+        put("touch_opacity", "On-screen controller opacity", "Opacidad del mando en pantalla");
+        put("touch_opacity_hint", "How see-through the on-screen controller is, from 20 % to 100 %.",
+            "Lo transparente que se ve el mando en pantalla, del 20 % al 100 %.");
+        put("tab_controls", "Controls", "Controles");
         put("touch_style_ps5", "PS5", "PS5");
         put("language", "Language", "Idioma");
         put("lang_auto", "Automatic (system language)", "Automático (idioma del sistema)");

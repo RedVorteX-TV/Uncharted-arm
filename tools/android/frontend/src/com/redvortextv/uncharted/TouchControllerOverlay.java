@@ -74,8 +74,6 @@ final class TouchControllerOverlay extends View {
 
     /** The face buttons in white (PS5 style) or the PlayStation colours (classic). */
     void setWhiteFaceButtons(boolean white) {
-        // PS5 style: the whole pad at 80 % opacity (classic: as drawn).
-        setAlpha(white ? 0.8f : 1f);
         if (white!=whiteFace) { whiteFace=white; invalidate(); }
     }
     TouchControllerOverlay(Context context,PadBridge pad) {
