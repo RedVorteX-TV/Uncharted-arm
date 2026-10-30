@@ -47,6 +47,9 @@ sha256sum "$out/assets/runtime.payload" | cut -d' ' -f1 > "$out/assets/runtime.s
 
 # ---- The GPU drivers inside the APK (AutoDriver.java, BundledDrivers.java) ----
 cp -r "$app/res/." "$out/res/"
+# The app icon artwork, kept out of the repository: tools/android/frontend/res-local (an adaptive
+# icon, drawable-anydpi-v26/icon.xml, over the repository's compass mark) when it is there.
+if [ -d "$app/res-local" ]; then cp -r "$app/res-local/." "$out/res/"; echo "App icon: res-local"; fi
 drivers=$PWD/.local-deps/android/drivers
 if [[ ${BB_SKIP_DRIVERS:-} != 1 ]]; then
     bash tools/android/fetch_bundled_drivers.sh >/dev/null \
