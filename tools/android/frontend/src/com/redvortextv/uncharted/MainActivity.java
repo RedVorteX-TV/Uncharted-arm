@@ -451,7 +451,7 @@ public final class MainActivity extends Activity {
         for (String key : new String[]{"arm_uma_readback", "arm_flush_draws", "arm_job_spin", "arm_skin_batch"})
             switchRow(launcher, key, true, Strings.get(key), Strings.get(key + "_hint"));
         // Android performance hints (run-uncharted.sh: BB_ADPF, BB_ADPF_EFFICIENT); the profiles set it.
-        // Off unless the player turns it on. A saved "performance" (pruebas 11-12) counts as on.
+        // Off unless the player turns it on. A saved "performance" (0.1.7 test builds) counts as on.
         if ("performance".equals(launcher.get("adpf", ""))) launcher.set("adpf", "efficiency");
         cyclerRow(launcher, "adpf", Strings.get("adpf"), Strings.get("adpf_hint"),
             new String[]{"off", "efficiency"}, new String[]{Strings.get("off"), Strings.get("on")}, "off");

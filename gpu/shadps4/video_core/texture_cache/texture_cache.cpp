@@ -1135,7 +1135,7 @@ void TextureCache::GarbageCollectImages() {
         // textures then go sooner (below). It does not set the limits: the usage compared here
         // is all of the GPU heaps, the buffers backing guest memory too (2.6 GB on the Thor with
         // 300-450 MB of images), and a budget from free RAM kept the collector over its critical
-        // mark for good, evicting textures in use (prueba 7).
+        // mark for good, evicting textures in use.
         BbGcBudget::Bytes(total_used_memory, 0);
         BbGcBudget::ReportUsage(total_used_memory);
 #endif

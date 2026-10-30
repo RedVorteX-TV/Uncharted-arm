@@ -247,7 +247,7 @@ while :; do
     # blur" removes: they ran on no frame (the picture stayed FSR 1's). "No game anti-aliasing"
     # removes the game's final frame copy (pixel shader 749bbec9) the upscale starts from, and the
     # velocity pass with it: the presets drew black frames (the Thor's flicker, GSR 2 and FSR 3.1;
-    # prueba 8 log). The upscalers are the anti-aliasing then. Both patches wait for those.
+    # a test log). The upscalers are the anti-aliasing then. Both patches wait for those.
     case "$(setting upscaler)" in
         fsr3|gsr2|taa|fsr4|fsr411|dlss)
             for id in no_motion_blur no_aa; do
