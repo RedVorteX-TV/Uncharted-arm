@@ -2353,8 +2353,8 @@ void TemporalUpscaler::OnDisplayDraw(u64 ps_hash) {
     // Counted once the game has drawn a 3D scene (its scene colour was seen, or the velocity pass
     // gave a camera): the logos, movies and the collection's menu draw into the display buffers
     // without the frame copy, and counting them turned the presets off before any gameplay
-    // (prueba 7's GSR 2 log). The camera alone was not enough: without the velocity pass the
-    // check never ran and the black frames stayed (prueba 8, "No game anti-aliasing").
+    // (a GSR 2 test log). The camera alone was not enough: without the velocity pass the
+    // check never ran and the black frames stayed ("No game anti-aliasing").
     if (!scene_seen && !camera_motion.Ready()) {
         return;
     }
