@@ -72,9 +72,19 @@ class Render720pTests(unittest.TestCase):
         self.assertEqual(struct.unpack_from('<QQ', blob, 8), (0x400000, count))
 
     def test_other_executables_are_left_alone(self):
-        data, _ = elf(setup(0x47), decoder())
+        # No video setting block, or more than the collection's games have (1 to MAX_SITES).
+        data, _ = elf(decoder())
         with self.assertRaises(ValueError):
             render_720p.writes(data)
+        data, _ = elf(*[setup(0x47)] * (render_720p.MAX_SITES + 1))
+        with self.assertRaises(ValueError):
+            render_720p.writes(data)
+
+    def test_one_block_at_the_end_of_the_file(self):
+        # One block is accepted (since 1-3 blocks); the scan stops at the end of the file.
+        data, (_decoder, site) = elf(decoder(), setup(0x47))
+        values = sorted(struct.unpack('<I', v)[0] for o, v in render_720p.writes(data) if site <= o < site + 0x50)
+        self.assertEqual(values, sorted([1280, 720] * 4 + [160, 180]))
 
 
 if __name__ == '__main__':
