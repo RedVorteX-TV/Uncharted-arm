@@ -29,5 +29,6 @@ launcher/art/
 # Android build (tools/android): the SDK/NDK and third-party libraries, and the outputs.
 /.local-deps/
 
-# The launcher icon artwork stays on the machine that builds the APK (build_frontend.sh res-local)
-tools/android/frontend/res-local/
+# The launcher icon (an original compass picture, no game art)
+!tools/android/frontend/res/drawable-*/icon.png
+!tools/android/frontend/res/drawable-*/icon_foreground.png
