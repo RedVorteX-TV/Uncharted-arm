@@ -18,16 +18,15 @@ unofficial fan project, not affiliated with Sony Interactive Entertainment or Na
 
 | | Linux (Odin 3, Snapdragon 8 Elite) | Android (AYN Thor, Snapdragon 8 Gen 2) |
 |---|---|---|
-| Uncharted 1 | Perfectly playable | Playable |
-| Uncharted 2 | Perfectly playable | In-game: runs, but drops below 20 FPS at times |
-| Uncharted 3 | Perfectly playable | In-game: runs, but drops below 20 FPS at times |
+| Uncharted 1 | Perfectly playable | Playable at 30 FPS cap |
+| Uncharted 2 | Perfectly playable | Playable at 30 FPS cap |
+| Uncharted 3 | Perfectly playable | Playable at 30 FPS cap |
 
-- Perfectly playable: smooth and steady from start to end. Playable: can be played through at a
-  steady enough frame rate. In-game: runs and can be played, but the frame rate is not good enough
-  yet to call it playable.
+- Perfectly playable: smooth and steady from start to end. Playable at 30 FPS cap: can be played
+  through with the 30 FPS limit (the Low, Low-medium and Medium profiles).
 - On the Odin 3 the limit is the CPU's translation of every draw to Vulkan (about 2,000 per frame):
-  Uncharted 2 runs at about 33 FPS in eco mode at 720p. On the Thor the limit is the GPU: Uncharted 1
-  runs at 26-30 FPS, Uncharted 2 and 3 at 20-30 with drops below 20 in demanding areas.
+  Uncharted 2 runs at about 33 FPS in eco mode at 720p. On the Thor the limit is the GPU: with the
+  30 FPS limit the three games hold their frame rate well enough to be played through.
 - Render resolution: 1080p, 720p (the game's own PS4 720p mode) or 540p (for slower GPUs), in the
   in-game menu (L3 + R3, then "Save and restart the game") and in the launchers (Linux: Settings;
   Android: Graphics). 540p takes load off the GPU. With the batched skinning of 0.1.6, Uncharted 2
