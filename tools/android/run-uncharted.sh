@@ -70,8 +70,9 @@ case $(setting preset) in 0|1|2|3|4) ;; *) printf 'preset=0\n' >> "$BB_CONFIG" ;
 [ "$(choice arm_uma_readback)" = 0 ] && export BB_UMA_READBACK=0
 [ "$(choice arm_flush_draws)" = 0 ] && export BB_FLUSH_DRAWS=0
 [ "$(choice arm_job_spin)" = 0 ] && export BB_JOB_SPIN=0
-# Batched skinning (vk_skin_batch.cpp) runs with the two-stage draw pipeline: on at every render
-# resolution unless the launcher's switch is off (then the pipeline only at 540p, unbatched).
+# Batched skinning (vk_skin_batch.cpp) runs with the two-stage draw pipeline: both on at every
+# render resolution unless the launcher's switch is off (then neither, 540p included: the switch
+# is how a player rules the pipeline out when characters misbehave).
 if [ "$(choice arm_skin_batch)" = 0 ]; then export BB_SKIN_BATCH=0; else export BB_DRAW_PIPE=${BB_DRAW_PIPE:-1}; fi
 # Android performance hints (launcher.ini adpf): off by default (CPU frequency tools such as
 # ClusterTune set the clocks too); adpf=efficiency (or a saved performance) turns them on, with
