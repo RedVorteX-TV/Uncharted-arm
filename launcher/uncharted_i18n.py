@@ -87,6 +87,62 @@ ES = {
         'No se incluye con el port. Después elige LSFG como generación de fotogramas, aquí o en el menú del juego.',
     'All files': 'Todos los archivos',
     'Game display rate': 'Frecuencia del juego',
+    "Auto (the screen's rate)": 'Auto (la frecuencia de la pantalla)',
+    'The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz screens (a frame a '
+    'little over 33 ms is not held until 50 ms). Keep 60 Hz on a 60 Hz screen. Auto: for limits above 60 FPS and '
+    "No limit, the frames follow the screen's rate (up to 120 Hz).":
+        'La frecuencia a la que el juego reparte sus fotogramas. 120 Hz: tiempos de fotograma más regulares en '
+        'pantallas de 120 Hz (un fotograma de algo más de 33 ms no espera hasta los 50 ms). Deja 60 Hz en una '
+        'pantalla de 60 Hz. Auto: para límites por encima de 60 FPS y Sin límite, los fotogramas siguen la '
+        'frecuencia de la pantalla (hasta 120 Hz).',
+    'Profile': 'Perfil',
+    'Custom': 'Personalizado',
+    'A recommended set of the settings on this page. Change any of them and it becomes Custom.':
+        'Un conjunto recomendado de los ajustes de esta página. Si cambias alguno, pasa a Personalizado.',
+    'Custom: the settings on this page as you chose them.': 'Personalizado: los ajustes de esta página tal como los elegiste.',
+    'Profile applied': 'Perfil aplicado',
+    '30 FPS: 60 Hz screen': '30 FPS: pantalla 60 Hz',
+    'Low': 'Bajo',
+    'Low-medium': 'Bajo-medio',
+    'Medium': 'Medio',
+    'High (for powerful devices)': 'Alto (Para dispositivos potentes)',
+    'Very high (for powerful devices)': 'Muy alto (Para dispositivos potentes)',
+    'Performance (for powerful devices)': 'Rendimiento (Para dispositivos potentes)',
+    'High autonomy (for powerful devices)': 'Alta autonomía (Para dispositivos potentes)',
+    '960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and lower devices.':
+        '960 × 540 con FSR 1, todos los parches de rendimiento, 30 FPS. Lo más estable en gama media y baja.',
+    '960 × 540 with FSR 1, 30 FPS, with the lighter patches: 2 shadow cascades, no depth of field, bloom, dynamic '
+    'lights or sun ambient occlusion, 40 m draw distance and the intro logos skipped.':
+        '960 × 540 con FSR 1, 30 FPS, con los parches ligeros: 2 cascadas de sombras, sin profundidad de campo, bloom, '
+        'luces dinámicas ni oclusión ambiental del sol, distancia de dibujado de 40 m y sin logos de inicio.',
+    "960 × 540 with FSR 1, the game's own effects, 30 FPS.": '960 × 540 con FSR 1, los efectos originales del juego, 30 FPS.',
+    "1280 × 720 with FSR 1, the game's own effects, 60 FPS.": '1280 × 720 con FSR 1, los efectos originales del juego, 60 FPS.',
+    "FSR 3.1 Quality with a 1920 × 1080 output, the game's own effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it "
+    'uses 30 FPS).':
+        'FSR 3.1 en Calidad con salida a 1920 × 1080, los efectos originales del juego, 40 FPS. Requiere pantalla de '
+        '120 Hz (a 60 Hz usa 30 FPS).',
+    "GSR 2 Balanced with a 1280 × 720 output, no FPS limit at the screen's rate, with the lighter patches (2 shadow "
+    'cascades, no depth of field, bloom, dynamic lights or sun ambient occlusion, 40 m draw distance, intro logos '
+    'skipped).':
+        'GSR 2 en Equilibrado con salida a 1280 × 720, FPS sin límite a la frecuencia de la pantalla, con los parches '
+        'ligeros (2 cascadas de sombras, sin profundidad de campo, bloom, luces dinámicas ni oclusión ambiental del '
+        'sol, distancia de dibujado de 40 m, sin logos de inicio).',
+    "To save battery: 1280 × 720 with FSR 1, the game's own effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it uses "
+    '30 FPS).':
+        'Ahorrando batería: 1280 × 720 con FSR 1, los efectos originales del juego, 40 FPS. Requiere pantalla de '
+        '120 Hz (a 60 Hz usa 30 FPS).',
+    'Upscaling output': 'Salida del escalado',
+    "The size FSR 3.1 and GSR 2 rebuild the frames at. 1280 × 720 costs less GPU time; the screen's scaling "
+    'enlarges it.':
+        'El tamaño al que FSR 3.1 y GSR 2 reconstruyen los fotogramas. 1280 × 720 cuesta menos tiempo de GPU; el '
+        'escalado de la pantalla lo amplía.',
+    'For FSR 3.1 and GSR 2. Native: anti-aliasing at the render resolution. With a 1920 x 1080 output: Quality '
+    '1280 x 720, Balanced 1136 x 636, Performance 960 x 540, Ultra Performance 640 x 360; with 1280 x 720: '
+    '960 x 540, 832 x 468, 640 x 360 and 640 x 360. The render resolution is then not used.':
+        'Para FSR 3.1 y GSR 2. Nativa: antialiasing a la resolución de renderizado. Con salida a 1920 x 1080: Calidad '
+        '1280 x 720, Equilibrado 1136 x 636, Rendimiento 960 x 540, Ultra rendimiento 640 x 360; con 1280 x 720: '
+        '960 x 540, 832 x 468, 640 x 360 y 640 x 360. La resolución de renderizado no se usa entonces.',
+    '40 FPS': '40 FPS',
     '120 Hz (120 Hz screens)': '120 Hz (pantallas de 120 Hz)',
     'The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz screens (a frame a '
     'little over 33 ms is not held until 50 ms). Keep 60 Hz on a 60 Hz screen.':
@@ -336,6 +392,41 @@ ES = {
     'No problems found in the recent logs.': 'No se han encontrado problemas en los registros recientes.',
     'Found in the recent logs:': 'Encontrado en los registros recientes:',
     'Compatibility (ARM)': 'Compatibilidad (ARM)',
+    'Batched character skinning': 'Skinning de personajes por lotes',
+    'FSR 1 enlarges the frame alone (sharp, no anti-aliasing); Off is bilinear. FSR 3.1 and Snapdragon GSR 2 rebuild each frame with depth and motion; GSR 2 costs less GPU time. TAA only smooths edges. Also in the in-game menu.':
+        'FSR 1 solo amplía la imagen (nítida, sin antialiasing); Desactivado es bilineal. FSR 3.1 y Snapdragon GSR 2 reconstruyen cada fotograma con la profundidad y el movimiento; GSR 2 gasta menos GPU. TAA solo suaviza los bordes. También en el menú del juego.',
+    'For FSR 3.1 and GSR 2. Native: anti-aliasing at the render resolution. Quality 1280 x 720, Balanced 1136 x 636, Performance 960 x 540, Ultra Performance 640 x 360, upscaled to the resolution; the render resolution is then not used.':
+        'Para FSR 3.1 y GSR 2. Nativa: antialiasing a la resolución de render. Calidad 1280 x 720, Equilibrado 1136 x 636, Rendimiento 960 x 540, Ultra rendimiento 640 x 360, escalados a la resolución; entonces la resolución de render no se usa.',
+    'Snapdragon GSR 2 (Adreno)': 'Snapdragon GSR 2 (Adreno)',
+    "Deforms the characters' meshes in one GPU job instead of ~1300 a frame: much faster on high-end devices. On low and mid-range devices it can run slower: try the game with it on and off and keep the faster one. Turn off as well if characters stretch, flicker or lose parts.":
+        'Deforma las mallas de los personajes en un solo trabajo de GPU en vez de ~1300 por fotograma: mucho más rápido en dispositivos de gama alta. En dispositivos de gama baja o media puede ir peor: prueba el juego activado y desactivado y quédate con lo que vaya mejor. Desactívalo también si los personajes se estiran, parpadean o pierden partes.',
+    'Graphics patches': 'Parches gráficos',
+    "Optional patches from the Bachata S4 catalog, all off: the games as they are. One switched on changes the game's own graphics settings (versions 1.00 and 1.02, checked against your executable before it is applied): less GPU work, a plainer picture. Measure the gain on your device before keeping it. Applied at the next start.":
+        'Parches opcionales del catálogo de Bachata S4, todos desactivados: los juegos tal como son. Al activar uno se cambian los ajustes gráficos del propio juego (versiones 1.00 y 1.02, comprobado con tu ejecutable antes de aplicarlo): menos trabajo para la GPU, una imagen más sencilla. Mide la mejora en tu dispositivo antes de dejarlo. Se aplica al siguiente arranque.',
+    'Shadow cascades': 'Cascadas de sombras',
+    'Fewer shadow maps: less GPU work, shadows end closer.': 'Menos mapas de sombras: menos trabajo de GPU, las sombras acaban más cerca.',
+    'Original': 'Original',
+    '2 cascades': '2 cascadas',
+    '1 cascade': '1 cascada',
+    'Skip startup logos (Uncharted 1 and 2)': 'Saltar los logos de inicio (Uncharted 1 y 2)',
+    'Not available for Uncharted 3.': 'No disponible para Uncharted 3.',
+    'No water reflections': 'Sin reflejos del agua',
+    'No ambient occlusion (SSAO)': 'Sin oclusión ambiental (SSAO)',
+    'No fog': 'Sin niebla',
+    'No volumetric lights': 'Sin luces volumétricas',
+    'No motion blur': 'Sin desenfoque de movimiento',
+    "Not applied with FSR 3.1, GSR 2 or TAA: they start from the game's frame copy this patch removes.":
+        'No se aplica con FSR 3.1, GSR 2 ni TAA: parten de la copia del fotograma que este parche elimina.',
+    "Not applied with FSR 3.1, GSR 2 or TAA: they take the camera's motion from the motion blur's pass.":
+        'No se aplica con FSR 3.1, GSR 2 ni TAA: toman el movimiento de la cámara del pase del desenfoque.',
+    'No depth of field': 'Sin profundidad de campo',
+    'No bloom': 'Sin resplandor (bloom)',
+    'No game anti-aliasing': 'Sin el antialiasing del juego',
+    'No anisotropic filtering': 'Sin filtrado anisotrópico',
+    'No dynamic lights': 'Sin luces dinámicas',
+    'No sunlight ambient occlusion': 'Sin oclusión ambiental del sol',
+    'Draw distance 40 m': 'Distancia de dibujado 40 m',
+    'Extreme: distant scenery disappears.': 'Extremo: el escenario lejano desaparece.',
     "The ARM port's performance fixes. All on is the fastest; if a scene misbehaves, turn the one that fits off and tell us where it happened.":
         'Los arreglos de rendimiento del port a ARM. Con todos activados va más rápido; si una escena falla, desactiva el que corresponda y cuéntanos dónde pasó.',
     'Fast GPU memory reads (Uncharted 2 and 3)': 'Lecturas rápidas de la memoria de la GPU (Uncharted 2 y 3)',

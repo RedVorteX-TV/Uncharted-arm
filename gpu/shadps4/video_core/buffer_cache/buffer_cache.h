@@ -4,8 +4,13 @@
 #pragma once
 
 #include "bbport_copy.h"
+#include "bbport_staging_reuse.h"
 
+#include <atomic>
 #include <deque>
+#include <condition_variable>
+#include <functional>
+#include <thread>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -57,6 +62,12 @@ public:
                          Vulkan::Runtime& runtime, AmdGpu::Liverpool* liverpool,
                          TextureCache& texture_cache, PageManager& tracker);
     ~BufferCache();
+    bool DeferGuestCopy(VAddr src, VAddr dst, u64 size);
+    u64 PendingLanding() const;
+    bool LandingGateActive() const;
+    void WaitLanding(u64 seq);
+    void RunAfterLanding(u64 seq, std::function<void()> fn);
+    void StopLanding();
 
     /// Returns a pointer to GDS device local buffer.
     [[nodiscard]] const Buffer* GetGdsBuffer() const noexcept {
@@ -225,6 +236,27 @@ private:
     /// completed (BB_UMA_READBACK=0: off). The backing memory is mapped as it is allocated.
     bool uma_read_back{};
     bool uma_coherent{};
+    /// bbport: deferred raycaster copies (DeferGuestCopy).
+    struct Landing;
+    struct GatedLabel {
+        u64 seq;
+        std::function<void()> fn;
+    };
+    std::mutex landing_mutex;
+    std::condition_variable landing_cv, landing_done_cv;
+    std::deque<std::shared_ptr<Landing>> landing_queue; ///< registered, not yet landed
+    std::deque<GatedLabel> gated_labels;                 ///< labels waiting for a landing
+    u64 landing_registered_seq{0}, landing_done_seq{0};
+    std::atomic<u64> landing_registered{0}, landing_done{0};
+    bool landing_stop{false}, gate_running{false};
+    std::atomic<u32> gate_outstanding{0}; ///< labels queued or running on the landing thread
+    BbStaging::Reuse<Buffer> landing_free_snapshots; // guarded by landing_mutex
+    std::thread landing_thread;
+    void LandingWorker();
+    bool ExecuteLanding(Landing& landing);
+    bool WaitLandingTick(u64 tick);
+    std::atomic<bool> landing_exited{false};
+
     std::mutex mapped_mutex;
     std::unordered_map<VkDeviceMemory, u8*> mapped_backings;
     void MapBacking(vk::DeviceMemory memory, u32 type_index);

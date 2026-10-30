@@ -9,6 +9,7 @@
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/renderer_vulkan/vk_runtime.h"
 #include "video_core/renderer_vulkan/vk_shader_hle.h"
+#include "bbport_mesh_copy_policy.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -243,6 +244,15 @@ static bool ExecuteCopyShaderHLE(const Shader::Info& info, const AmdGpu::Compute
 // i < count (user data SGPR6). Run on the GPU, the copy never reaches guest memory, and the SRT
 // walker reads those blocks there for the shaders that use them: zeros (blood drawn as solid
 // discs). While neither side holds GPU-written data the copy is done in guest memory instead.
+// Targeted U2 raycaster result fix from upstream: mode 2 updates CPU-owned records.
+static bool MeshCopyResultsEnabled(){
+    static const bool enabled=[] {
+        const char* value=std::getenv("BB_SCALAR_COPY64_SYNC");
+        return value && value[0]=='2';
+    }();
+    return enabled;
+}
+
 static constexpr u64 SCALAR_COPY_SHADER_HASH = 0x2d215c3b;    // one dword per workgroup
 static constexpr u64 SCALAR_COPY64_SHADER_HASH = 0x6a6422a9;  // 64 dwords per workgroup (U2)
 
@@ -321,11 +331,19 @@ static bool ExecuteScalarCopyHLE(const Shader::Info& info, const AmdGpu::Compute
             if (dst_gpu) {
                 buffer_cache.ReadMemory(dst.base_address, size, false, true);
             }
-        } else if (both && size < 1_MB) {
-            if (src_written && sync) {
+        } else if (size < 1_MB && (both || (group_size==64 && MeshCopyResultsEnabled()))) {
+            const bool mesh_copy=group_size==64 && MeshCopyResultsEnabled();
+            const bool copy_sync=sync || (mesh_copy && BbMeshCopy::NeedsGuestResult(
+                64,true,buffer_cache.IsRegionCpuModified(dst.base_address,size)));
+            bool deferred = false;
+            if (src_written && copy_sync && mesh_copy && !sync) {
+                deferred = buffer_cache.DeferGuestCopy(src.base_address, dst.base_address, size);
+            }
+            if (src_written && copy_sync && !deferred) {
+                buffer_cache.WaitLanding(buffer_cache.PendingLanding());
                 buffer_cache.ReadMemory(src.base_address, size, false, true);
             }
-            if ((!src_written || sync) && memory->IsValidGpuMapping(src.base_address, size) &&
+            if (!deferred && (!src_written || copy_sync) && memory->IsValidGpuMapping(src.base_address, size) &&
                 memory->IsValidGpuMapping(dst.base_address, size)) {
                 memory->TryWriteBacking(reinterpret_cast<void*>(dst.base_address),
                                         reinterpret_cast<const void*>(src.base_address), size);
@@ -361,6 +379,52 @@ static bool ExecuteScalarCopyHLE(const Shader::Info& info, const AmdGpu::Compute
     // Only the images overlapping the exact range: the uploads read guest memory here.
     rasterizer.GetTextureCache().InvalidateMemoryFromGPU(dst.base_address, size, true);
     return true;
+}
+
+// bbport (from revvv991's uncharted-android, as erickmendes22's fork keeps it): the scalar copy
+// decides between a copy in guest memory and one on the GPU from the buffer cache's state, so the
+// GPU thread drained the draw pipe before each one (U1: ~190 a second, a fifth to a third of the
+// GPU thread's waits on the Thor). Nearly all of them copy GPU-written data (a copy on the GPU,
+// guest memory untouched): when the source's pages are already GPU-modified the copy goes down the
+// pipe and the recording thread runs the same HLE in order, with the exact state. Only a source
+// that turns out not to be GPU-written then gets its guest memory copy later than the GPU thread's
+// next SRT walks. The check reads the page bits unlocked (a hint; a stale bit only picks the drain
+// or the pipe). U2's mesh result copies (BB_SCALAR_COPY64_SYNC=2) always drain: their CPU records
+// land through the landing thread, which the recording thread must not wait for.
+// BB_SCALAR_COPY_PIPELINE=0: always drain.
+bool PipelineGuestMemoryShaderHLE(const Shader::Info& info,
+                                  const AmdGpu::ComputeProgram& cs_program, Rasterizer& rasterizer) {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_SCALAR_COPY_PIPELINE");
+        return !(env && env[0] == '0');
+    }();
+    if (!enabled || info.buffers.size() != 2) {
+        return false;
+    }
+    const u64 group_size = info.pgm_hash == SCALAR_COPY64_SHADER_HASH ? 64 : 1;
+    if (group_size == 64 && MeshCopyResultsEnabled()) {
+        return false;
+    }
+    const auto ud = info.UserData();
+    if (ud.size() <= 6) {
+        return false;
+    }
+    const auto src = info.buffers[0].GetSharp(info);
+    const auto dst = info.buffers[1].GetSharp(info);
+    if (src.GetStride() != 4 || dst.GetStride() != 4 || !src.base_address || !dst.base_address) {
+        return false;
+    }
+    const u64 count =
+        std::min<u64>({u64(cs_program.dim_x) * group_size, ud[6], src.num_records, dst.num_records});
+    const bool pipe =
+        count != 0 && rasterizer.GetBufferCache().IsRegionGpuModified(src.base_address, count * 4);
+    static std::atomic<u32> total{0}, piped{0};
+    const u32 n = total.fetch_add(1, std::memory_order_relaxed) + 1;
+    const u32 p = piped.fetch_add(pipe, std::memory_order_relaxed) + pipe;
+    if ((n & 8191) == 0) {
+        std::printf("Scalar copy: %u of %u down the draw pipe\n", p, n);
+    }
+    return pipe;
 }
 
 bool IsGuestMemoryShaderHLE(unsigned long long pgm_hash) {

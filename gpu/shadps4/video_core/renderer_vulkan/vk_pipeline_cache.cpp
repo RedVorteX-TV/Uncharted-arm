@@ -3,6 +3,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <filesystem>
+#include <fstream>
+#include <span>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -10,6 +14,7 @@
 #include <string>
 #include <unordered_set>
 
+#include "bbport_driver_cache.h"
 #include "common/hash.h"
 #include "common/io_file.h"
 #include "common/path_util.h"
@@ -345,15 +350,129 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .needs_clip_distance_emulation = instance.GetDriverID() == vk::DriverId::eNvidiaProprietary,
         .supports_shader_stencil_export = instance_.IsShaderStencilExportSupported(),
     };
+    // bbport: the driver's pipeline cache first, so that the stored pipelines WarmUp builds come
+    // from it (they were built without any cache before, at every start).
+    LoadDriverCache();
     WarmUp();
-
-    auto [cache_result, cache] = instance.GetDevice().createPipelineCacheUnique({});
-    ASSERT_MSG(cache_result == vk::Result::eSuccess, "Failed to create pipeline cache: {}",
-               vk::to_string(cache_result));
-    pipeline_cache = std::move(cache);
 }
 
-PipelineCache::~PipelineCache() = default;
+static PipelineCache* g_exit_pipeline_cache = nullptr;
+
+/// bbport: the Vulkan driver's own pipeline cache, beside the shader blobs (from erickmendes22's
+/// uncharted-android eba4bf6): a second run does not have the driver compile the same pipelines
+/// again. A blob from another GPU or driver build is not handed to the driver. Saved every 30 s
+/// when it grew (Android ends the process without notice) and at the end of the game.
+void PipelineCache::LoadDriverCache() {
+    std::vector<char> initial_data;
+    if (EmulatorSettings.IsPipelineCacheEnabled() && BbDriverCache::Enabled()) {
+        auto& db = Storage::DataBase::Instance();
+        db.Open();
+        const auto& path = db.CachePath();
+        if (!path.empty()) {
+            driver_cache_path = path.extension() == ".zip"
+                                    ? std::filesystem::path{path}.replace_extension(".vkc")
+                                    : path / "vulkan_driver.vkc";
+            std::error_code ec;
+            const auto size = std::filesystem::file_size(driver_cache_path, ec);
+            if (!ec && size > 0 && size <= 128_MB) {
+                std::ifstream file{driver_cache_path, std::ios::binary};
+                initial_data.resize(size);
+                if (!file.read(initial_data.data(), std::streamsize(size))) {
+                    initial_data.clear();
+                }
+                const auto uuid = instance.GetPipelineCacheUUID();
+                if (!initial_data.empty() &&
+                    !BbDriverCache::Matches(initial_data, instance.GetVendorID(),
+                                            instance.GetDeviceID(),
+                                            std::span<const u8, 16>{uuid.data(), 16})) {
+                    std::printf("Driver pipeline cache: from another GPU or driver, not used\n");
+                    initial_data.clear();
+                }
+            }
+        }
+    }
+    vk::PipelineCacheCreateInfo cache_info{
+        .initialDataSize = initial_data.size(),
+        .pInitialData = initial_data.empty() ? nullptr : initial_data.data(),
+    };
+    auto created = instance.GetDevice().createPipelineCacheUnique(cache_info);
+    if (created.result != vk::Result::eSuccess && !initial_data.empty()) {
+        initial_data.clear();
+        created = instance.GetDevice().createPipelineCacheUnique({});
+    }
+    ASSERT_MSG(created.result == vk::Result::eSuccess, "Failed to create pipeline cache: {}",
+               vk::to_string(created.result));
+    pipeline_cache = std::move(created.value);
+    if (driver_cache_path.empty()) {
+        return;
+    }
+    driver_cache_saved_size = initial_data.size();
+    std::printf("Driver pipeline cache: %zu KB loaded\n", initial_data.size() / 1024);
+    g_exit_pipeline_cache = this;
+    driver_cache_saver = std::jthread([this](std::stop_token stop) {
+        std::mutex mutex;
+        std::condition_variable_any cv;
+        while (!stop.stop_requested()) {
+            std::unique_lock lock{mutex};
+            cv.wait_for(lock, stop, std::chrono::seconds(30), [] { return false; });
+            lock.unlock();
+            if (!stop.stop_requested()) {
+                SaveDriverCache();
+            }
+        }
+    });
+}
+
+void PipelineCache::SaveDriverCache() {
+    if (driver_cache_path.empty() || !pipeline_cache) {
+        return;
+    }
+    std::scoped_lock save{driver_cache_save_mutex};
+    std::vector<u8> data;
+    {
+        std::unique_lock access{BbDriverCache::Access()};
+        size_t size = 0;
+        if (instance.GetDevice().getPipelineCacheData(*pipeline_cache, &size, nullptr) !=
+                vk::Result::eSuccess ||
+            size <= driver_cache_saved_size || size > 128_MB) {
+            return;
+        }
+        data.resize(size);
+        if (instance.GetDevice().getPipelineCacheData(*pipeline_cache, &size, data.data()) !=
+            vk::Result::eSuccess) {
+            return;
+        }
+        data.resize(size);
+    }
+    auto temp = driver_cache_path;
+    temp += ".tmp";
+    {
+        std::ofstream file{temp, std::ios::binary | std::ios::trunc};
+        if (!file.write(reinterpret_cast<const char*>(data.data()), std::streamsize(data.size()))) {
+            return;
+        }
+    }
+    std::error_code ec;
+    std::filesystem::rename(temp, driver_cache_path, ec);
+    if (!ec) {
+        driver_cache_saved_size = data.size();
+    }
+}
+
+void FlushPipelineCacheForExit() {
+    if (auto* cache = g_exit_pipeline_cache) {
+        cache->SaveDriverCache();
+    }
+}
+
+PipelineCache::~PipelineCache() {
+    g_exit_pipeline_cache = nullptr;
+    if (driver_cache_saver.joinable()) {
+        driver_cache_saver.request_stop();
+        driver_cache_saver.join();
+    }
+    SaveDriverCache();
+}
 
 // bbport: shader/pipeline compile time on the GPU thread, reported by BB_FRAME_STATS.
 std::atomic<u64> g_bb_compile_ns;

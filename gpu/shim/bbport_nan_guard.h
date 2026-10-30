@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdlib>
+#include <string>
 
 namespace BbNanGuard {
 
@@ -22,9 +23,23 @@ inline bool ExportNanGuard() {
     return NanGuardMode() != 0;
 }
 
-/// Shaders compiled in each mode are cached apart.
+/// g2-arm64: GCN's output clamp turns NaN into 0 (like D3D's saturate); SPIR-V's FClamp leaves it
+/// undefined, Adreno keeps the NaN and the guard above shows it black: Uncharted 1's statue moss,
+/// clamp(exp2(power * log2(dot))) with a zero gloss power where the dot is 0. Fragment shaders get
+/// NaN -> 0; BB_SATURATE_NAN_FS=0 turns it off (vertex shaders: upstream's BB_SATURATE_NAN).
+inline bool SaturateNanFragment() {
+    static const bool enabled = [] {
+        const char* env = std::getenv("BB_SATURATE_NAN_FS");
+        return !(env && env[0] == '0');
+    }();
+    return enabled;
+}
+
+/// Shaders compiled in each mode are cached apart (the fragment saturate in its own cache: older shaders lack it).
 inline const char* ShaderCacheSuffix() {
-    return NanGuardMode() == 1 ? "-nan1" : NanGuardMode() == 2 ? "-nan2" : "";
+    static const std::string suffix = std::string{NanGuardMode() == 1 ? "-nan1" : NanGuardMode() == 2 ? "-nan2" : ""} +
+                                      (SaturateNanFragment() ? "-satfs" : "");
+    return suffix.c_str();
 }
 
 } // namespace BbNanGuard

@@ -4,6 +4,9 @@
 #include <xxhash.h>
 
 #include "bbport_toggles.h"
+#ifdef __ANDROID__
+#include "bbport_gc_budget.h"
+#endif
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -1126,6 +1129,16 @@ void TextureCache::GarbageCollectImages() {
         // collector evicted images used two or three frames ago on every submission and wrote
         // GPU-written ones back. Compare with the driver's current budget instead.
         // BB_GC_BUDGET_MB=N: this rule with a fixed budget on any GPU (tests on a desktop).
+#ifdef __ANDROID__
+        // Android: the RAM watcher (BbGcBudget, from ducvd89/Bloodborne-Android via
+        // erickmendes22's uncharted-android) only says when the phone is short of memory; idle
+        // textures then go sooner (below). It does not set the limits: the usage compared here
+        // is all of the GPU heaps, the buffers backing guest memory too (2.6 GB on the Thor with
+        // 300-450 MB of images), and a budget from free RAM kept the collector over its critical
+        // mark for good, evicting textures in use.
+        BbGcBudget::Bytes(total_used_memory, 0);
+        BbGcBudget::ReportUsage(total_used_memory);
+#endif
         static const u64 forced_budget = [] {
             const char* env = std::getenv("BB_GC_BUDGET_MB");
             return env ? std::strtoull(env, nullptr, 10) << 20 : 0;
@@ -1155,10 +1168,17 @@ void TextureCache::GarbageCollectImages() {
     if (total_used_memory < trigger_gc_memory) {
         return;
     }
-    static const u64 idle_seconds = [] {
+    static const u64 base_idle_seconds = [] {
         const char* env = std::getenv("BB_GC_IDLE_SECONDS");
         return std::clamp<u64>(env ? std::strtoull(env, nullptr, 10) : 20, 1, 63);
     }();
+#ifdef __ANDROID__
+    // The system short of memory: idle textures go after 5 s, not 20.
+    const u64 idle_seconds = BbGcBudget::Short() ? std::min<u64>(base_idle_seconds, 5)
+                                                  : base_idle_seconds;
+#else
+    const u64 idle_seconds = base_idle_seconds;
+#endif
     // Under pressure an image goes once unused for BB_GC_PRESSURE_IDLE_SECONDS (5), over the
     // critical mark for 1 s first, and only then by submissions (a fraction of a second). On
     // smaller cards the usage stayed over the pressure mark, so textures off screen for a moment

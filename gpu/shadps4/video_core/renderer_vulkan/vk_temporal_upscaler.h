@@ -77,6 +77,11 @@ public:
     /// resolution. True: skip the guest's draw, and the next frame starts here (the rasterizer
     /// calls OnFrameStart).
     bool OnComposite(u64 ps_hash, VideoCore::ImageId color);
+    /// A draw into a display buffer while CompositeFrames(): without the game's frame copy
+    /// (BB_UI_COMPOSITE_PS) in the first 6000 of them, the presets' composition is turned off
+    /// for the session (the frames never started: a flickering picture), and the pixel shaders
+    /// seen are logged.
+    void OnDisplayDraw(u64 ps_hash);
     [[nodiscard]] bool CompositeFrames() const noexcept {
         return composite_frames;
     }
@@ -199,6 +204,11 @@ private:
     bool RecordFsr4(vk::CommandBuffer cmdbuf, Fsr4Upscaler::Image color, Fsr4Upscaler::Image depth,
                     u32 w, u32 h, u32 ow, u32 oh, float frame_ms);
     void RecordTaa(vk::CommandBuffer cmdbuf, vk::ImageView color, vk::ImageView depth);
+    /// Snapdragon GSR 2 (2-pass compute): `color` and `depth` at w x h into output_image
+    /// (ow x oh, General layout).
+    void RecordGsr2(vk::CommandBuffer cmdbuf, vk::ImageView color, vk::ImageView depth, u32 w,
+                    u32 h, u32 ow, u32 oh);
+    [[nodiscard]] static bool UseGsr2();
     /// Sharpness above 1 for FSR 3/4 (their RCAS stops at 1): one more RCAS pass over the target
     /// (output_image, or the 8-bit UI image with ldr) in General layout after the upscaler.
     void ExtraSharpen(vk::CommandBuffer cmdbuf, vk::Image target, bool ldr, u32 w, u32 h);
@@ -222,6 +232,7 @@ private:
     bool failed = false;
     u64 trigger_hash = 0x9a9cf8a9;
     VideoCore::ImageId scene_color{};
+    bool scene_seen = false; ///< bbport: a 3D scene was drawn this session (OnDisplayDraw)
     bool done_this_frame = false;
     u32 preset_file_frames = 0; ///< BB_PRESET_FILE polling
     int applied_output = -1;
@@ -283,12 +294,16 @@ private:
     bool tonemap_pending = false;     ///< the next draw upscales tonemap_target
     bool composite_frames = false;  ///< OnComposite replaces the frame's display copy
     bool composite_done = false;    ///< this frame's OnComposite ran: its UI draws follow
+    bool composite_seen = false;    ///< the frame copy's pixel shader was met
+    u32 display_draws = 0;          ///< display buffer draws before composite_seen
+    std::array<u64, 8> display_shaders{};
     HostPasses::FsrPass fsr1_pass;  ///< FSR 1 (EASU) at OnComposite without a temporal upscale
     bool fsr1_created = false;
     FfxVkPortableUpscaleContext* context = nullptr;
     bool resources_ready = false; ///< images below match width/height/out size
     bool resources_fsr4 = false;  ///< made for FSR 4 (no FSR 3 context)
     bool resources_taa = false;
+    bool resources_gsr2 = false;
     std::unique_ptr<Fsr4Upscaler> fsr4;
     bool fsr4_failed = false;
     bool dlss_failed = false;
@@ -317,6 +332,18 @@ private:
     vk::UniquePipelineLayout taa_sharpen_pipeline_layout;
     vk::UniquePipeline taa_sharpen_pipeline;
     vk::UniquePipeline taa_sharpen_ldr_pipeline;
+    // GSR 2: motion/depth clip/colour scale and YCoCg colour at the render size, the history
+    // (two, alternating) at the output size.
+    VideoCore::UniqueImage gsr_mdc_image, gsr_luma_image;
+    vk::UniqueImageView gsr_mdc_view, gsr_luma_view;
+    std::array<VideoCore::UniqueImage, 2> gsr_history;
+    std::array<vk::UniqueImageView, 2> gsr_history_views;
+    u32 gsr_next = 0;
+    vk::UniqueSampler gsr_linear_sampler;
+    vk::UniqueDescriptorSetLayout gsr_desc_layout;
+    vk::UniquePipelineLayout gsr_pipeline_layout;
+    vk::UniquePipeline gsr_convert_pipeline;
+    vk::UniquePipeline gsr_upscale_pipeline;
     // ExtraSharpen: a copy of the upscaled frame (RCAS reads neighbours) and the target views.
     VideoCore::UniqueImage extra_sharpen_image;
     vk::UniqueImageView extra_sharpen_view;

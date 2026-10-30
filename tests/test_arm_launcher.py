@@ -12,6 +12,28 @@ import uncharted_linux as linux
 
 
 class ArmLauncher(unittest.TestCase):
+    def test_profiles_round_trip(self):
+        """Each profile's settings are recognised as that profile; a change makes them Custom."""
+        base = dict(linux.ARM_DEFAULTS, **linux.ARM_GRAPHICS_DEFAULTS)
+        for profile in linux.ARM_PROFILES:
+            settings = dict(base, **linux.arm_profile_settings(profile))
+            self.assertEqual(linux.arm_profile_of(settings), profile[0])
+            settings['gfx_no_fog'] = not settings['gfx_no_fog']
+            self.assertEqual(linux.arm_profile_of(settings), 'custom')
+        # 40 FPS profiles applied on a 60 Hz screen (30 FPS, 60 Hz) are still those profiles.
+        battery = dict(base, **linux.arm_profile_settings(linux.ARM_PROFILES[-1]))
+        battery.update(frame_rate='30', game_rate='60')
+        self.assertEqual(linux.arm_profile_of(battery), 'battery')
+        self.assertEqual(linux.arm_profile_of(base), 'custom')  # the defaults are none of them
+
+    def test_game_rate_auto_and_upscale_output(self):
+        env = {}
+        linux.arm_environment({'game_rate': 'auto', 'upscale_out': '720'}, env)
+        self.assertEqual((env['BB_VBLANK_HZ'], env['BB_UPSCALE_OUTPUT']), ('0', '1280x720'))
+        linux.arm_environment({'game_rate': '120', 'upscale_out': '1080'}, env)
+        self.assertEqual(env['BB_VBLANK_HZ'], '120')
+        self.assertNotIn('BB_UPSCALE_OUTPUT', env)
+
     def test_defaults_and_choices(self):
         ns = {'APP_DEFAULTS': {'frame_rate': '60', 'steam_deck': True},
               'FRAME_RATES': [('60', '60 FPS')], 'WINDOW_SIZES': [],
@@ -22,7 +44,7 @@ class ArmLauncher(unittest.TestCase):
         self.assertEqual(ns['APP_DEFAULTS']['frame_rate'], '40')
         self.assertFalse(ns['APP_DEFAULTS']['steam_deck'])
         self.assertEqual(ns['APP_DEFAULTS']['render_res'], '720')
-        self.assertEqual([v for v, _t in ns['ANTI_ALIASING']], ['off', 'fsr3'])
+        self.assertEqual([v for v, _t in ns['ANTI_ALIASING']], ['off', 'fsr3', 'gsr2'])
         self.assertEqual([v for v, _t in ns['FRAME_GENERATION']], ['off', 'fsr3', 'lsfg'])
         self.assertEqual([v for v, _t in ns['FRAME_GEN_MULTIPLIERS']], ['2', '3', '4'])
         linux.apply_arm_defaults(ns)  # once more: LSFG listed once
@@ -30,11 +52,20 @@ class ArmLauncher(unittest.TestCase):
         self.assertIn('40', [v for v, _t in ns['FRAME_RATES']])
 
     def test_ini_round_trip(self):
-        values = linux.arm_ini_values({'frame_rate': '45', 'render_res': '1080', 'scaler': 'bilinear'})
-        self.assertEqual(values, {'fps_limit': '45', 'render_720p': '0', 'render_540p': '0', 'fsr1': '0'})
+        values = linux.arm_ini_values({'frame_rate': '45', 'render_res': '1080', 'anti_aliasing': 'off'})
+        self.assertEqual(values, {'fps_limit': '45', 'render_720p': '0', 'render_540p': '0', 'fsr1': '0',
+                                  'upscaler': 'off', 'preset': '0'})
         text = ''.join(f'{k}={v}\n' for k, v in values.items())
         self.assertEqual(linux.arm_settings_from_ini('show_fps=1\n' + text),
-                         {'frame_rate': '45', 'render_res': '1080', 'scaler': 'bilinear'})
+                         {'frame_rate': '45', 'render_res': '1080', 'anti_aliasing': 'off',
+                          'upscale_preset': 'off'})
+        # One list: FSR 1 is upscaler=off with fsr1=1; GSR 2 with a preset.
+        for method, preset in (('fsr1', 'off'), ('gsr2', 'performance'), ('fsr3', 'quality'), ('taa', 'off')):
+            values = linux.arm_ini_values({'anti_aliasing': method, 'upscale_preset': preset})
+            text = ''.join(f'{k}={v}\n' for k, v in values.items())
+            back = linux.arm_settings_from_ini(text)
+            self.assertEqual((back['anti_aliasing'], back['upscale_preset']), (method, preset))
+        self.assertEqual(linux.arm_ini_values({'anti_aliasing': 'dlss'})['upscaler'], 'off')
         for res, flags in (('720', ('1', '0')), ('540', ('0', '1'))):
             values = linux.arm_ini_values({'render_res': res})
             self.assertEqual((values['render_720p'], values['render_540p']), flags)
@@ -51,7 +82,31 @@ class ArmLauncher(unittest.TestCase):
     def test_environment(self):
         env = {'BB_VBLANK_HZ': '40', 'BB_FSR1': '1', 'BB_UPSCALER': 'dlss', 'BB_FRAME_GEN': 'off'}
         linux.arm_environment({'anti_aliasing': 'dlss'}, env)
-        self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_UPSCALER': 'off', 'BB_FRAME_GEN': 'off'})
+        # The upscaler goes to bbport.ini (arm_ini_values), not the environment.
+        self.assertEqual(env, {'BB_VBLANK_HZ': '60', 'BB_FRAME_GEN': 'off'})
+
+    def test_graphics_patches(self):
+        # All off by default (the games as they are); one switched on is applied.
+        env = {'BB_GRAPHICS_PATCHES': 'no_fog'}
+        linux.arm_environment({'gfx_no_ssao': True, 'gfx_no_fog': False, 'gfx_shadows': '2'}, env)
+        self.assertEqual(env['BB_GRAPHICS_PATCHES'], 'no_ssao shadows_2')
+        linux.arm_environment({'gfx_shadows': '0'}, env)
+        self.assertNotIn('BB_GRAPHICS_PATCHES', env)
+        self.assertFalse(any(linux.ARM_GRAPHICS_DEFAULTS[k] for k, _p, _t, _h in linux.ARM_GRAPHICS_PATCHES))
+        import json
+        catalog = json.loads((ROOT / 'patches' / 'graphics_patches.json').read_text())
+        ids = {p['id'] for p in catalog['patches']}
+        self.assertEqual({p for _k, p, _t, _h in linux.ARM_GRAPHICS_PATCHES} |
+                         {'shadows_2', 'shadows_1', 'movies_below_1080p'}, ids)
+
+    def test_skin_batch_switch(self):
+        env = {}
+        linux.arm_environment({'arm_skin_batch': False}, env)
+        self.assertEqual(env['BB_SKIN_BATCH'], '0')
+        env = {}
+        linux.arm_environment({}, env)
+        self.assertNotIn('BB_SKIN_BATCH', env)
+        self.assertTrue(linux.ARM_DEFAULTS['arm_skin_batch'])
 
     def test_game_rate(self):
         env = {}

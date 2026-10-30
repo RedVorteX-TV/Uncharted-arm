@@ -16,6 +16,9 @@
 #include <sys/resource.h>
 #endif
 #include "common/assert.h"
+#ifdef __ANDROID__
+#include "bbport_adpf.h"
+#endif
 #include "bbport_settings.h"
 #include "bbport_toggles.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
@@ -234,6 +237,11 @@ int VideoOutDriver::RegisterBuffers(VideoOutPort* port, s32 startIndex, void* co
         return ORBIS_VIDEO_OUT_ERROR_INVALID_VALUE;
     }
 
+    if (attribute && attribute->width >= 320 && attribute->height >= 180) {
+        // The blur scaling below 1080p (Rasterizer::PostBlurScale) reads the game's size.
+        BbSettings::Get().game_display_width = int(attribute->width);
+        BbSettings::Get().game_display_height = int(attribute->height);
+    }
     const s32 end_index = startIndex + bufferNum;
     if (bufferNum > 0 &&
         std::any_of(port->buffer_slots.begin() + startIndex, port->buffer_slots.begin() + end_index,
@@ -702,6 +710,9 @@ void WaitEopFlipsReached(u64 count, u32 timeout_ms) {
 }
 
 void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_arg, bool is_eop) {
+#ifdef __ANDROID__
+    BbAdpf::FrameSubmitted(); // the frame's CPU work to the ADPF hint session
+#endif
     Vulkan::Frame* frame;
     if (index == -1) {
         frame = presenter->PrepareBlankFrame(false);

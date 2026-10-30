@@ -560,24 +560,51 @@ static int mapped(Segment *segments, uint64_t count, uint64_t address, uint64_t 
 /* BBPATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
  * after relocation. A write may replace a whole base-relative pointer slot (60/90 FPS++ swap
  * function pointers): the patch holds the address at the patches' base, rebased here. */
-static void apply_patches(const char *path, Segment *segments, uint64_t ns, const Reloc *relocs, uint64_t nr) {
+/* Uncharted ARM port: `optional` (--extra-patches, the launcher's graphics patches): an entry
+ * that does not fit (outside the image, over a relocation) is skipped with a line instead of
+ * stopping the game, and the file name is printed with the count. */
+static void apply_patches(const char *path, Segment *segments, uint64_t ns, const Reloc *relocs, uint64_t nr, int optional) {
     FILE *f=fopen(path,"rb");
     char magic[8];
-    if (!f || fread(magic,1,8,f)!=8 || memcmp(magic,"BBPATCH2",8)) fail("invalid patch file");
-    uint64_t base=read64(f), count=read64(f), bytes=0, rebased=0;
+    if (!f || fread(magic,1,8,f)!=8 || memcmp(magic,"BBPATCH2",8)) {
+        if (!optional) fail("invalid patch file");
+        printf("Patches: %s is not a patch file, skipped\n",path);
+        if (f) fclose(f);
+        return;
+    }
+    uint64_t base=read64(f), count=read64(f), bytes=0, rebased=0, skipped=0;
     unsigned char data[4096];
     for (uint64_t i=0;i<count;++i) {
         uint64_t offset=read64(f), length=read64(f);
-        if (!length || length>sizeof(data) || !mapped(segments,ns,offset,length) || fread(data,1,length,f)!=length)
-            fail("bad patch entry");
+        if (!length || length>sizeof(data) || fread(data,1,length,f)!=length) fail("bad patch entry");
+        if (!mapped(segments,ns,offset,length)) {
+            if (!optional) fail("bad patch entry");
+            printf("Patches: %s: write at 0x%" PRIx64 " is outside the image, skipped\n",path,offset);
+            skipped++;
+            continue;
+        }
         uint64_t slots[sizeof(data)/8]; size_t nslots=0;
-        for (uint64_t r=0;r<nr;++r) {
+        int fits=1;
+        for (uint64_t r=0;r<nr && fits;++r) {
             if (!(relocs[r].target<offset+length && offset<relocs[r].target+8)) continue;
             uint64_t target=relocs[r].target, value;
-            if (relocs[r].kind || target<offset || target+8>offset+length) fail("patch overlaps a relocation");
+            if (relocs[r].kind || target<offset || target+8>offset+length) {
+                if (!optional) fail("patch overlaps a relocation");
+                fits=0;
+                break;
+            }
             memcpy(&value,data+(target-offset),8);
-            if (value<base || !mapped(segments,ns,value-base,1)) fail("patch writes a pointer outside the image");
+            if (value<base || !mapped(segments,ns,value-base,1)) {
+                if (!optional) fail("patch writes a pointer outside the image");
+                fits=0;
+                break;
+            }
             slots[nslots++]=target;
+        }
+        if (!fits) {
+            printf("Patches: %s: write at 0x%" PRIx64 " overlaps a relocation, skipped\n",path,offset);
+            skipped++;
+            continue;
         }
         memcpy(image+offset,data,length);
         for (size_t s=0;s<nslots;++s) {
@@ -591,7 +618,11 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
     }
     if (fgetc(f)!=EOF) fail("trailing data in patch file");
     fclose(f);
-    printf("Patches: %" PRIu64 " writes, %" PRIu64 " bytes applied, %" PRIu64 " pointers rebased\n",count,bytes,rebased);
+    if (optional)
+        printf("Patches: %s: %" PRIu64 " writes, %" PRIu64 " bytes applied%s\n",path,count-skipped,bytes,
+               skipped ? " (some skipped)" : "");
+    else
+        printf("Patches: %" PRIu64 " writes, %" PRIu64 " bytes applied, %" PRIu64 " pointers rebased\n",count,bytes,rebased);
 }
 /* BB_GUEST_HOOKS="offset:bytes,...,START-END": diagnostic call counters on guest functions.
  * The first `bytes` (>= 5, whole position-independent instructions) at each image offset move
@@ -858,6 +889,27 @@ static void patch_collection_skip(uint64_t image_size) {
     memcpy(image+jump+1,&rel,4);
     printf("Collection menu: skipped once, U1's front end opens first\n");
 }
+
+static void install_signature_fixes(Segment *segments, uint64_t ns) {
+    size_t count=0;
+    const RuntimeGuestFix *fixes=runtime_guest_fixes(&count);
+    for (size_t i=0; i<count; ++i) {
+        const RuntimeGuestFix *fix=&fixes[i];
+        size_t matches=0, length=0; uint64_t found=0;
+        for (uint64_t j=0; j<ns && matches<2; ++j) {
+            if (!(segments[j].flags&1)) continue;
+            size_t at=0;
+            size_t n=runtime_find_guest_fix(image+segments[j].address, segments[j].size,
+                                            fix->pattern, &at, &length);
+            if (n && !matches) found=segments[j].address+at;
+            matches+=n;
+        }
+        if (matches!=1 || fix->offset>length || fix->moved>length-fix->offset ||
+            !mapped(segments,ns,found+fix->offset,fix->moved)) continue;
+        memcpy(image+found+fix->offset,fix->patch,fix->moved);
+        printf("Callbacks: %s at %#" PRIx64 " (unique signature patch)\n",fix->name,found+fix->offset);
+    }
+}
 static void install_game_callbacks(Segment *segments, uint64_t ns, uint64_t image_size) {
     size_t count=0;
     const RuntimeGuestCallback *callbacks=runtime_guest_callbacks(&count);
@@ -970,6 +1022,7 @@ static void patch_eop_tick_wait(uint64_t image_size) {
  * applied at start). Descriptors are closed first so the old GPU device and its memory are
  * released before the new process opens its own. */
 void runtime_restart(void) {
+    if (gpu_enabled) bbgpu_flush_pipeline_cache(); /* the driver's pipeline cache to disk first */
     fflush(NULL);
 #ifdef _WIN32
     /* run.py sets BB_RESTART_COMMAND: the launch command line, started again (new patches). */
@@ -1014,6 +1067,9 @@ int main(int argc, char **argv) {
 #endif
     if (argc == 2 && !strcmp(argv[1], "--vulkan-only")) return vulkan_smoke();
     check_cpu();
+#ifdef __ANDROID__
+    bbgpu_adpf_register_main();
+#endif
 #ifdef _WIN32
     /* The PS4 user range must stay free of host allocations (GPU driver, heaps), and the guest
      * TCB needs one of the 64 TEB TLS slots before DLLs (Vulkan drivers) take them. */
@@ -1023,6 +1079,7 @@ int main(int argc, char **argv) {
     int cpu_only = 0, strict_imports = 0, list_missing = 0;
     unsigned timeout_seconds = 10;
     const char *content_profile=NULL, *app0=NULL, *user_dir=NULL, *patch_file=NULL, *guest_argv_file=NULL;
+    const char *extra_patches[32]; int extra_count=0;
     for (int i = 2; i < argc; ++i) {
         if (!strcmp(argv[i], "--cpu-only")) cpu_only = 1;
         else if (!strcmp(argv[i], "--strict-imports")) strict_imports = 1;
@@ -1031,6 +1088,10 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--app0") && i+1<argc) app0=argv[++i];
         else if (!strcmp(argv[i], "--user") && i+1<argc) user_dir=argv[++i];
         else if (!strcmp(argv[i], "--patches") && i+1<argc) patch_file=argv[++i];
+        else if (!strcmp(argv[i], "--extra-patches") && i+1<argc) {
+            if (extra_count == (int)(sizeof(extra_patches)/sizeof(extra_patches[0]))) { fprintf(stderr, "Too many --extra-patches\n"); return 1; }
+            extra_patches[extra_count++]=argv[++i];
+        }
         else if (!strcmp(argv[i], "--guest-argv") && i+1<argc) guest_argv_file=argv[++i];
         else if (!strcmp(argv[i], "--timeout") && i+1<argc) timeout_seconds=(unsigned)strtoul(argv[++i],NULL,10);
         else { fprintf(stderr, "Unknown option: %s\n", argv[i]); return 1; }
@@ -1252,11 +1313,13 @@ int main(int argc, char **argv) {
         }
         memcpy(image + relocs[i].target, &value, 8);
     }
-    if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
+    if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr, 0);
+    for (int e=0;e<extra_count;++e) apply_patches(extra_patches[e], segments, ns, relocs, nr, 1);
     install_guest_hooks(segments, ns);
     {
         uint64_t image_end=0;
         for (uint64_t s=0;s<ns;++s) if (segments[s].address+segments[s].size>image_end) image_end=segments[s].address+segments[s].size;
+        install_signature_fixes(segments, ns);
         install_game_callbacks(segments, ns, image_end);
         patch_collection_skip(image_end);
         patch_eop_tick_wait(image_end);

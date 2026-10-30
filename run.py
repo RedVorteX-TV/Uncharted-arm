@@ -142,26 +142,47 @@ def prepare(game, exe, out):
     stamp.write_text(source, encoding='utf-8')
 
 
-def config_flag(env, name):
-    """A 0/1 setting of bbport.ini (the in-game menu and the launchers write it), read again at
-    each start so "Save and restart" picks it up."""
+def config_value(env, name):
+    """A setting of bbport.ini (the in-game menu and the launchers write it), read again at each
+    start so "Save and restart" picks it up; None when absent (the last line of a key wins)."""
     try:
         text = Path(env.get('BB_CONFIG', '')).read_text(encoding='utf-8', errors='replace')
     except OSError:
-        return False
+        return None
     value = None
     for line in text.splitlines():
         key, _, rest = line.partition('=')
         if key.strip() == name:
             value = rest.strip()
-    return value == '1'
+    return value
 
 
-def render_720p(env):
+def config_flag(env, name):
+    """A 0/1 setting of bbport.ini (config_value)."""
+    return config_value(env, name) == '1'
+
+
+def ini_upscale_preset(env, key=''):
+    """ARM port: the upscaling preset of bbport.ini (the ARM launcher and the in-game menu:
+    preset=1..4 with a temporal upscaler, upscaler= or BB_UPSCALER): quality, balanced, performance
+    or ultra, '' for none. It sets the render size instead of render_720p / render_540p.
+    BB_UPSCALE_QUALITY[_U1/_U2/_U3] (the x86-64 launcher) is read by render_resolution()."""
+    if (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') if key else '') or env.get('BB_UPSCALE_QUALITY'):
+        return ''
+    upscaler = (env.get('BB_UPSCALER') or config_value(env, 'upscaler') or '').strip().lower()
+    if upscaler not in TEMPORAL_UPSCALERS:
+        return ''
+    return {'1': 'quality', '2': 'balanced', '3': 'performance', '4': 'ultra'}.get(
+        config_value(env, 'preset') or '', '')
+
+
+def render_720p(env, key=''):
     """BB_RENDER_720P (the launcher's Steam Deck mode), else the in-game menu's choice in bbport.ini
-    (render_720p=1, ARM port)."""
+    (render_720p=1, ARM port), unless a bbport.ini upscaling preset sets the size."""
     if env.get('BB_RENDER_720P') in ('0', '1'):
         return env['BB_RENDER_720P'] == '1'
+    if ini_upscale_preset(env, key):
+        return False
     return config_flag(env, 'render_720p')
 
 
@@ -170,6 +191,10 @@ def render_720p(env):
 # with FSR 1) bring each frame up to it before the HUD and menus are drawn at the output size
 # (TemporalUpscaler::OnComposite). After BilalReloaded's Uncharted PC port.
 UPSCALE_SCALES = {'quality': 1.5, 'balanced': 1.7, 'performance': 2.0, 'ultra': 3.0}
+# ARM port: the launcher's upscaling output 1280x720 (BB_UPSCALE_OUTPUT) with a bbport.ini preset:
+# the render sizes the Android launcher uses for that output (960x540 for Quality, as FSR 1's 540p).
+UPSCALE_720_SIZES = {'quality': (960, 540), 'balanced': (832, 468), 'performance': (640, 360), 'ultra': (640, 360)}
+TEMPORAL_UPSCALERS = ('fsr3', 'gsr2', 'fsr4', 'fsr411', 'dlss')
 COMPOSITE_PS = '749bbec9'  # the copy of the finished frame into the display buffer (all three games)
 TONEMAP_PS = '484cdbf5'    # the draw finishing the frame (Uncharted 3 draws prompts into it after)
 
@@ -190,7 +215,7 @@ def render_resolution(env, exe, out, image):
     the direct memory the larger render target heaps need, and, when the game draws below the
     resolution chosen, the upscale to it. 1920x1080 without a preset: the image as it is."""
     key = next((k for k, v in EXECUTABLES.items() if v == exe), '')
-    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE', 'BB_RENDER_RES', 'BB_OUTPUT_RES',
+    for name in ('BB_SCENE_SIZE', 'BB_MOVIE_SIZE', 'BB_VDEC_CONTENT', 'BB_RENDER_RES', 'BB_OUTPUT_RES',
                  'BB_UI_COMPOSITE_PS', 'BB_UI_TONEMAP_PS'):
         env.pop(name, None)
     if 'BB_DMEM_MB_USER' in env:
@@ -201,27 +226,34 @@ def render_resolution(env, exe, out, image):
         return image
     # The 720p mode (Steam Deck mode, ARM's render_720p) renders at 720p its own way
     # (scripts/render_720p.py).
-    if render_720p(env):
+    if render_720p(env, key):
         if env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION'):
             print('Render resolution: not used with the 720p mode (the game renders at 1280x720)')
         return image
     size = (env.get(f'BB_RESOLUTION_{key.upper()}') or env.get('BB_RESOLUTION', '')).strip().lower()
     # 960x540 (bbport.ini render_540p: the in-game menu and the ARM launcher): the whole game at
     # that size, scaled to the screen like the 720p mode, whatever resolution the launcher sends.
-    render_540p = config_flag(env, 'render_540p')
+    ini_preset = ini_upscale_preset(env, key)
+    preset = ini_preset or (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or
+                            env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
+    render_540p = config_flag(env, 'render_540p') and not ini_preset
     if render_540p:
         if size and size != '960x540':
             print(f'Render resolution: 960x540 (render_540p) instead of {size}')
         size = '960x540'
     output = parse_size(size) if size not in ('', 'native', 'off', '0') else None
     output = output or (1920, 1080)
-    preset = (env.get(f'BB_UPSCALE_QUALITY_{key.upper()}') or env.get('BB_UPSCALE_QUALITY', '')).strip().lower()
     scale = None if render_540p else UPSCALE_SCALES.get(preset)
     if scale and env.get('BB_UPSCALER', '').lower() == 'none':
         print('Upscaling preset: needs the camera tracking (BB_UPSCALER=none): drawing at the output size')
         scale = None
     wanted = output
-    if scale:
+    if scale and ini_preset and env.get('BB_UPSCALE_OUTPUT', '').strip().lower() == '1280x720':
+        # The ARM launcher's 1280x720 output: FSR 3.1 / GSR 2 rebuild 720p frames, the screen's
+        # scaling does the rest (less GPU time than rebuilding 1080p ones).
+        output = (1280, 720)
+        wanted = UPSCALE_720_SIZES[preset]
+    elif scale:
         # Widths in steps of 16 (Uncharted 3 asserts it in its post processing), heights of 4.
         wanted = (max(640, round(output[0] / scale / 16) * 16), max(360, round(output[1] / scale / 4) * 4))
     render = wanted
@@ -230,8 +262,7 @@ def render_resolution(env, exe, out, image):
     if wanted != (1920, 1080):
         import json
         text = f'{wanted[0]}x{wanted[1]}'
-        # 540p: the movie decoder patched too (render_res.py --movie-decoder), as on Android.
-        patched = out / f'boot-res-{text}{"-movies" if render_540p else ""}.bin'
+        patched = out / f'boot-res-{text}.bin'
         meta = patched.with_suffix('.json')
         sources = [image, PORT / 'scripts' / 'render_res.py']
         if not (patched.is_file() and meta.is_file() and
@@ -239,8 +270,7 @@ def render_resolution(env, exe, out, image):
             print(f'Render resolution: preparing {text} for {key.upper()} ...')
             for old in out.glob('boot-res-*'):
                 old.unlink(missing_ok=True)
-            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text,
-                       *(['--movie-decoder'] if render_540p else []))
+            run_script('render_res.py', image, '--out', patched, '--exe', key, '--size', text)
         info = json.loads(meta.read_text(encoding='utf-8'))
         render = parse_size(info['render'])
         movie_decoder = bool(info.get('movie_decoder'))
@@ -250,7 +280,12 @@ def render_resolution(env, exe, out, image):
             env['BB_DMEM_MB'] = str(max(needed, int(player)) if player.isdigit() else needed)
     render_text = f'{render[0]}x{render[1]}'
     env['BB_SCENE_SIZE'] = render_text
-    if render != (1920, 1080) and not movie_decoder:
+    if render_540p and render == (960, 540):
+        # 540p: the movies stay 1920x1080 frames with the picture in their top-left 960x540, the
+        # part the game shows (Videodec2, from revvv991's uncharted-android). The movie decoder
+        # patched to 960x540 (render_res.py --movie-decoder) gave grey movies with coloured stripes.
+        env['BB_VDEC_CONTENT'] = render_text
+    elif render != (1920, 1080) and not movie_decoder:
         env['BB_MOVIE_SIZE'] = render_text
     upscaled = render[0] < output[0] or render[1] < output[1]
     if upscaled:
@@ -350,13 +385,26 @@ def main():
     # of chapter 21) from memory it also writes: merging leaves them on the GPU, so it runs with
     # accurate GPU memory (BB_GPU_MERGE=0) unless the player chose otherwise. Uncharted 3 runs the
     # same engine and showed the same floating NPCs (Linux fork), so it does too.
+    # Uncharted 2's aim and turret blur read tiny render results back (BB_READBACK_SMALL): U2
+    # only, as upstream uncharted_pc 0.3.8 and the Android app (~13% slower in U3, upstream).
     player_merge = env.get('BB_GPU_MERGE')
+    player_small = env.get('BB_READBACK_SMALL')
+    player_copy64 = {name for name in ('BB_SCALAR_COPY64_SYNC', 'BB_SCALAR_COPY64_DEFER') if name in env}
     while True:
         if player_merge is None:
             if exe in (EXECUTABLES['u2'], EXECUTABLES['u3']):
                 env['BB_GPU_MERGE'] = '0'
             else:
                 env.pop('BB_GPU_MERGE', None)
+        if player_small is None:
+            env['BB_READBACK_SMALL'] = '1' if exe == EXECUTABLES['u2'] else '0'
+        # Uncharted 2's mesh raycasters read GPU results on the CPU after checkpoints (copy
+        # shader 0x6a6422a9): copied into guest memory, on a landing thread once the GPU is past
+        # them (BB_SCALAR_COPY64_SYNC=2, BB_SCALAR_COPY64_DEFER=1; U2 only). Without it the game
+        # asserted iSubMesh < m_numSubMeshInstances (erickmendes22's uncharted-android).
+        for name, u2_value in (('BB_SCALAR_COPY64_SYNC', '2'), ('BB_SCALAR_COPY64_DEFER', '1')):
+            if name not in player_copy64:
+                env[name] = u2_value if exe == EXECUTABLES['u2'] else '0'
         game, file = locate(env, exe)
         if not game:
             fail('Set BB_GAME_DIR to the game folder (the one with eboot.bin).')
@@ -376,7 +424,7 @@ def main():
         # Linux fork: BB_RENDER_720P=1 (Steam Deck mode) renders the game at 1280x720 through its
         # own 720p video settings (scripts/render_720p.py). An executable whose settings are not
         # found starts at its usual 1080p.
-        if render_720p(env):
+        if render_720p(env, next((k for k, v in EXECUTABLES.items() if v == exe), '')):
             patches = out / 'render-720p.bin'
             script = ['--script'] if getattr(sys, 'frozen', False) else []
             made = subprocess.run([sys.executable, *script, str(PORT / 'scripts' / 'render_720p.py'),
@@ -386,6 +434,34 @@ def main():
                 command += ['--patches', str(patches)]
             else:
                 print('Render 720p: not available for this executable; rendering at 1080p')
+        # ARM port: the launcher's graphics patches (BB_GRAPHICS_PATCHES=id ..., from the Bachata S4
+        # catalog): the ones whose original bytes match this executable (scripts/graphics_patches.py),
+        # applied after the others; a write that does not fit is skipped (--extra-patches).
+        graphics = env.get('BB_GRAPHICS_PATCHES', '').split()
+        # Below 1080p with the movies in a corner of 1080p frames (BB_VDEC_CONTENT, 540p): the
+        # game's movie textures and chroma plane at the decoder's 1920x1088 (the catalog's
+        # movies_below_1080p); without them the movies were green and enlarged.
+        if env.get('BB_VDEC_CONTENT'):
+            graphics.append('movies_below_1080p')
+        # FSR 3.1, GSR 2 and TAA take the camera from the motion blur's velocity pass, which
+        # no_motion_blur removes: they would run on no frame. no_aa removes the game's final frame
+        # copy (pixel shader 749bbec9) the upscale starts from, and the velocity pass with it: the
+        # presets drew black frames. The upscalers are the anti-aliasing then.
+        upscaler = (env.get('BB_UPSCALER') or config_value(env, 'upscaler') or 'off').strip().lower()
+        if upscaler in TEMPORAL_UPSCALERS + ('taa',):
+            for patch in ('no_motion_blur', 'no_aa'):
+                if patch in graphics:
+                    graphics.remove(patch)
+                    print(f'Graphics patch {patch}: not applied with the {upscaler} upscaler '
+                          '(it needs the game\'s camera pass and frame copy)')
+        if graphics:
+            patches = out / 'graphics.bin'
+            script = ['--script'] if getattr(sys, 'frozen', False) else []
+            made = subprocess.run([sys.executable, *script, str(PORT / 'scripts' / 'graphics_patches.py'),
+                                   str(out / 'eboot.elf'), exe, str(patches), *graphics],
+                                  stdin=subprocess.DEVNULL, creationflags=no_console()).returncode == 0
+            if made:
+                command += ['--extra-patches', str(patches)]
         loadexec.unlink(missing_ok=True)
         # No stdin: an inherited pipe (shells such as Git Bash) cost the game its console output.
         code = subprocess.run([*command, *args], stdin=subprocess.DEVNULL, creationflags=no_console()).returncode

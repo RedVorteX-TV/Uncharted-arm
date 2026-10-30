@@ -111,6 +111,13 @@ class Card:
         c.tag_lower('bg')
 
 
+def blend(color, background, amount):
+    """color moved amount (0..1) of the way to background (#rrggbb)."""
+    a = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(background[i:i + 2], 16) for i in (1, 3, 5)]
+    return '#' + ''.join(f'{round(x + (y - x) * amount):02x}' for x, y in zip(a, b))
+
+
 class Toggle:
     """An on/off switch bound to a BooleanVar."""
 
@@ -120,17 +127,27 @@ class Toggle:
         self.bg = background or colors['card']
         self.canvas = tk.Canvas(parent, width=self.w, height=self.h, bg=self.bg, highlightthickness=0, bd=0,
                                 cursor='hand2')
-        self.canvas.bind('<Button-1>', lambda _e: self.var.set(not self.var.get()))
+        self.state = 'normal'  # 'disabled': another setting turns this one off (pale, not clickable)
+        self.canvas.bind('<Button-1>', lambda _e: self.state == 'normal' and self.var.set(not self.var.get()))
         self.var.trace_add('write', lambda *_a: self.draw())
         self.draw()
+
+    def configure(self, state=None):
+        if state is not None and state != self.state:
+            self.state = state
+            self.canvas.configure(cursor='hand2' if state == 'normal' else 'arrow')
+            self.draw()
 
     def draw(self):
         c, colors, on = self.canvas, self.colors, bool(self.var.get())
         c.delete('all')
         track = colors['gold'] if on else colors['track']
+        knob_color = '#14110a' if on else colors['knob']
+        if self.state != 'normal':  # pale: most of the way to the background
+            track, knob_color = blend(track, self.bg, 0.6), blend(knob_color, self.bg, 0.6)
         c.create_image(0, 0, anchor='nw', image=rounded_image(self.w, self.h, self.h // 2, track, self.bg))
         d = self.h - 6
-        knob = circle_image(d, '#14110a' if on else colors['knob'], track)
+        knob = circle_image(d, knob_color, track)
         c.create_image(self.w - 3 - d if on else 3, 3, anchor='nw', image=knob)
 
     def grid(self, **kw):

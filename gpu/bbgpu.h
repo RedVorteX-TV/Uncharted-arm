@@ -20,6 +20,8 @@ void bbgpu_register_kernel(void);
 void bbnet_configure(const char *app0, const char *serial, const char *title, const char *app_ver);
 /* Creates window, Vulkan device, presenter and GPU command processor. */
 int bbgpu_init(const BbGpuConfig *config);
+/* Writes the Vulkan driver's pipeline cache to disk (before the process ends or restarts). */
+void bbgpu_flush_pipeline_cache(void);
 /* Function for an imported NID ("NID#lib#mod"), or 0 when the GPU library does not provide it. */
 uintptr_t bbgpu_resolve(const char *scoped_nid);
 /* Called first by the loader's SIGSEGV handler: 1 when a GPU page-tracking fault was handled. */
@@ -42,6 +44,11 @@ int bbgpu_camera_yaw(float *yaw_degrees, double *age_seconds);
 int bbgpu_mouse_sample(float *dx, float *dy, uint32_t *buttons, int *wheel);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned bbgpu_symbol_count(void);
+#ifdef __ANDROID__
+/* ADPF performance hints (shim/bbport_adpf.cpp): the game's main thread, a host thread named. */
+void bbgpu_adpf_register_main(void);
+void bbgpu_adpf_thread_named(const char* name);
+#endif
 #ifdef __cplusplus
 }
 #endif

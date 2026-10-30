@@ -55,7 +55,8 @@ def writes(elf, fields=None):
     out = []
     for index, site in enumerate(sites):
         # A setup's fields end before the next one (and its cmp/jne) begins.
-        end = min(site + WINDOW, sites[index + 1] - 9 if index + 1 < len(sites) else len(elf))
+        # The last 4-byte value read starts 4 bytes before the end of the file.
+        end = min(site + WINDOW, sites[index + 1] - 9 if index + 1 < len(sites) else len(elf), len(elf) - 3)
         # cmp $1, %esi; jne <next mode>: the mode switch's 1080p case. It jumps to the game's own
         # 720p case instead (sizes, the 160x180 fields, the 1280.0/720.0 it passes on).
         # (cmp $1 with any 32-bit register: 83 F8+r 01.)

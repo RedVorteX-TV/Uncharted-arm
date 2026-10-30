@@ -876,7 +876,7 @@ bool Presenter::PresentImage(Frame* frame, vk::Image image, bool last) {
                          MakeImageBlitFit(frame->width, frame->height, extent.width, extent.height),
                          vk::Filter::eLinear);
         // bbport: the settings menu / FPS counter over the frame, at display resolution.
-        BbOverlay::NotePresent();
+        BbOverlay::NotePresent(last);
         const bool overlay = BbOverlay::Visible();
         const std::array post_barriers{
             vk::ImageMemoryBarrier{

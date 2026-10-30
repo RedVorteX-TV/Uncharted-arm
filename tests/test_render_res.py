@@ -52,14 +52,46 @@ class UpscalePresets(unittest.TestCase):
 
     def test_540p_from_bbport_ini(self):
         # The ARM launcher and the in-game menu: render_540p=1 wins over the launcher's resolution,
-        # without an upscaling preset, and the movie decoder is patched instead of BB_MOVIE_SIZE.
+        # without an upscaling preset; the movie decoder keeps 1920x1080 frames, with the picture
+        # in their top-left 960x540 (BB_VDEC_CONTENT; patched to 960x540 the movies were striped).
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_QUALITY': 'quality'},
                              ini='render_720p=0\nrender_540p=1\n')
         self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertEqual(env['BB_VDEC_CONTENT'], '960x540')
         self.assertNotIn('BB_RENDER_RES', env)
         self.assertNotIn('BB_MOVIE_SIZE', env)
-        self.assertIn(bytes.fromhex('c7442430') + (960).to_bytes(4, 'little') + bytes.fromhex('c7442434') +
-                      (540).to_bytes(4, 'little'), self.patched)
+        self.assertIn(DECODER_1080P, self.patched)
+
+    def test_preset_from_bbport_ini(self):
+        # ARM: GSR 2 (or FSR 3.1) with preset=3 in bbport.ini: 960x540 upscaled to 1920x1080, the
+        # 720p and 540p modes left aside.
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
+                             ini='render_720p=1\nrender_540p=0\nupscaler=gsr2\npreset=3\n')
+        self.assertEqual(env['BB_RENDER_RES'], '960x540')
+        self.assertEqual(env['BB_OUTPUT_RES'], '1920x1080')
+        import sys
+        sys.path.insert(0, str(ROOT))
+        import run
+        self.assertFalse(run.render_720p({'BB_CONFIG': '/nonexistent'} | env, 'u3'))
+        # Native (preset=0) or no temporal upscaler: the render resolution again.
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
+                             ini='render_540p=1\nupscaler=off\npreset=3\n')
+        self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertNotIn('BB_RENDER_RES', env)
+
+    def test_preset_with_720p_output(self):
+        # ARM launcher's 1280x720 upscaling output (BB_UPSCALE_OUTPUT): the Android launcher's sizes,
+        # Balanced 832x468 upscaled to 1280x720; without a preset the output setting is not used.
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_OUTPUT': '1280x720'},
+                             ini='render_720p=0\nrender_540p=0\nupscaler=gsr2\npreset=2\n')
+        self.assertEqual((env['BB_RENDER_RES'], env['BB_OUTPUT_RES']), ('832x468', '1280x720'))
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_OUTPUT': '1280x720'},
+                             ini='render_720p=0\nrender_540p=0\nupscaler=fsr3\npreset=1\n')
+        self.assertEqual((env['BB_RENDER_RES'], env['BB_OUTPUT_RES']), ('960x540', '1280x720'))
+        env = self.run_sizes('big3-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080', 'BB_UPSCALE_OUTPUT': '1280x720'},
+                             ini='render_720p=0\nrender_540p=1\nupscaler=off\npreset=2\n')
+        self.assertEqual(env['BB_SCENE_SIZE'], '960x540')
+        self.assertNotIn('BB_OUTPUT_RES', env)
 
     def test_720p_wins_over_540p(self):
         env = self.run_sizes('big2-ps4_Shipping.elf', {'BB_RESOLUTION': '1920x1080'},
