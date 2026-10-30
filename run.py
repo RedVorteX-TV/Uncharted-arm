@@ -436,12 +436,16 @@ def main():
         if env.get('BB_VDEC_CONTENT'):
             graphics.append('movies_below_1080p')
         # FSR 3.1, GSR 2 and TAA take the camera from the motion blur's velocity pass, which
-        # no_motion_blur removes: they would run on no frame.
+        # no_motion_blur removes: they would run on no frame. no_aa removes the game's final frame
+        # copy (pixel shader 749bbec9) the upscale starts from, and the velocity pass with it: the
+        # presets drew black frames. The upscalers are the anti-aliasing then.
         upscaler = (env.get('BB_UPSCALER') or config_value(env, 'upscaler') or 'off').strip().lower()
-        if 'no_motion_blur' in graphics and upscaler in TEMPORAL_UPSCALERS + ('taa',):
-            graphics.remove('no_motion_blur')
-            print(f'Graphics patch no_motion_blur: not applied with the {upscaler} upscaler '
-                  '(it needs the motion blur\'s camera pass)')
+        if upscaler in TEMPORAL_UPSCALERS + ('taa',):
+            for patch in ('no_motion_blur', 'no_aa'):
+                if patch in graphics:
+                    graphics.remove(patch)
+                    print(f'Graphics patch {patch}: not applied with the {upscaler} upscaler '
+                          '(it needs the game\'s camera pass and frame copy)')
         if graphics:
             patches = out / 'graphics.bin'
             script = ['--script'] if getattr(sys, 'frozen', False) else []

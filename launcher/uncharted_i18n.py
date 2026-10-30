@@ -359,6 +359,8 @@ ES = {
     'No fog': 'Sin niebla',
     'No volumetric lights': 'Sin luces volumétricas',
     'No motion blur': 'Sin desenfoque de movimiento',
+    "Not applied with FSR 3.1, GSR 2 or TAA: they start from the game's frame copy this patch removes.":
+        'No se aplica con FSR 3.1, GSR 2 ni TAA: parten de la copia del fotograma que este parche elimina.',
     "Not applied with FSR 3.1, GSR 2 or TAA: they take the camera's motion from the motion blur's pass.":
         'No se aplica con FSR 3.1, GSR 2 ni TAA: toman el movimiento de la cámara del pase del desenfoque.',
     'No depth of field': 'Sin profundidad de campo',
