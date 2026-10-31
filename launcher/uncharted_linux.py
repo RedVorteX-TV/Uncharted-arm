@@ -450,6 +450,7 @@ def apply_defaults(ns):
     """Linux settings the Windows launcher does not have: Steam Deck mode (on by default on
     SteamOS) and a 30 FPS frame rate."""
     ns['APP_DEFAULTS'].setdefault('steam_deck', steam_deck())
+    ns['APP_DEFAULTS'].setdefault('update_dir', '')  # the title update's folder (Files page)
     ns['version_tuple'] = version_key  # the launcher's update check compares with it
     for name in ('WINDOW_SIZES', 'ANTI_ALIASING'):
         ns[name][:] = [(value, text.replace("(the games' own)", '(Default)').replace("(the game's own)", '(Default)'))
@@ -823,11 +824,20 @@ def deck_allows(key, value):
     return value not in DECK_UNAVAILABLE.get(key, ())
 
 
+def update_environment(settings, env):
+    """The title update (1.02) as its own folder: run.py merges it over the game. Empty: the
+    <game folder>-UPDATE folder beside the game (shadPS4's layout), when there is one."""
+    folder = str(settings.get('update_dir') or '').strip()
+    if folder:
+        env['BB_GAME_UPDATE_DIR'] = folder
+
+
 def deck_environment(settings, env):
     """Steam Deck mode: the Deck's screen and presentation, 30 or 60 FPS, and nothing its GPU
     cannot run. Applied before the player's own Environment entries, which can override any of it.
     The GPU readbacks choice was removed (Off made Uncharted 2's convoy unpassable, Precise hangs
     Uncharted 2 at startup), so a gpu_readbacks value saved by an older launcher is ignored."""
+    update_environment(settings, env)
     if ARM:
         arm_environment(settings, env)
         return
@@ -1610,6 +1620,9 @@ def launcher_class(base, ns):
                         on_change=self.refresh)
             self.folder(f, 'user_dir', _('Saves folder'), _('Where saves and the shader cache are kept'),
                         _('Empty: a Saves folder in the game folder.'))
+            self.folder(f, 'update_dir', _('Update folder'), _('The folder of the game update (1.02)'),
+                        _('Optional: the game update (1.02) as its own folder. Empty: the folder named like the '
+                          'game folder with -UPDATE, when there is one beside it.'))
             self.section(f, _('Saves'))
             card = self.target(f)
             self.saves_rows = self.tk.Frame(card, bg=CARD)

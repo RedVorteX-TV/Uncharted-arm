@@ -87,6 +87,11 @@ ES = {
         'No se incluye con el port. Después elige LSFG como generación de fotogramas, aquí o en el menú del juego.',
     'All files': 'Todos los archivos',
     'Game display rate': 'Frecuencia del juego',
+    'Update folder': 'Carpeta de la actualización',
+    'The folder of the game update (1.02)': 'La carpeta de la actualización del juego (1.02)',
+    'Optional: the game update (1.02) as its own folder. Empty: the folder named like the game folder with -UPDATE, when there is one beside it.':
+        'Opcional: la actualización del juego (1.02) en su propia carpeta. Vacío: la carpeta que se llama como la '
+        'del juego con -UPDATE, si hay una al lado.',
     "Auto (the screen's rate)": 'Auto (la frecuencia de la pantalla)',
     'The refresh rate the game paces its frames to. 120 Hz: steadier frame times on 120 Hz screens (a frame a '
     'little over 33 ms is not held until 50 ms). Keep 60 Hz on a 60 Hz screen. Auto: for limits above 60 FPS and '
