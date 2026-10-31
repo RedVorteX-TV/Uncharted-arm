@@ -57,6 +57,13 @@ static const unsigned char u3_focus_reset_102[]={
     0x83,0xf8,0x0f,0x0f,0x84,0xa5,0xfe,0xff,0xff,0xcd,0x41,CC8,CC8,CC8,
 };
 _Static_assert(sizeof(u3_focus_reset_100)==51 && sizeof(u3_focus_reset_102)==53,"patch sizes");
+/* U1 and U2 "pAction != NULL" (moveactioncontroller.cpp:40), from Mevlock's dev fork through
+ * Supermedo/uncharted_pc 14e70f3: the player's move actions come from a pool of 64 slots. Two move
+ * states swapping every frame (landing into a fight, often right after a jump) keep one action
+ * each swap; at high frame rates a long burst filled the pool and stopped the game. The slot count
+ * passed where the character is set up becomes 256 (+144 KB from the character's heap). One site
+ * in U1 and one in U2, in every build; U3 has no such pool. */
+static const unsigned char move_pool_256[]={0xb9,0x00,0x01,0x00,0x00}; /* mov ecx, 256 */
 
 static const RuntimeGuestFix fixes[]={
 {"U2 leg IK NaN delta",
@@ -81,6 +88,10 @@ static const RuntimeGuestFix fixes[]={
       "8d 35 ?? ?? ?? ?? 48 8d 15 ?? ?? ?? ?? 48 8d 0d ?? ?? ?? ?? "
       "41 b8 6a 07 00 00 45 31 c9 ff d0 cd 41",
       0x14, 53, NULL, u3_focus_reset_102},
+/* U1 and U2 move action pool: mov edx,6; mov ecx,64 (slots); mov r8d,32 */
+{"U1/U2 move action pool 256 slots",
+      "ba 06 00 00 00 b9 40 00 00 00 41 b8 20 00 00 00",
+      0x5, 5, NULL, move_pool_256},
 {"U2 camera focus NaN reset",
       "e8 ?? ?? ?? ?? 48 85 c0 74 27 48 8d 3d ?? ?? ?? ?? 48 8d 35 "
       "?? ?? ?? ?? 48 8d 15 ?? ?? ?? ?? 48 8d 0d ?? ?? ?? ?? 41 b8 "
