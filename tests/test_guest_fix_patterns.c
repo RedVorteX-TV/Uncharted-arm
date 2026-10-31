@@ -16,10 +16,18 @@ int main(void) {
     assert(runtime_find_guest_fix(code,sizeof(code),"48 zz",&at,&n)==0);
     assert(runtime_find_guest_fix(code,sizeof(code),"ff ff",&at,&n)==0);
     size_t count=0; const RuntimeGuestFix *fixes=runtime_guest_fixes(&count);
-    assert(count==6);
+    assert(count==7);
     for (size_t i=0;i<count;++i) {
         runtime_find_guest_fix(code,0,fixes[i].pattern,&at,&n);
         assert(n>0 && fixes[i].offset<=n && fixes[i].moved<=n-fixes[i].offset);
+    }
+    /* The move action pool: mov edx,6; mov ecx,64; mov r8d,32 -> the ecx immediate becomes 256. */
+    const unsigned char pool[]={0x90,0xba,0x06,0,0,0,0xb9,0x40,0,0,0,0x41,0xb8,0x20,0,0,0,0x90};
+    for (size_t i=0;i<count;++i) {
+        if (strcmp(fixes[i].name,"U1/U2 move action pool 256 slots")) continue;
+        assert(runtime_find_guest_fix(pool,sizeof(pool),fixes[i].pattern,&at,&n)==1 && at==1 && n==16);
+        assert(fixes[i].offset==5 && fixes[i].moved==5 && fixes[i].patch[0]==0xb9 &&
+               fixes[i].patch[1]==0x00 && fixes[i].patch[2]==0x01);
     }
     puts("Guest fix pattern safety checks passed");
 }
