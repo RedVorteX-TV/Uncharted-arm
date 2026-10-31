@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md */
 /* BB_GUEST_PROFILE=prefix: a sampling profiler of guest threads whose name starts with `prefix`
  * (e.g. NdJob). Every 4 ms each such thread that is running gets a SIGPROF; the handler counts
  * where it was: guest code (image offset), host code called by the guest (host PC and the guest
