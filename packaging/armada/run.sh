@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Starts the aarch64 build (packaging/armada/build.sh) on the host: the libraries from the build
 # container in out/lib, the host's Vulkan driver, then run.py (the fork's runner: the collection's
 # three games, LoadExec between them, the 1280x720 mode). Logs in logs/.
