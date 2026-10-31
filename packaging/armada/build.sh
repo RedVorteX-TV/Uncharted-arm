@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-2.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md
 # Builds the aarch64 port on an ARM handheld running Armada (Fedora bootc, read-only /usr) or any
 # other aarch64 Fedora: the build runs in a Fedora container of the host's release (podman or
 # toolbox), so nothing is installed on the system. The result stays in out/ of this checkout,
