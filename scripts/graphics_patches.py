@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md
 """Uncharted ARM port: the launcher's graphics patches (patches/graphics_patches.json, from the
 Bachata S4+ catalog) as a BBPATCH2 file (src/probe.c --extra-patches).
 

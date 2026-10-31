@@ -136,9 +136,6 @@ this repository keeps its author.
 ## License
 
 The source is under the GNU GPL v2 or later ([LICENSE](LICENSE)), like the projects it is built on.
-From 0.1.8 on, the code RedVorteX-TV wrote for this port is GPL v3 or later with additional terms
-([ADDITIONAL_TERMS.md](ADDITIONAL_TERMS.md)): modified versions must keep "ARM port by RedVorteX-TV",
-with the links to the YouTube channel and this repository, in their launchers' credits.
 The LSFG frame generation files are GPL-3.0-or-later, so the binaries, which include them, are
 distributed under the GNU GPL v3 or later as a whole ([COPYING.GPL-3](COPYING.GPL-3)).
 Third-party components keep their own licenses (their texts ship with the AppImage and the APK).

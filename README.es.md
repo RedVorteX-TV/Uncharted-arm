@@ -145,8 +145,3 @@ los que se basa. Los archivos de la generación de fotogramas LSFG son GPL-3.0 o
 los binarios, que los incluyen, se distribuyen en conjunto bajo la GNU GPL v3 o posterior
 ([COPYING.GPL-3](COPYING.GPL-3)). Los componentes de terceros mantienen sus propias licencias (sus
 textos van con la AppImage y el APK).
-
-Desde la 0.1.8, el código que RedVorteX-TV ha escrito para este port es GPL v3 o posterior con
-términos adicionales ([ADDITIONAL_TERMS.md](ADDITIONAL_TERMS.md)): las versiones modificadas deben
-mantener "ARM port by RedVorteX-TV", con los enlaces al canal de YouTube y a este repositorio, en
-los créditos de sus launchers.

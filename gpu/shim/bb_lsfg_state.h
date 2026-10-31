@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md
 // bbport: the live settings of Lossless Scaling frame generation (Bionic only).
 //
 // The app's "Frame generation" menu writes bbport/lsfg.state (whole file, then a rename) and the

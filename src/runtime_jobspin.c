@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
-/* Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md */
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Uncharted's job workers (NdJobWorkerThread) wait for work by spinning: each pass scans the job
  * queues, then `pause` and again. On the PS4 every worker owns a core; under FEXCore (ARM
  * hosts) six of them spinning keep the CPU busy and take the SoC's power budget from the GPU.

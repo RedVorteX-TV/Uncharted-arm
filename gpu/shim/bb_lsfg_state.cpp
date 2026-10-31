@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 RedVorteX-TV (Uncharted ARM port). Additional terms (GPL-3.0 section 7): ADDITIONAL_TERMS.md
 // bbport: see bb_lsfg_state.h.
 #ifdef __ANDROID__
 #include "bb_lsfg_state.h"
