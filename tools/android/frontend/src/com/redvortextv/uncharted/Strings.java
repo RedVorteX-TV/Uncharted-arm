@@ -25,6 +25,18 @@ final class Strings {
         put("logs_hint", "Every game run writes its log here (send it when something goes wrong):",
             "Cada partida guarda su registro aquí (envíalo si algo falla):");
         put("no_log", "No log yet: start a game first.", "Aún no hay registro: inicia un juego primero.");
+        put("report", "Report a problem", "Informar de un problema");
+        put("report_hint", "Opens a new issue on GitHub with the version, the settings and the last log lines filled in. "
+                + "Write what happened and attach the game log.",
+            "Abre una incidencia nueva en GitHub con la versión, los ajustes y las últimas líneas del registro ya "
+                + "rellenos. Escribe qué pasó y adjunta el registro del juego.");
+        put("suggest_title", "Recommended profile", "Perfil recomendado");
+        put("suggest_text", "For this device's GPU and memory we recommend the %s profile.",
+            "Por la GPU y la memoria de este dispositivo te recomendamos el perfil %s.");
+        put("suggest_change", "You can change it at any time in Graphics → Profile.",
+            "Puedes cambiarlo cuando quieras en Gráficos → Perfil.");
+        put("suggest_apply", "Apply", "Aplicar");
+        put("suggest_later", "Not now", "Ahora no");
         put("collection", "Collection menu", "Menú de la colección");
         put("collection_detail", "Uncharted 1, 2 and 3", "Uncharted 1, 2 y 3");
         put("u2", "Uncharted 2", "Uncharted 2");

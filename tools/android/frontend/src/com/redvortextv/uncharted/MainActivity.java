@@ -30,6 +30,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -87,6 +88,8 @@ public final class MainActivity extends Activity {
         FILES = getFilesDir().getAbsolutePath();
         BASE = FILES + "/bbport";
         new File(BASE).mkdirs();
+        // A first start (no launcher settings yet): the profile is suggested once the game folder is chosen.
+        freshInstall = !new File(BASE, "launcher.ini").exists();
         bbport = new Ini(new File(BASE, "bbport.ini"));
         launcher = new Ini(new File(BASE, "launcher.ini"));
         Strings.setLanguage(launcher.get("language", "auto"));
@@ -131,6 +134,8 @@ public final class MainActivity extends Activity {
         check.setDaemon(true);
         check.start();
     }
+
+    private boolean freshInstall;
 
     private String versionName() {
         try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
@@ -467,6 +472,7 @@ public final class MainActivity extends Activity {
             File log = new File(sharedLogDir(), "android-game.log");
             toast(log.isFile() ? log.getPath() : Strings.get("no_log"));
         });
+        actionRow(Strings.get("report"), Strings.get("report_hint"), this::reportProblem);
         rowsTarget = tabControls;
         switchRow(launcher, "touch_controls", false, Strings.get("touch_controls"), Strings.get("touch_controls_hint"));
         cyclerRow(launcher, "touch_style", Strings.get("touch_style"), Strings.get("touch_style_hint"),
@@ -1397,6 +1403,119 @@ public final class MainActivity extends Activity {
         gameDir = dir.getPath();
         getSharedPreferences("uncharted", MODE_PRIVATE).edit().putString("game_dir", gameDir).apply();
         setRowHint("folder", gameDir);
+        if (freshInstall && !launcher.on("profile_suggested", false)) suggestProfile();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // First start: a profile for this device (its GPU family, memory and fastest CPU core), offered
+    // once after the game folder is chosen. Only a suggestion: "Not now" keeps the defaults, and the
+    // profile can be changed in Graphics at any time.
+    private void suggestProfile() {
+        launcher.set("profile_suggested", true);
+        Thread probe = new Thread(() -> {
+            String id = recommendedProfile(gpu());
+            main.post(() -> {
+                if (destroyed) return;
+                String name = Strings.get("profile_" + id);
+                AlertDialog d = new AlertDialog.Builder(this).setTitle(Strings.get("suggest_title"))
+                    .setMessage(Strings.format("suggest_text", name) + "\n\n" + Strings.get("profile_" + id + "_desc")
+                        + "\n\n" + Strings.get("suggest_change"))
+                    .setPositiveButton(Strings.get("suggest_apply"), (dialog, w) -> { applyProfile(id); showLauncher(null); })
+                    .setNegativeButton(Strings.get("suggest_later"), null).create();
+                show(d);
+            });
+        }, "Profile-probe");
+        probe.setDaemon(true);
+        probe.start();
+    }
+
+    /** Adreno 8xx with 12 GB or more: High. Other Adreno with a core at 3 GHz or more and 8 GB: Medium.
+     *  Anything else (older or unknown GPUs, less memory): Low. */
+    static String recommendedProfile(GpuFamily gpu, long totalMem, long maxCpuKhz) {
+        long gb = totalMem / (1000L * 1000 * 1000);
+        if (gpu != null && GpuFamily.GEN8.equals(gpu.family) && gb >= 11) return "high";
+        if (gpu != null && gpu.adreno() && maxCpuKhz >= 3000000 && gb >= 7) return "medium";
+        return "low";
+    }
+    private String recommendedProfile(GpuFamily gpu) {
+        android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+        ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getMemoryInfo(info);
+        return recommendedProfile(gpu, info.totalMem, maxCpuKhz());
+    }
+    private static long maxCpuKhz() {
+        long best = 0;
+        File[] cpus = new File("/sys/devices/system/cpu").listFiles();
+        if (cpus != null) for (File cpu : cpus) {
+            if (!cpu.getName().matches("cpu[0-9]+")) continue;
+            try (BufferedReader r = new BufferedReader(new java.io.FileReader(new File(cpu, "cpufreq/cpuinfo_max_freq")))) {
+                best = Math.max(best, Long.parseLong(r.readLine().trim()));
+            } catch (IOException | RuntimeException ignored) {}
+        }
+        return best;
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Report a problem: a new GitHub issue with the facts filled in (version, device, settings, the
+    // log's run line and its last lines). The full log is attached by the player (Download/Uncharted);
+    // nothing is sent by the app itself.
+    private void reportProblem() {
+        File log = new File(sharedLogDir(), "android-game.log");
+        StringBuilder body = new StringBuilder();
+        body.append("**What happened / Qué pasó:**\n\n\n\n");
+        body.append("**App:** ").append(versionName()).append(" · Android ").append(Build.VERSION.RELEASE)
+            .append(" · ").append(Build.MANUFACTURER).append(' ').append(Build.MODEL);
+        GpuFamily g = gpu;
+        if (g != null) body.append(" · ").append(g.describe());
+        body.append("\n**Settings / Ajustes:** profile ").append(currentProfile())
+            .append(", render ").append(bbport.on("render_720p", true) ? "720p" : bbport.on("render_540p", false) ? "540p" : "1080p")
+            .append(", upscaler ").append(bbport.get("upscaler", "off")).append(" preset ").append(bbport.get("preset", "0"))
+            .append(", FPS limit ").append(bbport.get("fps_limit", "40")).append(", game rate ").append(launcher.get("game_rate", "60"))
+            .append(", driver ").append(gpuSetting()).append('\n');
+        body.append("**Log / Registro:** ").append(log.isFile()
+            ? "please attach `Download/Uncharted/android-game.log` below / adjunta el archivo `Descargas/Uncharted/android-game.log` aquí debajo."
+            : "no log yet / aún no hay registro.").append("\n");
+        if (log.isFile()) {
+            String tail = logExcerpt(log, 1500);
+            if (!tail.isEmpty()) body.append("\n<details><summary>Last log lines</summary>\n\n```\n").append(tail).append("```\n</details>\n");
+        }
+        try {
+            String url = "https://github.com/" + UpdateCheck.REPO + "/issues/new?title="
+                + java.net.URLEncoder.encode("[" + versionName() + "] ", "UTF-8").replace("+", "%20")
+                + "&body=" + java.net.URLEncoder.encode(body.toString(), "UTF-8").replace("+", "%20");
+            openLink(url);
+        } catch (java.io.UnsupportedEncodingException e) {
+            openLink("https://github.com/" + UpdateCheck.REPO + "/issues/new");
+        }
+    }
+
+    /** The log's "Run:" line, its crash lines and its last lines, at most `budget` characters. */
+    private static String logExcerpt(File log, int budget) {
+        java.util.ArrayDeque<String> last = new java.util.ArrayDeque<>();
+        StringBuilder head = new StringBuilder();
+        try (BufferedReader r = new BufferedReader(new java.io.FileReader(log))) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.length() > 200) line = line.substring(0, 200);
+                if (line.startsWith("Run: ") || driverTrouble(line) || line.contains("ASSERTION") || line.startsWith("STOP:")
+                        || line.startsWith("Fault:")) {
+                    if (head.length() < budget / 2) head.append(line).append('\n');
+                }
+                last.addLast(line);
+                if (last.size() > 30) last.removeFirst();
+            }
+        } catch (IOException e) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(head);
+        if (out.length() > 0) out.append("...\n");
+        int room = budget - out.length();
+        StringBuilder tail = new StringBuilder();
+        for (java.util.Iterator<String> it = last.descendingIterator(); it.hasNext(); ) {
+            String line = it.next();
+            if (tail.length() + line.length() + 1 > room) break;
+            tail.insert(0, line + "\n");
+        }
+        return out.append(tail).toString();
     }
 
     // ---------------------------------------------------------------------------------------------
