@@ -1561,8 +1561,20 @@ public final class MainActivity extends Activity {
             main.post(() -> { if (!destroyed) toast(failure == null ? Strings.get("saves_exported") : failure); });
         }).start();
     }
-    /** A zip of savedata/... (an export of this app or of the Linux version) replaces the saves;
-     *  the old ones stay beside them as savedata.before-import-<time>. */
+    /** The path below the zip entry's first "savedata" folder, or null when it has none. The other
+     *  Android ports of the collection keep the same layout under their own root: Daedalus exports
+     *  user/savedata/..., a copy of another port's saves folder zipped by hand has
+     *  <folder>/savedata/... (all of them save as user 1, as this runtime does). */
+    static String savedataPath(String name) {
+        String path = "/" + name;
+        int at = path.indexOf("/savedata/");
+        if (at < 0) return null;
+        String relative = path.substring(at + "/savedata/".length());
+        return relative.isEmpty() ? null : relative;
+    }
+
+    /** A zip with a savedata folder (an export of this app, of the Linux version or of another Android port of
+     *  the collection) replaces the saves; the old ones stay beside them as savedata.before-import-<time>. */
     private void importSaves(android.net.Uri uri) {
         new Thread(() -> {
             String problem = null;
@@ -1575,8 +1587,9 @@ public final class MainActivity extends Activity {
                 String root = incoming.getCanonicalPath() + File.separator;
                 for (java.util.zip.ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
                     String name = entry.getName().replace('\\', '/');
-                    if (!name.startsWith("savedata/") || entry.isDirectory()) continue;
-                    File target = new File(incoming, name.substring("savedata/".length()));
+                    String relative = savedataPath(name);
+                    if (relative == null || entry.isDirectory()) continue;
+                    File target = new File(incoming, relative);
                     if (!target.getCanonicalPath().startsWith(root)) continue; // no paths out of it
                     target.getParentFile().mkdirs();
                     try (java.io.OutputStream out = new java.io.FileOutputStream(target)) {

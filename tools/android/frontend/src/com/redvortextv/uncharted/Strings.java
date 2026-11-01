@@ -214,10 +214,11 @@ final class Strings {
                 + "archivo .zip donde elijas (una copia de seguridad, o para pasarlas a otro dispositivo o a la versión "
                 + "de Linux).");
         put("saves_import", "Import saves", "Importar partidas");
-        put("saves_import_hint", "Replaces the saves with those of an exported .zip (from this app or the Linux "
-                + "version's savedata folder). The current ones are kept aside in the app's folder.",
-            "Sustituye las partidas por las de un .zip exportado (de esta app o de la carpeta savedata de la versión "
-                + "de Linux). Las actuales se guardan aparte en la carpeta de la app.");
+        put("saves_import_hint", "Replaces the saves with those of a .zip with a savedata folder: exported from this "
+                + "app, the Linux version or another Android port of the collection. The current ones are kept aside in "
+                + "the app's folder.",
+            "Sustituye las partidas por las de un .zip con una carpeta savedata: exportado desde esta app, la versión "
+                + "de Linux u otro port de Android de la colección. Las actuales se guardan aparte en la carpeta de la app.");
         put("saves_exported", "Saves exported", "Partidas exportadas");
         put("saves_imported", "Saves imported", "Partidas importadas");
         put("saves_none", "There are no saves yet", "Todavía no hay partidas guardadas");
