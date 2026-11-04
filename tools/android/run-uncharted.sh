@@ -286,10 +286,10 @@ while :; do
         big2*) export BB_TINY_READBACK=1 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-2} BB_SCALAR_COPY64_DEFER=${BB_SCALAR_COPY64_DEFER-1} ;;
         *) export BB_TINY_READBACK=0 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-0} ;;
     esac
-    # Full-screen passes that rebuild positions from the jittered scene depth get the upscaler's
-    # jitter too (BB_JITTER_PS): the sun shadow pass (without it its shadows flickered under the
-    # temporal upscalers).
-    export BB_JITTER_PS=${BB_JITTER_PS-f614041e}
+    # These passes need the scene's jitter too (BB_JITTER_PS): sun shadow reconstruction, U1 boat
+    # details, and U3 London bar surfaces drawn against secondary scene depth (otherwise they
+    # flicker under the temporal upscalers).
+    export BB_JITTER_PS=${BB_JITTER_PS-f614041e,b2a42acf,1a08df2d}
     # Uncharted 3's characters sinking into the ground, floating or twitching (fix from drakolordx7's
     # community build, through Supermedo/uncharted_pc): the raycaster copy's results are read back
     # at the end-of-pipe label (BB_COPY64_EOP_READBACK=1, U3 only; BB_COPY64_EOP_READBACK=0: off).
