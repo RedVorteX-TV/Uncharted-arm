@@ -479,19 +479,31 @@ static bool ChainWriteData() {
 void RunWriteData(Vulkan::Rasterizer& rasterizer, const u8* data) {
     const auto* header = reinterpret_cast<const PM4Header*>(data);
     const auto* write_data = reinterpret_cast<const PM4CmdWriteData*>(data);
+    const u64 address = write_data->Address<u64>();
+    const size_t size = (header->type3.count.Value() - 2) * sizeof(u32);
+    // Only into a page the caches do not watch (the guest's copy is already newer than any GPU
+    // copy): the write lands on the Vulkan recording thread, where a write fault on a watched
+    // page would wait for the GPU command thread while that waits for the recording thread (a
+    // hang loading Uncharted 2's convoy). Watched pages take the waiting path below.
+    auto& buffer_cache = rasterizer.GetBufferCache();
     if (ChainWriteData() && Vulkan::DrawPipe::OnStageB() &&
-        !BbToggle::Disabled(BbToggle::RecorderFences)) {
-        const u64 address = write_data->Address<u64>();
-        const size_t size = (header->type3.count.Value() - 2) * sizeof(u32);
+        !BbToggle::Disabled(BbToggle::RecorderFences) && size != 0 &&
+        (address & ~u64(4095)) == ((address + size - 1) & ~u64(4095)) &&
+        buffer_cache.IsRegionCpuModified(address, size) &&
+        !buffer_cache.IsRegionGpuModified(address, size)) {
         boost::container::small_vector<u32, 8> words(write_data->data, write_data->data + size / 4);
-        rasterizer.GetBufferCache().CheckStableBindings();
+        buffer_cache.CheckStableBindings();
         rasterizer.CheckConstants();
         // Draws recorded before it lands that read this memory wait for it (chained_writes.h).
         auto landed = VideoCore::ChainedWrites::Add(address, size);
         rasterizer.SignalAfterHostCopies(
             [address, size, words = std::move(words), landed = std::move(landed)] {
                 BbWriteLog::Note(address, words.data(), size, BbWriteLog::WriteData);
-                std::memcpy(reinterpret_cast<void*>(address), words.data(), size);
+                // Through the backing like the fences (SignalEop): never a fault on this thread.
+                auto* memory = Core::Memory::Instance();
+                if (!memory->TryWriteBacking(reinterpret_cast<void*>(address), words.data(), size)) {
+                    std::memcpy(reinterpret_cast<void*>(address), words.data(), size);
+                }
                 VideoCore::ChainedWrites::Landed(landed);
             },
             VideoCore::LandingGate::Pending());
@@ -504,10 +516,8 @@ void RunWriteData(Vulkan::Rasterizer& rasterizer, const u8* data) {
     VideoCore::LandingGate::Wait(VideoCore::LandingGate::Pending());
     rasterizer.GetBufferCache().CheckStableBindings();
     rasterizer.CheckConstants();
-    BbWriteLog::Note(write_data->Address<u64>(), write_data->data,
-                     (header->type3.count.Value() - 2) * sizeof(u32), BbWriteLog::WriteData);
-    std::memcpy(write_data->Address<u64*>(), write_data->data,
-                (header->type3.count.Value() - 2) * sizeof(u32));
+    BbWriteLog::Note(address, write_data->data, size, BbWriteLog::WriteData);
+    std::memcpy(reinterpret_cast<void*>(address), write_data->data, size);
 }
 
 void RunEventWriteEos(Vulkan::Rasterizer& rasterizer, const u8* data) {
