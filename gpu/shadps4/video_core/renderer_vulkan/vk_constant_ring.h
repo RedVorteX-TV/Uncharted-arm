@@ -25,7 +25,14 @@ class ConstantRing {
 public:
     // Linux fork: 64 MiB (was 32): with the GPU a frame behind, Uncharted 2 on the Steam Deck
     // filled 32 MiB and every draw then polled the driver (an ioctl) in Retire().
-    static constexpr u64 Capacity = 64ull << 20;
+    // 256 MiB (was 64), from spacepepperoni/uncharted_Linux 2ccc0d6 (as in the MediEvil fork): 64 MiB
+    // filled at ~6,000 draws a frame and the GPU thread then waited for ring space most of its time.
+    // Android: 128 MiB, for phones with 8 GB that share it with the game.
+#ifdef __ANDROID__
+    static constexpr u64 Capacity = 128ull << 20;
+#else
+    static constexpr u64 Capacity = 256ull << 20;
+#endif
 
     ConstantRing(const Instance& instance, Scheduler& scheduler_)
         : scheduler{scheduler_},
