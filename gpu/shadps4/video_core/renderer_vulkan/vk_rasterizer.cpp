@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <cmath>
 #include <mutex>
 #include <unordered_map>
@@ -1524,6 +1525,31 @@ static u32 ForceUploadVs(bool index) {
     return (setting.second & (index ? 1 : 2)) ? setting.first : 0;
 }
 
+// bbport: BB_JITTER_PS=<pixel shader hash>,... (run-uncharted.sh, Uncharted): full-screen passes
+// that rebuild positions from the scene depth through an interpolated texture coordinate, jittered
+// like the scene geometry. Unjittered, they reconstructed each pixel from depth that was rendered
+// half a pixel away: the sun shadow pass (f614041e) moved against the geometry with every jitter
+// step and flickered under FSR and TAA, worst on the largest steps (every 4th frame).
+// (from Supermedo/uncharted_pc c4e5144; its live BB_SHADER_DEBUG_FILE switch is left out)
+static bool JitterFullScreenPass(u64 hash) {
+    static const std::vector<u64> listed = [] {
+        std::vector<u64> list;
+        if (const char* env = std::getenv("BB_JITTER_PS")) {
+            for (const char* p = env; *p;) {
+                char* end;
+                const u64 value = std::strtoull(p, &end, 16);
+                if (end == p) {
+                    break;
+                }
+                list.push_back(u64(u32(value)));
+                p = *end == ',' ? end + 1 : end;
+            }
+        }
+        return list;
+    }();
+    return std::find(listed.begin(), listed.end(), u64(u32(hash))) != listed.end();
+}
+
 // bbport: BB_SKIP_SHADERS=<hash>,...: draws and dispatches of these pixel/compute shaders
 // are not recorded (diagnostic: which pass of a frame causes a visual problem).
 static bool SkipShader(u64 hash) {
@@ -1880,6 +1906,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     };
     if (upscaler->Enabled() && db_desc.first && db_desc.first == camera_motion->Depth() &&
         (regs.num_indices > 6 || regs.num_instances.NumInstances() > 1 || small_scene_geometry())) {
+        draw_jitter = upscaler->Jitter();
+    } else if (const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+               ps && upscaler->Enabled() && JitterFullScreenPass(ps->pgm_hash)) {
         draw_jitter = upscaler->Jitter();
     }
     UpdateDynamicState(pipeline, is_indexed);
