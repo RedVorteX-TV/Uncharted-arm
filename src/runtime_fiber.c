@@ -262,6 +262,10 @@ static int claim(GuestFiber *fiber) {
     return __atomic_compare_exchange_n(&fiber->state,&expected,STATE_RUN,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE);
 }
 
+/* bbport (Mevlock): set while a render command context is open on this thread (the job wait in
+ * probe.c); a fiber leaving the thread takes its context along, so the flag is cleared. */
+_Thread_local int runtime_ndgi_open;
+#define NDGI_LEAVE() (runtime_ndgi_open=0)
 #ifdef GUEST_CPU_NATIVE
 static ABI int32_t fiber_run_with(GuestFiber *fiber,void *addr,uint64_t size,uint64_t arg,uint64_t *ret) {
     int32_t e=check_fiber(fiber);
@@ -294,6 +298,7 @@ static ABI int32_t fiber_run_with(GuestFiber *fiber,void *addr,uint64_t size,uin
 static ABI int32_t fiber_run(GuestFiber *fiber,uint64_t arg,uint64_t *ret) { return fiber_run_with(fiber,NULL,0,arg,ret); }
 
 static ABI int32_t fiber_switch_with(GuestFiber *fiber,void *addr,uint64_t size,uint64_t arg,uint64_t *arg_on_run) {
+    NDGI_LEAVE();
     int32_t e=check_fiber(fiber);
     if (e) return e;
     if ((uintptr_t)addr&15) return FIBER_ERROR_ALIGNMENT;
@@ -321,6 +326,7 @@ static ABI int32_t fiber_switch_with(GuestFiber *fiber,void *addr,uint64_t size,
 static ABI int32_t fiber_switch(GuestFiber *fiber,uint64_t arg,uint64_t *arg_on_run) { return fiber_switch_with(fiber,NULL,0,arg,arg_on_run); }
 
 static ABI int32_t fiber_return_to_thread(uint64_t arg_on_return,uint64_t *arg_on_run) {
+    NDGI_LEAVE();
     FiberThread *t=this_thread();
     GuestFiber *current=t->current;
     if (!current) return FIBER_ERROR_PERMISSION;
@@ -369,6 +375,7 @@ static uint64_t fiber_after_run(uint64_t *ret) {
     return 0;
 }
 static uint64_t fiber_prepare_switch(GuestFiber *fiber,void *addr,uint64_t size,uint64_t arg,uint64_t saved) {
+    NDGI_LEAVE();
     int32_t e=check_fiber(fiber);
     if (e) return fail_with(e);
     if ((uintptr_t)addr&15) return fail_with(FIBER_ERROR_ALIGNMENT);
@@ -393,6 +400,7 @@ static uint64_t fiber_after_switch(uint64_t *arg_on_run) {
     return 0;
 }
 static uint64_t fiber_prepare_return(uint64_t arg_on_return,uint64_t saved) {
+    NDGI_LEAVE();
     FiberThread *t=this_thread();
     GuestFiber *current=t->current;
     if (!current) return fail_with(FIBER_ERROR_PERMISSION);
