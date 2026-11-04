@@ -62,7 +62,10 @@ public:
                          Vulkan::Runtime& runtime, AmdGpu::Liverpool* liverpool,
                          TextureCache& texture_cache, PageManager& tracker);
     ~BufferCache();
-    bool DeferGuestCopy(VAddr src, VAddr dst, u64 size);
+    /// guest_part false (BB_COPY64_EOP_READBACK, Rasterizer::ReadBackSmallWrittenBuffers): only the
+    /// GPU-written bytes of [src, src + size) land (dst == src, no guest copy), whatever
+    /// BB_SCALAR_COPY64_DEFER says: a GPU result the guest reads in place.
+    bool DeferGuestCopy(VAddr src, VAddr dst, u64 size, bool guest_part = true);
     u64 PendingLanding() const;
     bool LandingGateActive() const;
     void WaitLanding(u64 seq);
