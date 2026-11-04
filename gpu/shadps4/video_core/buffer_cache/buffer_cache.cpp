@@ -50,7 +50,14 @@ std::atomic<bool> land_stopping{false};
 
 
 static constexpr size_t GDS_BUFFER_SIZE = 64_KB;
-static constexpr size_t STREAM_BUFFER_SIZE = 128_MB;
+// 384 MiB (was 128), from spacepepperoni/uncharted_Linux 2ccc0d6 (as in the MediEvil fork): busy
+// scenes (Uncharted 1, ~3,700 draws a frame on the Steam Deck) filled it and the GPU thread waited for
+// GPU ticks ~42% of its time. Android: 256 MiB, for phones with 8 GB that share it with the game.
+#ifdef __ANDROID__
+static constexpr size_t STREAM_BUFFER_SIZE = 256_MB;
+#else
+static constexpr size_t STREAM_BUFFER_SIZE = 384_MB;
+#endif
 
 static constexpr auto ARENA_USAGE =
     vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst |
