@@ -286,6 +286,13 @@ while :; do
         big2*) export BB_TINY_READBACK=1 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-2} BB_SCALAR_COPY64_DEFER=${BB_SCALAR_COPY64_DEFER-1} ;;
         *) export BB_TINY_READBACK=0 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-0} ;;
     esac
+    # Uncharted 3's characters sinking into the ground, floating or twitching (fix from drakolordx7's
+    # community build, through Supermedo/uncharted_pc): the raycaster copy's results are read back
+    # at the end-of-pipe label (BB_COPY64_EOP_READBACK=1, U3 only; BB_COPY64_EOP_READBACK=0: off).
+    case "$exe" in
+        big3*) export BB_COPY64_EOP_READBACK=${BB_COPY64_EOP_READBACK-1} ;;
+        *) unset BB_COPY64_EOP_READBACK ;;
+    esac
     # BB_RENDER_CPUS: the host GPU threads (command processor, draw recording, Vulkan recorder,
     # presentation) off the slowest cores when at least four faster ones remain (the Thor: 3-7).
     # From revvv991's uncharted-android: Android put those threads on the slow cores while the
