@@ -448,6 +448,7 @@ def main():
     player_merge = env.get('BB_GPU_MERGE')
     player_small = env.get('BB_READBACK_SMALL')
     player_copy64 = {name for name in ('BB_SCALAR_COPY64_SYNC', 'BB_SCALAR_COPY64_DEFER') if name in env}
+    player_copy_eop = env.get('BB_COPY64_EOP_READBACK')
     while True:
         if player_merge is None:
             if exe in (EXECUTABLES['u2'], EXECUTABLES['u3']):
@@ -463,6 +464,14 @@ def main():
         for name, u2_value in (('BB_SCALAR_COPY64_SYNC', '2'), ('BB_SCALAR_COPY64_DEFER', '1')):
             if name not in player_copy64:
                 env[name] = u2_value if exe == EXECUTABLES['u2'] else '0'
+        # U3 characters sinking into the ground, floating or twitching (fix from drakolordx7's
+        # community build, through Supermedo/uncharted_pc): the raycaster copy's results are read
+        # back at the end-of-pipe label (BB_COPY64_EOP_READBACK=1; =0 turns it off).
+        if player_copy_eop is None:
+            if exe == EXECUTABLES['u3']:
+                env['BB_COPY64_EOP_READBACK'] = '1'
+            else:
+                env.pop('BB_COPY64_EOP_READBACK', None)
         game, file = locate(env, exe)
         if not game:
             fail('Set BB_GAME_DIR to the game folder (the one with eboot.bin).')
