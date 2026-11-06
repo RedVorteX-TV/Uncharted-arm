@@ -557,18 +557,18 @@ _FSR1_540 = {'render_res': '540', 'anti_aliasing': 'fsr1', 'upscale_preset': 'of
              'game_rate': '60'}
 ARM_PROFILES = (
     ('low', 'Low', '960 × 540 with FSR 1, every performance patch, 30 FPS. The steadiest on mid-range and '
-     'lower devices.', _FSR1_540, ARM_PROFILE_GFX, '1', None),
+     'lower devices.', _FSR1_540, ARM_PROFILE_GFX, '1', True),
     ('low_medium', 'Low-medium', '960 × 540 with FSR 1, 30 FPS, with the lighter patches: 2 shadow cascades, no '
      'depth of field, bloom, dynamic lights or sun ambient occlusion, 40 m draw distance and the intro logos '
      'skipped.', _FSR1_540, ARM_LIGHT_GFX, '2', True),
-    ('medium', 'Medium', "960 × 540 with FSR 1, the game's own effects, 30 FPS.", _FSR1_540, (), '0', None),
+    ('medium', 'Medium', "960 × 540 with FSR 1, the game's own effects, 30 FPS.", _FSR1_540, (), '0', True),
     ('high', 'High (for powerful devices)', "1280 × 720 with FSR 1, the game's own effects, 60 FPS.",
      {'render_res': '720', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'frame_rate': '60',
-      'game_rate': 'auto'}, (), '0', None),
+      'game_rate': 'auto'}, (), '0', True),
     ('very_high', 'Very high (for powerful devices)', "FSR 3.1 Quality with a 1920 × 1080 output, the game's own "
      'effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).',
      {'render_res': '1080', 'anti_aliasing': 'fsr3', 'upscale_preset': 'quality', 'upscale_out': '1080',
-      'frame_rate': '40', 'game_rate': '120'}, (), '0', None),
+      'frame_rate': '40', 'game_rate': '120'}, (), '0', True),
     ('performance', 'Performance (for powerful devices)', "GSR 2 Balanced with a 1280 × 720 output, no FPS limit at "
      "the screen's rate, with the lighter patches (2 shadow cascades, no depth of field, bloom, dynamic lights or "
      'sun ambient occlusion, 40 m draw distance, intro logos skipped).',
@@ -577,7 +577,7 @@ ARM_PROFILES = (
     ('battery', 'High autonomy (for powerful devices)', "To save battery: 1280 × 720 with FSR 1, the game's own "
      'effects, 40 FPS. Needs a 120 Hz screen (on 60 Hz it uses 30 FPS).',
      {'render_res': '720', 'anti_aliasing': 'fsr1', 'upscale_preset': 'off', 'frame_rate': '40',
-      'game_rate': '120'}, (), '0', None),
+      'game_rate': '120'}, (), '0', True),
 )
 ARM_PROFILE_WATCH = ('render_res', 'anti_aliasing', 'upscale_preset', 'upscale_out', 'frame_rate', 'game_rate',
                      'gfx_shadows', 'gfx_skip_logos') + ARM_PROFILE_GFX
