@@ -94,7 +94,14 @@ Built on the work of:
   and Steam Deck fork this port starts from (launcher, 720p mode, Uncharted 2 and 3 fixes), with ngin
   and its contributors.
 - [Supermedo/uncharted_pc](https://github.com/Supermedo/uncharted_pc): the native port of the
-  collection.
+  collection, and through it the fixes by Mevlock (the job wait behind Uncharted 2's water crash,
+  Uncharted 1's physics at any frame rate, Elena's truck in Uncharted 2's convoy, aiming blur, the
+  move action pool), drakolordx7 (Uncharted 3's sinking characters), kj2223 and Alex (flicker under
+  the temporal upscalers).
+- ngin, through spacepepperoni/uncharted_Linux: the WriteData chaining, the bigger constant ring
+  and stream buffer and the title update's own folder; iannitram: the audio codec and command
+  processor crash guards; Cid, through ducvd89/Bloodborne-Android: GSR 2's 9-sample kernel and
+  Catmull-Rom history.
 - [deadinside28/bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) (bbport): the
   native PS4 port base it runs on.
 - [MaSieS4Fun/ARM_bloodborne_pc](https://github.com/MaSieS4Fun/ARM_bloodborne_pc): the FEXCore
