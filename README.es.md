@@ -97,7 +97,15 @@ Sobre el trabajo de:
   para Linux y Steam Deck del que parte este port (launcher, modo 720p, arreglos de Uncharted 2 y 3),
   con ngin y sus colaboradores.
 - [Supermedo/uncharted_pc](https://github.com/Supermedo/uncharted_pc): el port nativo de la
-  colección.
+  colección y, a través de él, los arreglos de Mevlock (la espera de trabajos tras el cierre del agua
+  de Uncharted 2, la física de Uncharted 1 a cualquier FPS, el camión de Elena en el convoy de
+  Uncharted 2, el desenfoque al apuntar, la reserva de acciones de movimiento), drakolordx7 (los
+  personajes que se hunden en Uncharted 3), kj2223 y Alex (el parpadeo con los escaladores
+  temporales).
+- ngin, a través de spacepepperoni/uncharted_Linux: el encadenado de WriteData, el anillo de
+  constantes y el búfer de streaming más grandes y la carpeta propia de la actualización del juego;
+  iannitram: las protecciones contra cierres del códec de audio y del procesador de comandos; Cid, a
+  través de ducvd89/Bloodborne-Android: el núcleo de 9 muestras y el historial Catmull-Rom de GSR 2.
 - [deadinside28/bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) (bbport): la base de
   port nativo de PS4 sobre la que funciona.
 - [MaSieS4Fun/ARM_bloodborne_pc](https://github.com/MaSieS4Fun/ARM_bloodborne_pc): la capa de
