@@ -28,6 +28,7 @@
 #include <ucontext.h>
 #include <fcntl.h>
 #include <dlfcn.h>
+#include <sys/prctl.h>
 #ifdef __ANDROID__
 #include <unwind.h> /* Bionic has no backtrace() */
 #else
@@ -495,6 +496,30 @@ static void fault(int sig, siginfo_t *info, void *context) {
         ssize_t written_=write(2, line, strlen(line)); (void)written_;
     }
     _exit(128 + sig);
+}
+/* abort() (a failed assertion, std::terminate, a driver giving up): the thread and its host call
+ * chain go to the log, which otherwise ends with no reason (the message goes to logcat only); then
+ * the default action, so Android still writes its tombstone. */
+static void abort_report(int sig) {
+    char line[512], name[32]="?";
+#ifdef __linux__
+    prctl(PR_GET_NAME, (unsigned long)name, 0, 0, 0);
+#endif
+    snprintf(line, sizeof(line), "Abort (signal %d) on thread '%s': the host call chain follows\n", sig, name);
+    { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
+    void *frames[32];
+    const int depth = backtrace(frames, 32);
+    Dl_info where;
+    for (int i = 1; i < depth; ++i) {
+        if (dladdr(frames[i], &where) && where.dli_fname)
+            snprintf(line, sizeof(line), "  #%d %s+0x%lx (%s)\n", i, where.dli_fname,
+                     (unsigned long)((uintptr_t)frames[i] - (uintptr_t)where.dli_fbase), where.dli_sname ? where.dli_sname : "?");
+        else
+            snprintf(line, sizeof(line), "  #%d %p\n", i, frames[i]);
+        ssize_t written_=write(2, line, strlen(line)); (void)written_;
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
 }
 #endif
 #ifndef _WIN32
@@ -1494,6 +1519,7 @@ int main(int argc, char **argv) {
     struct sigaction sa = {0}; sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGSEGV, &sa, NULL); sigaction(SIGILL, &sa, NULL); sigaction(SIGBUS, &sa, NULL);
+    signal(SIGABRT, abort_report);
     Dl_info self_info;
     if (dladdr((void *)main,&self_info)) exe_base=(uintptr_t)self_info.dli_fbase;
     struct sigaction dump = {0}; dump.sa_sigaction = thread_dump; dump.sa_flags = SA_SIGINFO|SA_RESTART;

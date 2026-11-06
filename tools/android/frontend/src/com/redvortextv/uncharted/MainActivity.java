@@ -1037,6 +1037,12 @@ public final class MainActivity extends Activity {
                             main.post(() -> status.setText(Strings.get("preparing")));
                     }
                     int code = launched.waitFor();
+                    // How the game ended, in the log too (a log that stops with no error means it was
+                    // killed: 137 is SIGKILL, from Android's low memory killer or the system).
+                    String ended = "Game process ended: exit code " + code
+                        + (code > 128 && code < 160 ? " (signal " + (code - 128) + ")" : "");
+                    out.println(ended); out.flush();
+                    if (shared != null) { shared.println(ended); shared.flush(); }
                     if (game == launched) {
                         game = null; releasePause(false);
                         String message = code == 0 ? null
