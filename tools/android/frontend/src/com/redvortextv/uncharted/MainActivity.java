@@ -1526,9 +1526,28 @@ public final class MainActivity extends Activity {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Saves: BASE/user/savedata (runtime_savedata.c), as a zip of savedata/... (the Linux version
-    // keeps the same folder in its saves folder, so the two take each other's zips).
+    // Saves: the collection's profile (SAVEDATA0CC) in BASE/user/savedata/<user>/<title>/, each game's
+    // own saves (SAVEDATA01*, 02*, 03*) in BASE/user/Uncharted 1, 2 and 3 (BB_SAVEDATA_DIRS,
+    // run-uncharted.sh and runtime_savedata.c). A zip has them all in the savedata/<user>/<title>/
+    // layout of the other ports of the collection and of a PS4.
     private File savesDir() { return new File(BASE, "user/savedata"); }
+    private static final String[][] GAME_SAVES = {
+        {"SAVEDATA01", "Uncharted 1"}, {"SAVEDATA02", "Uncharted 2"}, {"SAVEDATA03", "Uncharted 3"}};
+    /** The per-game folder a save directory (or its .sce_sys) goes to, or null (it stays in savedata). */
+    private static String gameSaveFolder(String name) {
+        for (String[] game : GAME_SAVES) if (name.startsWith(game[0])) return game[1];
+        return null;
+    }
+    /** The title folder of the saves (savedata/1/CUSA02344 for the European collection, the others
+     *  for the other regions), as the profile's says; CUSA02344 when there is none yet. */
+    private String savesTitle() {
+        File[] users = savesDir().listFiles();
+        if (users != null) for (File u : users) {
+            File[] titles = u.listFiles();
+            if (titles != null) for (File t : titles) if (t.isDirectory() && t.getName().startsWith("CUSA")) return t.getName();
+        }
+        return "CUSA02344";
+    }
     private void askSavesExport() {
         String name = "uncharted-saves-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.ROOT)
             .format(new java.util.Date()) + ".zip";
@@ -1555,14 +1574,24 @@ public final class MainActivity extends Activity {
         }
     }
     private void exportSaves(android.net.Uri uri) {
-        File saves = savesDir();
-        if (!saves.isDirectory()) { toast(Strings.get("saves_none")); return; }
+        File user = new File(BASE, "user"), saves = savesDir();
+        boolean any = saves.isDirectory();
+        for (String[] game : GAME_SAVES) any |= new File(user, game[1]).isDirectory();
+        if (!any) { toast(Strings.get("saves_none")); return; }
+        String title = savesTitle();
         new Thread(() -> {
             String problem = null;
             try (java.io.OutputStream out = getContentResolver().openOutputStream(uri);
                  java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(out)) {
                 if (out == null) throw new java.io.IOException("cannot open the file");
-                zipFolder(zip, saves, "savedata");
+                if (saves.isDirectory()) zipFolder(zip, saves, "savedata");
+                // Each game's saves next to the profile, as a PS4 and the other ports keep them.
+                for (String[] game : GAME_SAVES) {
+                    File[] children = new File(user, game[1]).listFiles();
+                    if (children != null) for (File child : children)
+                        if (child.isDirectory() && child.getName().startsWith(game[0]))
+                            zipFolder(zip, child, "savedata/1/" + title + "/" + child.getName());
+                }
             } catch (Exception ex) { problem = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
             String failure = problem;
             main.post(() -> { if (!destroyed) toast(failure == null ? Strings.get("saves_exported") : failure); });
@@ -1579,13 +1608,36 @@ public final class MainActivity extends Activity {
         String relative = path.substring(at + "/savedata/".length());
         return relative.isEmpty() ? null : relative;
     }
+    /** Where an imported file goes: below savedata, or in its game's folder for SAVEDATA01*, 02*, 03*
+     *  (relative is <user>/<title>/<dir>/...: the folder is BASE/user/<game>/<dir>/...). */
+    static String importTarget(String relative) {
+        String[] parts = relative.split("/", 4);
+        if (parts.length >= 3) {
+            String folder = gameSaveFolder(parts[2]);
+            if (folder != null) return folder + "/" + parts[2] + (parts.length == 4 ? "/" + parts[3] : "");
+        }
+        return "savedata/" + relative;
+    }
+    /** Moves the saves (savedata and the games' folders) into a new folder `aside`; false if one would not move. */
+    private boolean moveSavesAside(File user, File aside) {
+        aside.mkdirs();
+        boolean ok = true;
+        java.util.List<String> names = new java.util.ArrayList<>();
+        names.add("savedata");
+        for (String[] game : GAME_SAVES) names.add(game[1]);
+        for (String name : names) {
+            File f = new File(user, name);
+            if (f.exists() && !f.renameTo(new File(aside, name))) ok = false;
+        }
+        return ok;
+    }
 
     /** A zip with a savedata folder (an export of this app, of the Linux version or of another Android port of
-     *  the collection) replaces the saves; the old ones stay beside them as savedata.before-import-<time>. */
+     *  the collection) replaces the saves; the old ones stay beside them as saves.before-import-<time>. */
     private void importSaves(android.net.Uri uri) {
         new Thread(() -> {
             String problem = null;
-            File user = new File(BASE, "user"), incoming = new File(user, "savedata.importing");
+            File user = new File(BASE, "user"), incoming = new File(user, "saves.importing");
             FsUtil.deleteTree(incoming);
             int files = 0;
             try (java.io.InputStream in = getContentResolver().openInputStream(uri);
@@ -1596,7 +1648,7 @@ public final class MainActivity extends Activity {
                     String name = entry.getName().replace('\\', '/');
                     String relative = savedataPath(name);
                     if (relative == null || entry.isDirectory()) continue;
-                    File target = new File(incoming, relative);
+                    File target = new File(incoming, importTarget(relative));
                     if (!target.getCanonicalPath().startsWith(root)) continue; // no paths out of it
                     target.getParentFile().mkdirs();
                     try (java.io.OutputStream out = new java.io.FileOutputStream(target)) {
@@ -1606,13 +1658,13 @@ public final class MainActivity extends Activity {
                     ++files;
                 }
                 if (files == 0) throw new java.io.IOException(Strings.get("saves_not_zip"));
-                File saves = savesDir();
-                if (saves.exists()) {
-                    String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date());
-                    if (!saves.renameTo(new File(user, "savedata.before-import-" + stamp)))
-                        throw new java.io.IOException("cannot move the current saves aside");
-                }
-                if (!incoming.renameTo(saves)) throw new java.io.IOException("cannot put the saves in place");
+                String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date());
+                if (!moveSavesAside(user, new File(user, "saves.before-import-" + stamp)))
+                    throw new java.io.IOException("cannot move the current saves aside");
+                File[] parts = incoming.listFiles();
+                if (parts != null) for (File part : parts)
+                    if (!part.renameTo(new File(user, part.getName()))) throw new java.io.IOException("cannot put the saves in place");
+                FsUtil.deleteTree(incoming);
             } catch (Exception ex) { problem = ex.getMessage() != null ? ex.getMessage() : ex.toString(); }
             if (problem != null) FsUtil.deleteTree(incoming);
             String failure = problem;
@@ -1620,23 +1672,35 @@ public final class MainActivity extends Activity {
         }).start();
     }
 
-    /** Undoes the last import: the newest savedata.before-import-<time> becomes the saves again, and the
-     *  current ones go aside as savedata.replaced-<time>. */
+    /** Undoes the last import: the newest saves.before-import-<time> (or, from 0.1.8's first test
+     *  builds, savedata.before-import-<time>, savedata alone) comes back, and the current saves go
+     *  aside as saves.replaced-<time>. */
     private void restoreSaves() {
         new Thread(() -> {
             String message;
             File user = new File(BASE, "user"), newest = null;
-            File[] aside = user.listFiles((dir, name) -> name.startsWith("savedata.before-import-"));
-            if (aside != null) for (File f : aside)
-                if (f.isDirectory() && (newest == null || f.getName().compareTo(newest.getName()) > 0)) newest = f;
+            File[] aside = user.listFiles((dir, name) -> name.contains(".before-import-"));
+            if (aside != null) for (File f : aside) {
+                if (!f.isDirectory()) continue;
+                String stamp = f.getName().substring(f.getName().indexOf(".before-import-"));
+                if (newest == null || stamp.compareTo(newest.getName().substring(newest.getName().indexOf(".before-import-"))) > 0) newest = f;
+            }
             if (newest == null) message = Strings.get("saves_no_backup");
             else {
-                File saves = savesDir();
                 String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date());
-                if (saves.exists() && !saves.renameTo(new File(user, "savedata.replaced-" + stamp)))
+                boolean whole = newest.getName().startsWith("saves.");
+                if (!(whole ? moveSavesAside(user, new File(user, "saves.replaced-" + stamp))
+                            : !savesDir().exists() || savesDir().renameTo(new File(user, "savedata.replaced-" + stamp))))
                     message = "cannot move the current saves aside";
-                else if (!newest.renameTo(saves)) message = "cannot put the saves in place";
-                else message = Strings.get("saves_restored");
+                else {
+                    boolean ok = true;
+                    if (whole) {
+                        File[] parts = newest.listFiles();
+                        if (parts != null) for (File part : parts) ok &= part.renameTo(new File(user, part.getName()));
+                        if (ok) newest.delete();
+                    } else ok = newest.renameTo(savesDir());
+                    message = ok ? Strings.get("saves_restored") : "cannot put the saves in place";
+                }
             }
             String shown = message;
             main.post(() -> { if (!destroyed) toast(shown); });
