@@ -1608,6 +1608,20 @@ public final class MainActivity extends Activity {
         String relative = path.substring(at + "/savedata/".length());
         return relative.isEmpty() ? null : relative;
     }
+    /** For a zip of a saves folder of the Linux version or of spacepepperoni's Linux fork, where each
+     *  game keeps its saves in its own folder (<user>/Uncharted 1/SAVEDATA01P/...): the path from that
+     *  folder on ("Uncharted 1/SAVEDATA01P/..."), or null. */
+    static String gameFolderPath(String name) {
+        String path = "/" + name;
+        for (String[] game : GAME_SAVES) {
+            String folder = "/" + game[1] + "/";
+            int at = path.indexOf(folder);
+            if (at < 0) continue;
+            String rest = path.substring(at + folder.length());
+            if (rest.startsWith(game[0]) && rest.indexOf('/') > 0) return game[1] + "/" + rest;
+        }
+        return null;
+    }
     /** Where an imported file goes: below savedata, or in its game's folder for SAVEDATA01*, 02*, 03*
      *  (relative is <user>/<title>/<dir>/...: the folder is BASE/user/<game>/<dir>/...). */
     static String importTarget(String relative) {
@@ -1646,9 +1660,13 @@ public final class MainActivity extends Activity {
                 String root = incoming.getCanonicalPath() + File.separator;
                 for (java.util.zip.ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
                     String name = entry.getName().replace('\\', '/');
-                    String relative = savedataPath(name);
-                    if (relative == null || entry.isDirectory()) continue;
-                    File target = new File(incoming, importTarget(relative));
+                    if (entry.isDirectory()) continue;
+                    // A PS4's layout (this app's export, revvv991's and the ports based on it, the PC
+                    // port), or the Linux versions' folders per game.
+                    String relative = savedataPath(name), target_path;
+                    if (relative != null) target_path = importTarget(relative);
+                    else if ((target_path = gameFolderPath(name)) == null) continue;
+                    File target = new File(incoming, target_path);
                     if (!target.getCanonicalPath().startsWith(root)) continue; // no paths out of it
                     target.getParentFile().mkdirs();
                     try (java.io.OutputStream out = new java.io.FileOutputStream(target)) {
