@@ -780,7 +780,7 @@ public final class MainActivity extends Activity {
 
     /** One profile: render resolution (1080/720/540), upscaler (fsr1/fsr3/gsr2), preset, upscaling
      *  output (1080/720; only with fsr3/gsr2), FPS limit, game rate, the patches that are on (null:
-     *  none, ALL_GFX: every one), shadow cascades and whether it skips the logos (null: untouched). */
+     *  none, ALL_GFX: every one), shadow cascades and whether it skips the logos (null: untouched; every profile skips them since 0.1.8). */
     private static final class Profile {
         final String res, upscaler, preset, out, fps, rate, shadows;
         final java.util.Set<String> patches;
@@ -803,13 +803,13 @@ public final class MainActivity extends Activity {
 
     private static Profile profile(String id) {
         switch (id) {
-            case "low":         return new Profile("540", "fsr1", "0", null, "30", "60", ALL_GFX, "1", null);
+            case "low":         return new Profile("540", "fsr1", "0", null, "30", "60", ALL_GFX, "1", true);
             case "low_medium":  return new Profile("540", "fsr1", "0", null, "30", "60", LIGHT_GFX, "2", true);
-            case "medium":      return new Profile("540", "fsr1", "0", null, "30", "60", null, "0", null);
-            case "high":        return new Profile("720", "fsr1", "0", null, "60", "auto", null, "0", null);
-            case "very_high":   return new Profile("1080", "fsr3", "1", "1080", "40", "120", null, "0", null);
+            case "medium":      return new Profile("540", "fsr1", "0", null, "30", "60", null, "0", true);
+            case "high":        return new Profile("720", "fsr1", "0", null, "60", "auto", null, "0", true);
+            case "very_high":   return new Profile("1080", "fsr3", "1", "1080", "40", "120", null, "0", true);
             case "performance": return new Profile("1080", "gsr2", "2", "720", "0", "auto", LIGHT_GFX, "2", true);
-            case "battery":     return new Profile("720", "fsr1", "0", null, "40", "120", null, "0", null);
+            case "battery":     return new Profile("720", "fsr1", "0", null, "40", "120", null, "0", true);
             default:            return null;
         }
     }
