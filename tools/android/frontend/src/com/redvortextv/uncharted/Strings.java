@@ -219,6 +219,12 @@ final class Strings {
                 + "the app's folder.",
             "Sustituye las partidas por las de un .zip con una carpeta savedata: exportado desde esta app, la versión "
                 + "de Linux u otro port de Android de la colección. Las actuales se guardan aparte en la carpeta de la app.");
+        put("saves_restore", "Undo the last import", "Deshacer la última importación");
+        put("saves_restore_hint", "Puts back the saves you had before the last import (the imported ones are kept "
+                + "aside too).", "Vuelve a poner las partidas que tenías antes de la última importación (las importadas "
+                + "también se guardan aparte).");
+        put("saves_restored", "Saves from before the import restored", "Partidas de antes de la importación recuperadas");
+        put("saves_no_backup", "There are no saves from before an import", "No hay partidas de antes de una importación");
         put("saves_exported", "Saves exported", "Partidas exportadas");
         put("saves_imported", "Saves imported", "Partidas importadas");
         put("saves_none", "There are no saves yet", "Todavía no hay partidas guardadas");

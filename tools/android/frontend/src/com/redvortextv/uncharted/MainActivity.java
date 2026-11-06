@@ -467,6 +467,7 @@ public final class MainActivity extends Activity {
         actionRow(Strings.get("game_folder"), gameDir == null ? Strings.get("not_chosen") : gameDir, () -> askGameFolder()).setTag("folder");
         actionRow(Strings.get("saves_export"), Strings.get("saves_export_hint"), this::askSavesExport);
         actionRow(Strings.get("saves_import"), Strings.get("saves_import_hint"), this::askSavesImport);
+        actionRow(Strings.get("saves_restore"), Strings.get("saves_restore_hint"), this::restoreSaves);
         switchRow(launcher, "perf_stats", false, Strings.get("perf_stats"), Strings.get("perf_stats_hint"));
         actionRow(Strings.get("logs"), Strings.get("logs_hint") + "\n" + sharedLogDir().getPath(), () -> {
             File log = new File(sharedLogDir(), "android-game.log");
@@ -1616,6 +1617,29 @@ public final class MainActivity extends Activity {
             if (problem != null) FsUtil.deleteTree(incoming);
             String failure = problem;
             main.post(() -> { if (!destroyed) toast(failure == null ? Strings.get("saves_imported") : failure); });
+        }).start();
+    }
+
+    /** Undoes the last import: the newest savedata.before-import-<time> becomes the saves again, and the
+     *  current ones go aside as savedata.replaced-<time>. */
+    private void restoreSaves() {
+        new Thread(() -> {
+            String message;
+            File user = new File(BASE, "user"), newest = null;
+            File[] aside = user.listFiles((dir, name) -> name.startsWith("savedata.before-import-"));
+            if (aside != null) for (File f : aside)
+                if (f.isDirectory() && (newest == null || f.getName().compareTo(newest.getName()) > 0)) newest = f;
+            if (newest == null) message = Strings.get("saves_no_backup");
+            else {
+                File saves = savesDir();
+                String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(new java.util.Date());
+                if (saves.exists() && !saves.renameTo(new File(user, "savedata.replaced-" + stamp)))
+                    message = "cannot move the current saves aside";
+                else if (!newest.renameTo(saves)) message = "cannot put the saves in place";
+                else message = Strings.get("saves_restored");
+            }
+            String shown = message;
+            main.post(() -> { if (!destroyed) toast(shown); });
         }).start();
     }
 
