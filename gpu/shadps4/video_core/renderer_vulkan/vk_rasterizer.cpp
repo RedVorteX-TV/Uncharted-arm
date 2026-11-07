@@ -1584,6 +1584,10 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (SkipShader(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash)) {
         return; // bbport: BB_SKIP_SHADERS also matches vertex shaders
     }
+    {
+        const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        GpuTrailNote('D', pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash, ps ? ps->pgm_hash : 0);
+    }
     const auto& regs = Regs();
     const auto frame_start = [&] {
         scene_started = false;
@@ -2026,6 +2030,10 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
         FrameCapture::Poll();
         scheduler.PopPendingOperations();
     }
+    {
+        const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        GpuTrailNote('D', pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash, ps ? ps->pgm_hash : 0);
+    }
     const VAddr count_address = indirect.count;
     const u32 stride = indirect.stride;
     const u32 max_count = indirect.max_count;
@@ -2289,6 +2297,7 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
     if (SkipShader(cs.pgm_hash)) {
         return;
     }
+    GpuTrailNote('C', cs.pgm_hash, 0);
     // After the resource binding: its transfers (image uploads, downloads) mark themselves.
     const auto mark = [&] {
         if (auto* profiler = GpuProfiler::Get()) {
@@ -2544,6 +2553,7 @@ void Rasterizer::DispatchIndirectRecord(const ComputePipeline* pipeline, VAddr a
                                         u32 size) {
     scheduler.PopPendingOperations();
     const u32 offset = 0;
+    GpuTrailNote('C', pipeline->GetStage(Shader::SwStage::Compute).pgm_hash, 0);
 
     if (!BindResources(pipeline)) {
         return;
