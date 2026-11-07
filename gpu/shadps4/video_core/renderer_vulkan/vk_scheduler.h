@@ -678,6 +678,12 @@ private:
     CommandBase* last{};
 };
 
+/// bbport: the shaders each queue submission used (draws: vertex and pixel shader, dispatches:
+/// compute shader), printed with the last submissions when the GPU is lost or stalls, and the
+/// shaders the game used for the first time just before. The drivers of Adreno give no fault
+/// details: this says which passes were on the GPU. BB_GPU_TRAIL=0: off.
+void GpuTrailNote(char kind, u64 first, u64 second);
+
 class Scheduler {
 public:
     /// `threaded_recording`: Vulkan commands passed to Record() are recorded by a worker thread.

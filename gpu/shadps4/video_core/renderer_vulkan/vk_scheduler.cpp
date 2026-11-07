@@ -5,6 +5,10 @@
 #include "bbport_cpu.h"
 #include <algorithm>
 #include <cstdio>
+#include <mutex>
+#include <array>
+#include <chrono>
+#include <atomic>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -46,11 +50,81 @@ struct SubmitRecord {
     std::array<VkSemaphore, 4> wait_semaphore;
     std::array<u64, 4> wait_value;
 };
+// bbport: the GPU trail (GpuTrailNote, vk_scheduler.h). A submission keeps the last
+// TrailSize different shaders recorded since the previous one, in recording order.
+struct TrailEntry {
+    char kind;
+    u32 first;
+    u32 second;
+};
+constexpr size_t TrailSize = 40;
+struct Trail {
+    std::array<TrailEntry, TrailSize> entries;
+    u32 count;   // kept in entries (the last TrailSize)
+    u32 total;   // different ones noted
+};
+std::mutex g_trail_mutex;
+Trail g_trail_open;
+std::atomic<u64> g_trail_generation{1};
+std::array<Trail, 32> g_trail_submits;
+// The shader pairs seen so far, and the last ones seen for the first time (with when).
+std::unordered_map<u64, u64> g_trail_seen;
+std::array<std::pair<TrailEntry, u64>, 48> g_trail_new;
+u64 g_trail_new_count;
+const bool g_trail_on = [] {
+    const char* env = std::getenv("BB_GPU_TRAIL");
+    return !(env && env[0] == '0');
+}();
+u64 TrailNowMs() {
+    return static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch())
+                                .count());
+}
+void TrailPrint(const TrailEntry& e) {
+    if (e.kind == 'D') {
+        std::printf(" draw vs %08x ps %08x;", e.first, e.second);
+    } else {
+        std::printf(" dispatch cs %08x;", e.first);
+    }
+}
 std::mutex g_recent_mutex;
 std::array<SubmitRecord, 32> g_recent;
 u64 g_recent_count;
 std::vector<std::pair<const Scheduler*, const Instance*>> g_schedulers;
 } // namespace
+
+void GpuTrailNote(char kind, u64 first, u64 second) {
+    if (!g_trail_on) {
+        return;
+    }
+    // The same shaders as this thread's last note in the same submission: nothing new.
+    thread_local u64 last_key = 0, last_generation = 0;
+    const u64 key = (u64(u32(first)) << 32 | u32(second)) ^ (u64(kind) << 56);
+    const u64 generation = g_trail_generation.load(std::memory_order_relaxed);
+    if (key == last_key && generation == last_generation) {
+        return;
+    }
+    last_key = key;
+    last_generation = generation;
+    const TrailEntry entry{kind, u32(first), u32(second)};
+    std::scoped_lock lk{g_trail_mutex};
+    auto& t = g_trail_open;
+    for (u32 i = 0; i < t.count; ++i) {
+        const auto& e = t.entries[i];
+        if (e.kind == kind && e.first == entry.first && e.second == entry.second) {
+            return;
+        }
+    }
+    if (t.count == TrailSize) {
+        std::move(t.entries.begin() + 1, t.entries.end(), t.entries.begin());
+        --t.count;
+    }
+    t.entries[t.count++] = entry;
+    ++t.total;
+    if (g_trail_seen.emplace(key, 0).second) {
+        g_trail_new[g_trail_new_count++ % g_trail_new.size()] = {entry, TrailNowMs()};
+    }
+}
 
 void Scheduler::ReportStall() {
     // Linux fork: while the GPU is still stuck, the checkpoints point at the command it is on.
@@ -75,6 +149,36 @@ void Scheduler::ReportStall() {
         for (u32 w = 0; w < r.waits; ++w) {
             std::printf(" %p=%llu", static_cast<void*>(r.wait_semaphore[w]),
                         static_cast<unsigned long long>(r.wait_value[w]));
+        }
+        std::printf("\n");
+    }
+    if (g_trail_on) {
+        std::scoped_lock tl{g_trail_mutex};
+        // Oldest first: the hang is usually in one of the last ones.
+        for (u64 i = g_recent_count - std::min<u64>(g_recent_count, 8); i < g_recent_count; ++i) {
+            const auto& t = g_trail_submits[i % g_trail_submits.size()];
+            std::printf("GPU trail: submit #%llu, %u shaders%s:", static_cast<unsigned long long>(i),
+                        t.total, t.total > t.count ? " (the last ones)" : "");
+            for (u32 e = 0; e < t.count; ++e) {
+                TrailPrint(t.entries[e]);
+            }
+            std::printf("\n");
+        }
+        std::printf("GPU trail: not submitted yet, %u shaders:", g_trail_open.total);
+        for (u32 e = 0; e < g_trail_open.count; ++e) {
+            TrailPrint(g_trail_open.entries[e]);
+        }
+        std::printf("\n");
+        const u64 now = TrailNowMs();
+        const u64 news = std::min<u64>(g_trail_new_count, g_trail_new.size());
+        std::printf("GPU trail: first used lately (newest last):");
+        for (u64 i = g_trail_new_count - news; i < g_trail_new_count; ++i) {
+            const auto& [e, when] = g_trail_new[i % g_trail_new.size()];
+            if (now - when > 60000) {
+                continue;
+            }
+            TrailPrint(e);
+            std::printf(" %.1f s ago;", double(now - when) / 1000.0);
         }
         std::printf("\n");
     }
@@ -576,6 +680,13 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
 
     {
         std::scoped_lock lk{g_recent_mutex};
+        if (g_trail_on) {
+            std::scoped_lock tl{g_trail_mutex};
+            g_trail_submits[g_recent_count % g_trail_submits.size()] = g_trail_open;
+            g_trail_open.count = 0;
+            g_trail_open.total = 0;
+            g_trail_generation.fetch_add(1, std::memory_order_relaxed);
+        }
         auto& record = g_recent[g_recent_count++ % g_recent.size()];
         record = {this, timeline, signal_value, info.num_wait_semas, {}, {}};
         for (u32 w = 0; w < info.num_wait_semas && w < 4; ++w) {

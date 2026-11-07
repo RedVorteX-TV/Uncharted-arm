@@ -319,6 +319,16 @@ while :; do
         done
         if [ "$count" -ge 4 ]; then export BB_RENDER_CPUS=$fast; echo "Render threads: CPUs $fast"; fi
     fi
+    # Testing without a new build: BB_ settings in uncharted-debug.txt in the game folder (one
+    # NAME=value a line, e.g. BB_SKIP_SHADERS=1234abcd) override the ones above.
+    if [ -f "$game_dir/uncharted-debug.txt" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            line=$(printf '%s' "$line" | tr -d '\r')
+            case "$line" in
+                BB_[A-Z0-9_]*=*) export "$line"; echo "Debug setting: $line" ;;
+            esac
+        done < "$game_dir/uncharted-debug.txt"
+    fi
     # BB_GAME_CPUS: the CPUs the game may run on (taskset -c list), e.g. 2-7.
     [ -n "${BB_GAME_CPUS:-}" ] && set -- /system/bin/taskset -c "$BB_GAME_CPUS" "$@"
     rm -f "$loadexec"
