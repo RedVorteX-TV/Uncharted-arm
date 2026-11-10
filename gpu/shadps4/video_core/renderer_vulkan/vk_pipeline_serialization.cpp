@@ -5,6 +5,7 @@
 #include "core/emulator_settings.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
 #include "shader_recompiler/info.h"
+#include "shader_recompiler/ir/passes/ir_passes.h"
 #include "shader_recompiler/backend/spirv/emit_spirv.h"
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -17,6 +18,15 @@ namespace Serialization {
 static constexpr u32 ShaderBinaryVersion = 10u; // bbport: scalar instructions split EXEC scopes
 static constexpr u32 ShaderMetaVersion = 9u; // bbport: BufferResource::read_bytes through arithmetic
 static constexpr u32 PipelineKeyVersion = 6u; // bbport: Info layout (BufferResource::read_bytes)
+/// bbport: the cache name of a shader's SPIR-V. Shaders with a clamped loop bound
+/// (BB_EFFECT_LOOP_CLAMP, effect_loop_clamp_pass.cpp) get their own names, so binaries cached
+/// before the clamp are not found and only those shaders recompile.
+static std::string ShaderBinaryName(u64 pgm_hash, size_t perm_idx) {
+    const char* clamp = !Shader::Optimization::EffectLoopClamp(pgm_hash) ? ""
+                        : pgm_hash == 0x689d1af9                       ? "_lc2"
+                                                                       : "_lc1";
+    return fmt::format("{:#018x}_{}{}", pgm_hash, perm_idx, clamp);
+}
 } // namespace Serialization
 
 namespace Vulkan {
@@ -89,7 +99,7 @@ void RegisterShaderBinary(std::vector<u32>&& spv, u64 pgm_hash, size_t perm_idx)
     }
 
     Storage::DataBase::Instance().Save(Storage::BlobType::ShaderBinary,
-                                       fmt::format("{:#018x}_{}", pgm_hash, perm_idx),
+                                       Serialization::ShaderBinaryName(pgm_hash, perm_idx),
                                        std::move(spv));
 }
 
@@ -291,7 +301,7 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
 
     std::vector<u32> spv{};
     Storage::DataBase::Instance().Load(Storage::BlobType::ShaderBinary,
-                                       fmt::format("{:#018x}_{}", program->info.pgm_hash, perm_idx),
+                                       Serialization::ShaderBinaryName(program->info.pgm_hash, perm_idx),
                                        spv);
     if (spv.empty()) {
         return false;
