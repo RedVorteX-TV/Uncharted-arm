@@ -286,6 +286,9 @@ while :; do
         big2*) export BB_TINY_READBACK=1 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-2} BB_SCALAR_COPY64_DEFER=${BB_SCALAR_COPY64_DEFER-1} ;;
         *) export BB_TINY_READBACK=0 BB_SCALAR_COPY64_SYNC=${BB_SCALAR_COPY64_SYNC-0} ;;
     esac
+    # No "friends' stats" notice at the start (a local player ID instead of "signed out";
+    # BB_OFFLINE_NPID=0: as before).
+    export BB_OFFLINE_NPID=${BB_OFFLINE_NPID-1}
     # These passes need the scene's jitter too (BB_JITTER_PS): sun shadow reconstruction, U1 boat
     # details, and U3 London bar surfaces drawn against secondary scene depth (otherwise they
     # flicker under the temporal upscalers).
