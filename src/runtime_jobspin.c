@@ -14,7 +14,11 @@
  * then sleeps on the game's own semaphore right away instead of after 1000 passes. The `pause` at
  * A, where the game offers no wait, sleeps a little between passes once the spin is long.
  *
- * BB_JOB_SPIN=<passes>,<sleep us> (default 256,20); BB_JOB_SPIN=0 leaves the game's loop as is.
+ * BB_JOB_SPIN=<passes>,<sleep us> (default 2,20); BB_JOB_SPIN=0 leaves the game's loop as is.
+ * 2 passes (was 256): a guest `pause` is a wfe of ~100 us on Snapdragon cores, so 256 passes held
+ * a worker's core ~25 ms after every job, and the GPU command thread lost its core to them
+ * (revvv991/uncharted-android's measurements with 2 spins, findings 2026-11-07; the wait's
+ * timeout and the resume wake that go with it: patch_job_wait_wake, probe.c).
  * Only on hosts where the guest CPU can hook instructions (FEXCore); x86-64 hosts keep the loop. */
 #define _GNU_SOURCE
 #include "runtime.h"
@@ -31,7 +35,7 @@ void runtime_job_spin_install(unsigned char *image, uint64_t start, uint64_t siz
 }
 void runtime_job_spin_report(void) {}
 #else
-static unsigned free_passes = 256, sleep_us = 20;
+static unsigned free_passes = 2, sleep_us = 20;
 static int64_t wait_passes = 1000;
 static unsigned long long sleeps, early_waits;
 static unsigned loops_found;
