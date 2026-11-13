@@ -381,6 +381,8 @@ def main():
     env.setdefault('BB_VELOCITY_PS', 'f4b18264')
     env.setdefault('BB_UPSCALE_BEFORE_CS', 'aec539f0')
     env.setdefault('BB_HUDLESS_PS', '484cdbf5')
+    # No "friends' stats" notice at the start (a local player ID; BB_OFFLINE_NPID=0: as before).
+    env.setdefault('BB_OFFLINE_NPID', '1')
     # These passes need the scene's jitter too: sun shadow reconstruction, U1 boat details,
     # and U3 London bar surfaces drawn against secondary scene depth (otherwise they flicker).
     env.setdefault('BB_JITTER_PS', 'f614041e,b2a42acf,1a08df2d')
