@@ -96,8 +96,11 @@ Built on the work of:
 - [Supermedo/uncharted_pc](https://github.com/Supermedo/uncharted_pc): the native port of the
   collection, and through it the fixes by Mevlock (the job wait behind Uncharted 2's water crash,
   Uncharted 1's physics at any frame rate, Elena's truck in Uncharted 2's convoy, aiming blur, the
-  move action pool), drakolordx7 (Uncharted 3's sinking characters), kj2223 and Alex (flicker under
-  the temporal upscalers).
+  move action pool, and in 0.1.9 the guards against lost GPU devices, samplers rewritten while
+  read, unknown tile modes and too many mip levels, depth arrays that keep their layers, the
+  Uncharted 1.02 job runner and the skipped friends' stats notice), drakolordx7 (Uncharted 3's
+  sinking characters), kj2223 and Alex (flicker under the temporal upscalers), FerManjarres (the
+  freeze of end-of-pipe flips signalled by the recording thread).
 - ngin, through spacepepperoni/uncharted_Linux: the WriteData chaining, the bigger constant ring
   and stream buffer and the title update's own folder; iannitram: the audio codec and command
   processor crash guards; Cid, through ducvd89/Bloodborne-Android: GSR 2's 9-sample kernel and
@@ -117,7 +120,8 @@ Built on the work of:
 - [revvv991/uncharted-android](https://github.com/revvv991/uncharted-android) (GPL-2.0-or-later):
   the batched skinning (vk_skin_batch.cpp and its host shaders), the constant copies bound again,
   the GPU threads on the fast cores and fewer wakeups of the game's submission thread; the movies
-  below 1080p and the blur scale below 1080p.
+  below 1080p and the blur scale below 1080p; the job workers' short spin and the wake-up of
+  resumed jobs.
 - [Bachata S4](https://github.com/zenithblue-oss/shadps4-arm64) (GPL-2.0-or-later), through
   [erickmendes22/uncharted-android](https://github.com/erickmendes22/uncharted-android): the
   launcher's graphics patches (patches/graphics_patches.json).

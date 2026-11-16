@@ -99,9 +99,13 @@ Sobre el trabajo de:
 - [Supermedo/uncharted_pc](https://github.com/Supermedo/uncharted_pc): el port nativo de la
   colección y, a través de él, los arreglos de Mevlock (la espera de trabajos tras el cierre del agua
   de Uncharted 2, la física de Uncharted 1 a cualquier FPS, el camión de Elena en el convoy de
-  Uncharted 2, el desenfoque al apuntar, la reserva de acciones de movimiento), drakolordx7 (los
-  personajes que se hunden en Uncharted 3), kj2223 y Alex (el parpadeo con los escaladores
-  temporales).
+  Uncharted 2, el desenfoque al apuntar, la reserva de acciones de movimiento y, en la 0.1.9, las
+  protecciones contra la pérdida del dispositivo gráfico, los samplers reescritos mientras se leen,
+  los modos de tile desconocidos y el exceso de niveles de mip, las texturas de profundidad que
+  conservan sus capas, el gestor de trabajos de la 1.02 de Uncharted 1 y el aviso de estadísticas
+  de amigos), drakolordx7 (los personajes que se hunden en Uncharted 3), kj2223 y Alex (el
+  parpadeo con los escaladores temporales), FerManjarres (el bloqueo de los flips de fin de
+  tubería señalados por el hilo de grabación).
 - ngin, a través de spacepepperoni/uncharted_Linux: el encadenado de WriteData, el anillo de
   constantes y el búfer de streaming más grandes y la carpeta propia de la actualización del juego;
   iannitram: las protecciones contra cierres del códec de audio y del procesador de comandos; Cid, a
@@ -122,7 +126,8 @@ Sobre el trabajo de:
 - [revvv991/uncharted-android](https://github.com/revvv991/uncharted-android) (GPL-2.0 o
   posterior): el skinning por lotes (vk_skin_batch.cpp y sus shaders), las constantes reutilizadas,
   los hilos de GPU en los núcleos rápidos y menos despertares del hilo de envíos del juego; los
-  vídeos y la escala del desenfoque por debajo de 1080p.
+  vídeos y la escala del desenfoque por debajo de 1080p; la espera corta de los hilos de trabajos
+  y el despertar de los trabajos reanudados.
 - [Bachata S4](https://github.com/zenithblue-oss/shadps4-arm64) (GPL-2.0 o posterior), a través de
   [erickmendes22/uncharted-android](https://github.com/erickmendes22/uncharted-android): los
   parches gráficos del launcher (patches/graphics_patches.json).
