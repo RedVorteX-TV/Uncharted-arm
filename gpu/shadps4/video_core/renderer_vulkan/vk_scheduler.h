@@ -683,6 +683,9 @@ private:
 /// shaders the game used for the first time just before. The drivers of Adreno give no fault
 /// details: this says which passes were on the GPU. BB_GPU_TRAIL=0: off.
 void GpuTrailNote(char kind, u64 first, u64 second);
+/// bbport: a line kept with the GPU trail (BB_DRAW_LOG): the last 96 are printed with the stall
+/// report, tagged with the submission they went into.
+void GpuTrailText(const char* line);
 
 class Scheduler {
 public:

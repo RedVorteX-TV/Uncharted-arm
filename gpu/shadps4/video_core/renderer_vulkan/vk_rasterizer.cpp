@@ -1678,14 +1678,10 @@ void Rasterizer::LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 
     const bool large = indices > (1u << 22) || instances > 4096 || !index_mapped ||
                        unmapped_buffer ||
                        (is_indexed && min_vertices != ~0ull && max_index >= min_vertices);
-    std::scoped_lock lk{m};
-    if (!large && (lines >= 400 || !seen.insert(key).second)) {
-        return;
-    }
-    ++lines;
-    std::printf("Draw log: vs %08x ps %08x %s %u indices x %u instances, primitive %u, index %s at "
+    char line[600];
+    std::snprintf(line, sizeof(line), "vs %08x ps %08x %s %u indices x %u instances, primitive %u, index %s at "
                 "%#llx (offset %u, max index %u), %u vertex buffers (fewest vertices %lld), "
-                "color0 %#llx, depth %#llx, dma %d, buffers%s%s%s\n",
+                "color0 %#llx, depth %#llx, dma %d, buffers%s%s%s",
                 vs_hash, ps_hash, is_indexed ? "indexed" : "auto", indices, instances,
                 u32(regs.primitive_type), index16 ? "16-bit" : "32-bit",
                 static_cast<unsigned long long>(index_address), index_offset, max_index,
@@ -1693,6 +1689,15 @@ void Rasterizer::LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 
                 static_cast<unsigned long long>(regs.color_buffers[0] ? regs.color_buffers[0].Address() : 0),
                 static_cast<unsigned long long>(regs.depth_buffer.DepthAddress()), int(dma), buffers,
                 large ? " LARGE OR OUT OF RANGE" : "", index_mapped ? "" : " (indices not mapped)");
+    // Every one goes with the GPU trail (printed when the GPU stalls or is lost); new ones and
+    // large ones to the log as well.
+    GpuTrailText(line);
+    std::scoped_lock lk{m};
+    if (!large && (lines >= 400 || !seen.insert(key).second)) {
+        return;
+    }
+    ++lines;
+    std::printf("Draw log: %s\n", line);
     std::fflush(stdout);
 }
 
