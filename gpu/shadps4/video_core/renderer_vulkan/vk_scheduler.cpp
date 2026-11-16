@@ -62,7 +62,10 @@ struct Trail {
     std::array<TrailEntry, TrailSize> entries;
     u32 count;   // kept in entries (the last TrailSize)
     u32 total;   // different ones noted
+    u64 generation; // the trail generation it was noted in (GpuTrailText's tags)
 };
+std::array<std::pair<u64, std::array<char, 600>>, 96> g_trail_text;
+u64 g_trail_text_count;
 std::mutex g_trail_mutex;
 Trail g_trail_open;
 std::atomic<u64> g_trail_generation{1};
@@ -95,6 +98,13 @@ std::array<SubmitRecord, 32> g_recent;
 u64 g_recent_count;
 std::vector<std::pair<const Scheduler*, const Instance*>> g_schedulers;
 } // namespace
+
+void GpuTrailText(const char* line) {
+    std::scoped_lock lk{g_trail_mutex};
+    auto& slot = g_trail_text[g_trail_text_count++ % g_trail_text.size()];
+    slot.first = g_trail_generation.load(std::memory_order_relaxed);
+    std::snprintf(slot.second.data(), slot.second.size(), "%s", line);
+}
 
 void GpuTrailNote(char kind, u64 first, u64 second) {
     if (!g_trail_on) {
@@ -160,7 +170,8 @@ void Scheduler::ReportStall() {
         // Oldest first: the hang is usually in one of the last ones.
         for (u64 i = g_recent_count - std::min<u64>(g_recent_count, 8); i < g_recent_count; ++i) {
             const auto& t = g_trail_submits[i % g_trail_submits.size()];
-            std::printf("GPU trail: submit #%llu, %u shaders%s:", static_cast<unsigned long long>(i),
+            std::printf("GPU trail: submit #%llu (generation %llu), %u shaders%s:",
+                        static_cast<unsigned long long>(i), static_cast<unsigned long long>(t.generation),
                         t.total, t.total > t.count ? " (the last ones)" : "");
             for (u32 e = 0; e < t.count; ++e) {
                 TrailPrint(t.entries[e]);
@@ -174,6 +185,18 @@ void Scheduler::ReportStall() {
         std::printf("\n");
         const u64 now = TrailNowMs();
         const u64 news = std::min<u64>(g_trail_new_count, g_trail_new.size());
+        if (g_trail_text_count) {
+            const u64 n = std::min<u64>(g_trail_text_count, g_trail_text.size());
+            std::printf("GPU trail: the last %llu logged draws (generation now %llu; submission "
+                        "generations above):\n",
+                        static_cast<unsigned long long>(n),
+                        static_cast<unsigned long long>(g_trail_generation.load()));
+            for (u64 i = g_trail_text_count - n; i < g_trail_text_count; ++i) {
+                const auto& [generation, text] = g_trail_text[i % g_trail_text.size()];
+                std::printf("  [generation %llu] %s\n", static_cast<unsigned long long>(generation),
+                            text.data());
+            }
+        }
         std::printf("GPU trail: first used lately (newest last):");
         for (u64 i = g_trail_new_count - news; i < g_trail_new_count; ++i) {
             const auto& [e, when] = g_trail_new[i % g_trail_new.size()];
@@ -694,6 +717,7 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
         std::scoped_lock lk{g_recent_mutex};
         if (g_trail_on) {
             std::scoped_lock tl{g_trail_mutex};
+            g_trail_open.generation = g_trail_generation.load(std::memory_order_relaxed);
             g_trail_submits[g_recent_count % g_trail_submits.size()] = g_trail_open;
             g_trail_open.count = 0;
             g_trail_open.total = 0;
@@ -729,9 +753,10 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
         if (waited != vk::Result::eSuccess) {
             std::scoped_lock tl{g_trail_mutex};
             const auto& t = g_trail_submits[(g_recent_count - 1) % g_trail_submits.size()];
-            std::printf("GPU trail sync: submission #%llu (scheduler %p, tick %llu) did not finish "
+            std::printf("GPU trail sync: submission #%llu (generation %llu) (scheduler %p, tick %llu) did not finish "
                         "(%s, result %d): %u shaders%s:",
                         static_cast<unsigned long long>(g_recent_count - 1),
+                        static_cast<unsigned long long>(t.generation),
                         static_cast<const void*>(this), static_cast<unsigned long long>(signal_value),
                         waited == vk::Result::eTimeout ? "3 s" : "error", static_cast<int>(waited), t.total,
                         t.total > t.count ? " (the last ones)" : "");
