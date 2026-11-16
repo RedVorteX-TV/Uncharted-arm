@@ -1678,7 +1678,7 @@ void Rasterizer::LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 
     const bool large = indices > (1u << 22) || instances > 4096 || !index_mapped ||
                        unmapped_buffer ||
                        (is_indexed && min_vertices != ~0ull && max_index >= min_vertices);
-    char line[600];
+    char line[900];
     std::snprintf(line, sizeof(line), "vs %08x ps %08x %s %u indices x %u instances, primitive %u, index %s at "
                 "%#llx (offset %u, max index %u), %u vertex buffers (fewest vertices %lld), "
                 "color0 %#llx, depth %#llx, dma %d, buffers%s%s%s",
@@ -1689,6 +1689,29 @@ void Rasterizer::LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 
                 static_cast<unsigned long long>(regs.color_buffers[0] ? regs.color_buffers[0].Address() : 0),
                 static_cast<unsigned long long>(regs.depth_buffer.DepthAddress()), int(dma), buffers,
                 large ? " LARGE OR OUT OF RANGE" : "", index_mapped ? "" : " (indices not mapped)");
+    // The depth target: registers and the host image behind it.
+    {
+        const auto& db = regs.depth_buffer;
+        const size_t len = std::strlen(line);
+        int n = std::snprintf(line + len, sizeof(line) - len,
+                              "; db z%u s%u pitch %u height %u tile %u slices %u-%u htile %u "
+                              "stencil %#llx scissor %ux%u",
+                              u32(db.z_info.format), u32(db.stencil_info.format), db.Pitch(),
+                              db.Height(), u32(db.z_info.tile_mode_index),
+                              u32(regs.depth_view.slice_start), u32(regs.depth_view.slice_max),
+                              u32(db.z_info.tile_surface_enable),
+                              static_cast<unsigned long long>(db.StencilAddress()),
+                              u32(regs.screen_scissor.bottom_right_x - regs.screen_scissor.top_left_x),
+                              u32(regs.screen_scissor.bottom_right_y - regs.screen_scissor.top_left_y));
+        if (n > 0 && db_desc.first && len + n < sizeof(line)) {
+            const auto& image = texture_cache.GetImage(db_desc.first);
+            std::snprintf(line + len + n, sizeof(line) - len - n,
+                          "; image %ux%ux%u layers %u mips %u %s tile %u",
+                          image.info.size.width, image.info.size.height, image.info.size.depth,
+                          image.info.resources.layers, image.info.resources.levels,
+                          vk::to_string(image.info.pixel_format).c_str(), u32(image.info.tile_mode));
+        }
+    }
     // Every one goes with the GPU trail (printed when the GPU stalls or is lost); new ones and
     // large ones to the log as well.
     GpuTrailText(line);

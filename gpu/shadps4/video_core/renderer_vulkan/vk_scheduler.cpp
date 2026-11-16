@@ -64,7 +64,7 @@ struct Trail {
     u32 total;   // different ones noted
     u64 generation; // the trail generation it was noted in (GpuTrailText's tags)
 };
-std::array<std::pair<u64, std::array<char, 600>>, 96> g_trail_text;
+std::array<std::pair<u64, std::array<char, 900>>, 96> g_trail_text;
 u64 g_trail_text_count;
 std::mutex g_trail_mutex;
 Trail g_trail_open;
