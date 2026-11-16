@@ -329,6 +329,8 @@ void Runtime::CopyImage(VideoCore::Image* src, VideoCore::Image* dst) {
         const u32 mip_d = std::max(base_depth >> mip, 1u);
 
         const auto [src_layers, dst_layers] = SanitizeCopyLayers(src->info, dst->info, mip_d);
+        GpuTrailNote('X', (src->info.size.width & 0xffff) << 16 | (src->info.size.height & 0xffff),
+                     u64(src_layers & 0xffff) << 16 | (dst_layers & 0xffff));
 
         vk::ImageCopy region{};
         region.srcSubresource.aspectMask = src_aspect;
@@ -600,6 +602,8 @@ void Runtime::ResolveImage(VideoCore::Image* src, VideoCore::Image* dst,
     }
 
     const auto [src_layers, dst_layers] = SanitizeCopyLayers(src->info, dst->info, 1);
+    GpuTrailNote('X', (src->info.size.width & 0xffff) << 16 | (src->info.size.height & 0xffff),
+                 u64(src_layers & 0xffff) << 16 | (dst_layers & 0xffff));
     if (!needs_resolve) {
         const vk::ImageCopy region = {
             .srcSubresource{

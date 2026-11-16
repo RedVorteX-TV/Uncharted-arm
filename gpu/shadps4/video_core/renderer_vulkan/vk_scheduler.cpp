@@ -57,7 +57,7 @@ struct TrailEntry {
     u32 first;
     u32 second;
 };
-constexpr size_t TrailSize = 40;
+constexpr size_t TrailSize = 128;
 struct Trail {
     std::array<TrailEntry, TrailSize> entries;
     u32 count;   // kept in entries (the last TrailSize)
@@ -83,6 +83,9 @@ u64 TrailNowMs() {
 void TrailPrint(const TrailEntry& e) {
     if (e.kind == 'D') {
         std::printf(" draw vs %08x ps %08x;", e.first, e.second);
+    } else if (e.kind == 'X') {
+        std::printf(" image copy %ux%u layers %u->%u;", e.first >> 16, e.first & 0xffff,
+                    e.second >> 16, e.second & 0xffff);
     } else {
         std::printf(" dispatch cs %08x;", e.first);
     }
@@ -708,6 +711,36 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
     if (submit_result == vk::Result::eErrorDeviceLost) {
         std::printf("Device lost during submit\n");
         DeviceLost(instance.GetDevice());
+    }
+    // bbport: BB_GPU_TRAIL_SYNC=1 (diagnosis, slow): each submission is waited for, so the one
+    // that hangs the GPU is the last one and its shaders are printed alone.
+    static const bool trail_sync = [] {
+        const char* env = std::getenv("BB_GPU_TRAIL_SYNC");
+        return env && env[0] == '1';
+    }();
+    if (trail_sync && submit_result == vk::Result::eSuccess) {
+        const vk::Semaphore handle = work_semaphore.Handle();
+        const vk::SemaphoreWaitInfo wait_info = {
+            .semaphoreCount = 1,
+            .pSemaphores = &handle,
+            .pValues = &signal_value,
+        };
+        const vk::Result waited = instance.GetDevice().waitSemaphores(&wait_info, 3'000'000'000ull);
+        if (waited != vk::Result::eSuccess) {
+            std::scoped_lock tl{g_trail_mutex};
+            const auto& t = g_trail_submits[(g_recent_count - 1) % g_trail_submits.size()];
+            std::printf("GPU trail sync: submission #%llu (scheduler %p, tick %llu) did not finish "
+                        "(%s, result %d): %u shaders%s:",
+                        static_cast<unsigned long long>(g_recent_count - 1),
+                        static_cast<const void*>(this), static_cast<unsigned long long>(signal_value),
+                        waited == vk::Result::eTimeout ? "3 s" : "error", static_cast<int>(waited), t.total,
+                        t.total > t.count ? " (the last ones)" : "");
+            for (u32 e = 0; e < t.count; ++e) {
+                TrailPrint(t.entries[e]);
+            }
+            std::printf("\n");
+            std::fflush(stdout);
+        }
     }
 
     work_semaphore.Refresh();
