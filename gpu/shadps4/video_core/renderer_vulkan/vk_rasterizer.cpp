@@ -1591,6 +1591,91 @@ static bool SkipShader(u64 hash) {
     return hash && std::find(skipped.begin(), skipped.end(), hash) != skipped.end();
 }
 
+// bbport diagnosis: BB_DRAW_LOG=<shader hash>,...: the parameters of direct draws using these
+// vertex or pixel shaders (U3 chapter 9: a draw of vs be2a6b56 / ps ab30daa9 hangs the GPU),
+// once for each new set of parameters (up to 400 lines), and always for a large one.
+void Rasterizer::LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 index_offset) {
+    static const std::vector<u32> wanted = [] {
+        std::vector<u32> list;
+        if (const char* env = std::getenv("BB_DRAW_LOG")) {
+            for (const char* p = env; *p;) {
+                char* end;
+                const u64 value = std::strtoull(p, &end, 16);
+                if (end == p) {
+                    break;
+                }
+                list.push_back(u32(value));
+                p = *end == ',' ? end + 1 : end;
+            }
+        }
+        return list;
+    }();
+    if (wanted.empty()) {
+        return;
+    }
+    const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+    const u32 vs_hash = u32(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash);
+    const u32 ps_hash = ps ? u32(ps->pgm_hash) : 0;
+    if (std::find(wanted.begin(), wanted.end(), vs_hash) == wanted.end() &&
+        std::find(wanted.begin(), wanted.end(), ps_hash) == wanted.end()) {
+        return;
+    }
+    const auto& regs = Regs();
+    const u32 indices = regs.num_indices;
+    const u32 instances = regs.num_instances.NumInstances();
+    const bool index16 = regs.index_buffer_type.index_type == AmdGpu::IndexType::Index16;
+    const VAddr index_address =
+        regs.index_base_address.Address<VAddr>() + u64(index_offset) * (index16 ? 2 : 4);
+    // The largest index the draw reads (up to 4M of them), against the vertices its buffers hold.
+    u32 max_index = 0;
+    bool index_mapped = true;
+    if (is_indexed && index_address) {
+        const u32 scan = std::min<u32>(indices, 4u << 20);
+        index_mapped = Core::Memory::Instance()->IsHostMapped(index_address, u64(scan) * (index16 ? 2 : 4));
+    }
+    if (is_indexed && index_address && index_mapped) {
+        const u32 scan = std::min<u32>(indices, 4u << 20);
+        if (index16) {
+            const auto* idx = reinterpret_cast<const u16*>(index_address);
+            for (u32 i = 0; i < scan; ++i) max_index = std::max<u32>(max_index, idx[i]);
+        } else {
+            const auto* idx = reinterpret_cast<const u32*>(index_address);
+            for (u32 i = 0; i < scan; ++i) max_index = std::max<u32>(max_index, idx[i]);
+        }
+    }
+    u64 min_vertices = ~0ull;
+    const auto& v = vertex_binds;
+    for (u32 b = 0; b < v.num_buffers && b < v.host_sizes.size() && b < v.host_strides.size(); ++b) {
+        if (v.host_strides[b]) {
+            min_vertices = std::min<u64>(min_vertices, v.host_sizes[b] / v.host_strides[b]);
+        }
+    }
+    static std::mutex m;
+    static u32 lines = 0;
+    static u64 last_key = 0;
+    const u64 key = u64(indices) * 1000003ull ^ u64(instances) << 40 ^ index_address ^
+                    u64(vs_hash) << 20 ^ u64(is_indexed);
+    const bool large = indices > (1u << 22) || instances > 4096 || !index_mapped ||
+                       (is_indexed && min_vertices != ~0ull && max_index >= min_vertices);
+    std::scoped_lock lk{m};
+    if (!large && (key == last_key || lines >= 400)) {
+        return;
+    }
+    last_key = key;
+    ++lines;
+    std::printf("Draw log: vs %08x ps %08x %s %u indices x %u instances, primitive %u, index %s at "
+                "%#llx (offset %u, max index %u), %u vertex buffers (fewest vertices %lld), "
+                "color0 %#llx, depth %#llx%s%s\n",
+                vs_hash, ps_hash, is_indexed ? "indexed" : "auto", indices, instances,
+                u32(regs.primitive_type), index16 ? "16-bit" : "32-bit",
+                static_cast<unsigned long long>(index_address), index_offset, max_index,
+                v.num_buffers, min_vertices == ~0ull ? -1ll : static_cast<long long>(min_vertices),
+                static_cast<unsigned long long>(regs.color_buffers[0] ? regs.color_buffers[0].Address() : 0),
+                static_cast<unsigned long long>(regs.depth_buffer.DepthAddress()),
+                large ? " LARGE OR OUT OF RANGE" : "", index_mapped ? "" : " (indices not mapped)");
+    std::fflush(stdout);
+}
+
 void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
                             bool is_indexed, u32 index_offset) {
     if (DrawPipe::OnStageB()) {
@@ -1688,6 +1773,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (is_indexed) {
         EmitIndexBuffer();
     }
+    LogDraw(pipeline, is_indexed, index_offset);
 
     if (needs_barrier) {
         runtime.FlushBarriers();

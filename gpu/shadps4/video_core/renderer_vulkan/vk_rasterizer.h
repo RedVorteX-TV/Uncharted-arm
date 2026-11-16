@@ -146,6 +146,8 @@ public:
     /// Stage A: guest memory the recording thread will write for work handed to it (storage
     /// buffers, DMA, WriteData, fences); constants overlapping it are bound there, not copied here.
     void NotePendingGpuWrite(VAddr address, u64 size);
+    /// bbport diagnosis: BB_DRAW_LOG (vk_rasterizer.cpp).
+    void LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 index_offset);
     /// bbport: set while PostDraw prepares a packet (its written resources are noted before the
     /// packet is committed): such notes last until that packet has run, not the one before it.
     bool notes_before_commit{false};
