@@ -136,6 +136,24 @@ if [ -n "$gpu_driver" ]; then
 fi
 [ -n "${BB_VULKAN_DRIVER:-}" ] || echo 'GPU driver: system (stock)'
 
+# Turnip on the Adreno 8xx: no LRZ fast clear. Before Mesa 2ce86eedc (2026-11-04, "tu/lrz: Fix
+# partial LRZ fast-clear on A8XX") the part of a depth image the flag RAM does not cover was cleared
+# at the wrong offsets; U3's chapter 9 shadow array (512x512, 48 layers, more flags than the 2 KiB
+# of flag RAM) then lost the device (Odin 3, Turnip V38, 2026-11-16: TU_DEBUG=nolrz ran clean,
+# sysmem alone did not). The LRZ clears become plain blits; LRZ itself stays on. A TU_DEBUG of the
+# player's own (uncharted-debug.txt) replaces it.
+if [ -n "${BB_VULKAN_DRIVER:-}" ] && [ -z "${TU_DEBUG:-}" ]; then
+    case ${BB_VULKAN_DRIVER##*/} in
+        libvulkan_freedreno*)
+            gpu_model=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || true)
+            case "$gpu_model:$gpu_driver" in
+                *[Aa]dreno8[0-9][0-9]*|*gen8*)
+                    export TU_DEBUG=nolrzfc
+                    echo "Turnip: TU_DEBUG=nolrzfc (Adreno 8xx LRZ fast clear of layered depth)" ;;
+            esac ;;
+    esac
+fi
+
 # Local overrides for this device (experiments, tuning): sourced last, not part of the runtime.
 [ -f "$base/local.sh" ] && . "$base/local.sh"
 
