@@ -1650,28 +1650,48 @@ void Rasterizer::LogDraw(const GraphicsPipeline* pipeline, bool is_indexed, u32 
             min_vertices = std::min<u64>(min_vertices, v.host_sizes[b] / v.host_strides[b]);
         }
     }
+    // The buffers the draw's shaders read or write (guest ranges), and whether they use
+    // pointers (DMA through the BDA page table).
+    char buffers[640];
+    int used = 0;
+    u64 buffers_key = 0;
+    bool unmapped_buffer = false;
+    for (const auto& b : bound_buffers) {
+        const VAddr at = b.buffer->CpuAddr() + b.offset;
+        buffers_key = buffers_key * 31 + at + b.size;
+        const bool mapped = Core::Memory::Instance()->IsHostMapped(at, b.size);
+        unmapped_buffer |= !mapped;
+        if (used < int(sizeof(buffers)) - 64) {
+            used += std::snprintf(buffers + used, sizeof(buffers) - used, " %#llx+%llu%s%s",
+                                  static_cast<unsigned long long>(at),
+                                  static_cast<unsigned long long>(b.size), b.is_written ? "w" : "",
+                                  mapped ? "" : "(unmapped)");
+        }
+    }
+    buffers[used] = 0;
+    const bool dma = pipeline->GetStage(Shader::SwStage::Vertex).uses_dma || (ps && ps->uses_dma);
     static std::mutex m;
     static u32 lines = 0;
-    static u64 last_key = 0;
+    static std::unordered_set<u64> seen;
     const u64 key = u64(indices) * 1000003ull ^ u64(instances) << 40 ^ index_address ^
-                    u64(vs_hash) << 20 ^ u64(is_indexed);
+                    u64(vs_hash) << 20 ^ u64(is_indexed) ^ buffers_key * 0x9e3779b97f4a7c15ull;
     const bool large = indices > (1u << 22) || instances > 4096 || !index_mapped ||
+                       unmapped_buffer ||
                        (is_indexed && min_vertices != ~0ull && max_index >= min_vertices);
     std::scoped_lock lk{m};
-    if (!large && (key == last_key || lines >= 400)) {
+    if (!large && (lines >= 400 || !seen.insert(key).second)) {
         return;
     }
-    last_key = key;
     ++lines;
     std::printf("Draw log: vs %08x ps %08x %s %u indices x %u instances, primitive %u, index %s at "
                 "%#llx (offset %u, max index %u), %u vertex buffers (fewest vertices %lld), "
-                "color0 %#llx, depth %#llx%s%s\n",
+                "color0 %#llx, depth %#llx, dma %d, buffers%s%s%s\n",
                 vs_hash, ps_hash, is_indexed ? "indexed" : "auto", indices, instances,
                 u32(regs.primitive_type), index16 ? "16-bit" : "32-bit",
                 static_cast<unsigned long long>(index_address), index_offset, max_index,
                 v.num_buffers, min_vertices == ~0ull ? -1ll : static_cast<long long>(min_vertices),
                 static_cast<unsigned long long>(regs.color_buffers[0] ? regs.color_buffers[0].Address() : 0),
-                static_cast<unsigned long long>(regs.depth_buffer.DepthAddress()),
+                static_cast<unsigned long long>(regs.depth_buffer.DepthAddress()), int(dma), buffers,
                 large ? " LARGE OR OUT OF RANGE" : "", index_mapped ? "" : " (indices not mapped)");
     std::fflush(stdout);
 }
