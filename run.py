@@ -386,6 +386,13 @@ def main():
     # These passes need the scene's jitter too: sun shadow reconstruction, U1 boat details,
     # and U3 London bar surfaces drawn against secondary scene depth (otherwise they flicker).
     env.setdefault('BB_JITTER_PS', 'f614041e,b2a42acf,1a08df2d')
+    # Turnip without LRZ fast clear on ARM: before Mesa 2ce86eedc (2026-11-04, "tu/lrz: Fix partial
+    # LRZ fast-clear on A8XX") the part of a depth image the flag RAM does not cover was cleared at
+    # the wrong offsets, and U3's chapter 9 shadow array (512x512, 48 layers) lost the device on the
+    # Adreno 830 (TU_DEBUG=nolrz and nolrzfc ran clean, sysmem did not). The LRZ clears become plain
+    # blits, LRZ stays on; other drivers ignore it. A TU_DEBUG of your own replaces it.
+    if not WINDOWS and platform.machine().lower() in ('aarch64', 'arm64'):
+        env.setdefault('TU_DEBUG', 'nolrzfc')
     if not env.get('BB_FSR411_DIR') and not (PORT / 'fsr4_411').is_dir() and (data / 'fsr4_411').is_dir():
         env['BB_FSR411_DIR'] = str(data / 'fsr4_411')
 
