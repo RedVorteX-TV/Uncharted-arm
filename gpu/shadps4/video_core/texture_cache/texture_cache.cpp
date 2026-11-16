@@ -237,6 +237,42 @@ void TextureCache::UnmapMemory(VAddr cpu_addr, size_t size) {
         // TODO: Download image data back to host.
         FreeImage(id);
     }
+    // bbport: unmapped memory holds no depth array any more (PadDepthLayers).
+    for (auto it = depth_array_layers.begin(); it != depth_array_layers.end();) {
+        it = it->first >= cpu_addr && it->first < cpu_addr + size ? depth_array_layers.erase(it)
+                                                                  : std::next(it);
+    }
+}
+
+/// bbport (Mevlock): U3 keeps its shadow maps as depth arrays (one layer per light) at fixed
+/// addresses. A new image started with one layer and was made again, copied, for every further
+/// layer the game drew that frame (1, 2, ... 18, then 48 layers at U3's syria-under-puzzle): the
+/// layers drawn before were lost (the flashlight's light vanished for a frame, then came back in
+/// blocky tiles), and on Adreno that chain of copies at syria-under-puzzle was followed by a lost
+/// GPU. A depth image made at an address that has held a deeper array gets all those layers at
+/// once; the game draws each layer again every frame. The padded array stays within twice the
+/// most bytes a request at the address covered (a U2 4096x4096 shadow map at an address that
+/// once held a 16-layer array: 1 GiB). BB_DEPTH_ARRAY_PAD=0: off.
+void TextureCache::PadDepthLayers(ImageInfo& info, const ImageInfo& requested) {
+    static const bool pad = [] {
+        const char* env = std::getenv("BB_DEPTH_ARRAY_PAD");
+        return !(env && env[0] == '0');
+    }();
+    if (!pad || !info.props.is_depth) {
+        return;
+    }
+    auto& seen = depth_array_layers[info.guest_address];
+    seen.layers = std::max(seen.layers, requested.resources.layers);
+    seen.bytes = std::max<u64>(seen.bytes, requested.guest_size);
+    const u64 slice = info.guest_size / std::max(1u, info.resources.layers);
+    const u32 fits = slice ? static_cast<u32>(std::min<u64>(2 * seen.bytes / slice, 2048)) : 0;
+    const u32 cap = std::max(requested.resources.layers, fits);
+    const u32 layers =
+        std::clamp(std::max(info.resources.layers, seen.layers), requested.resources.layers, cap);
+    if (layers != info.resources.layers) {
+        info.resources.layers = layers;
+        info.UpdateSize();
+    }
 }
 
 ImageId TextureCache::ResolveDepthOverlap(const ImageInfo& requested_info, BindingType binding,
@@ -288,6 +324,7 @@ ImageId TextureCache::ResolveDepthOverlap(const ImageInfo& requested_info, Bindi
         auto new_info = requested_info;
         new_info.resources = std::max(requested_info.resources, cache_image.info.resources);
         new_info.UpdateSize();
+        PadDepthLayers(new_info, requested_info);
         const auto new_image_id = slot_images.insert(instance, runtime, slot_image_views, new_info);
         RegisterImage(new_image_id);
 
@@ -651,7 +688,14 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
         if (cache_image.info.guest_address != info.guest_address) {
             continue;
         }
-        if (cache_image.info.guest_size != info.guest_size) {
+        // bbport: a depth array made with more layers (PadDepthLayers) answers a request for
+        // fewer layers of the same size and format.
+        const bool deeper_depth_array =
+            info.props.is_depth && cache_image.info.props.is_depth &&
+            cache_image.info.resources.levels == info.resources.levels &&
+            cache_image.info.resources.layers >= info.resources.layers &&
+            cache_image.info.guest_size >= info.guest_size;
+        if (cache_image.info.guest_size != info.guest_size && !deeper_depth_array) {
             continue;
         }
         if (cache_image.info.size != info.size) {
@@ -700,7 +744,11 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
     }
     // Create and register a new image
     if (!image_id) {
-        image_id = slot_images.insert(instance, runtime, slot_image_views, info);
+        auto new_info = info;
+        if (desc.type == BindingType::DepthTarget) {
+            PadDepthLayers(new_info, info);
+        }
+        image_id = slot_images.insert(instance, runtime, slot_image_views, new_info);
         RegisterImage(image_id);
     }
 

@@ -488,6 +488,14 @@ private:
         s32 clear_mask = -1;
     };
     tsl::robin_map<VAddr, MetaDataInfo> surface_metas;
+    /// bbport: most layers, and most bytes, a request for a depth array at an address asked for
+    /// (PadDepthLayers).
+    struct DepthArraySeen {
+        u32 layers = 0;
+        u64 bytes = 0;
+    };
+    tsl::robin_map<VAddr, DepthArraySeen> depth_array_layers;
+    void PadDepthLayers(ImageInfo& info, const ImageInfo& requested);
     std::atomic<u64> meta_clears{0}; ///< see MetaClears
 };
 
