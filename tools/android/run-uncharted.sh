@@ -323,12 +323,14 @@ while :; do
         if [ "$count" -ge 4 ]; then export BB_RENDER_CPUS=$fast; echo "Render threads: CPUs $fast"; fi
     fi
     # Testing without a new build: BB_ settings in uncharted-debug.txt in the game folder (one
-    # NAME=value a line, e.g. BB_SKIP_SHADERS=1234abcd) override the ones above.
+    # NAME=value a line, e.g. BB_SKIP_SHADERS=1234abcd) override the ones above; the Turnip
+    # driver's TU_DEBUG (e.g. nolrz, sysmem) and MESA_ settings too.
     if [ -f "$game_dir/uncharted-debug.txt" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
             line=$(printf '%s' "$line" | tr -d '\r')
             case "$line" in
-                BB_[A-Z0-9_]*=*) export "$line"; echo "Debug setting: $line" ;;
+                BB_[A-Z0-9_]*=*|TU_DEBUG=*|FD_MESA_DEBUG=*|MESA_[A-Z0-9_]*=*)
+                    export "$line"; echo "Debug setting: $line" ;;
             esac
         done < "$game_dir/uncharted-debug.txt"
     fi
